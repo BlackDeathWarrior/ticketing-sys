@@ -13,6 +13,7 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 | 0     | Monorepo, Docker Compose infra, API/worker skeletons, CI                                            | Done    |
 | 1     | Auth + RBAC, customers, tickets + workflow, audit log, outbox events, barebones UI                  | Done    |
 | 2     | Channel gateway + orchestrator, web chat widget, email (IMAP/SMTP), agent replies, live updates     | Done    |
+| —     | Orbit Desk dashboard wired to the API, reports overview, sample data, Playwright E2E suite          | Done    |
 | 3     | LiteLLM platform and provider/model settings                                                        | Next    |
 | 4–11  | Knowledge base, AI agent, tools/MCP, handover/routing/SLA, WhatsApp, reporting, hardening, frontend | Planned |
 
@@ -57,7 +58,30 @@ This builds the images from the root `Dockerfile`, starts the infrastructure, ru
 
 Override defaults with environment variables or a `.env` next to the compose file: `JWT_SECRET` (set this for anything shared), `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_DEMO_DATA`, `API_DOCS`, `LOG_LEVEL`, and the `EMAIL_*` settings to point at a real mailbox.
 
-`pnpm docker:logs` follows the app logs; `pnpm docker:down` stops everything (add `-v` to the compose command to also delete the data volumes). Behind a TLS-intercepting corporate proxy, build with its CA: `docker build --secret id=extra_ca,src=/path/to/ca.pem ...`.
+`pnpm docker:logs` follows the app logs; `pnpm docker:down` stops everything (add `-v` to the compose command to also delete the data volumes). Behind a TLS-intercepting corporate proxy, build with its CA: `docker build --secret id=extra_ca,src=/path/to/ca.pem ...`. Rate-limited by Docker Hub? Build with `--build-arg NODE_IMAGE=mirror.gcr.io/library/node:22-bookworm-slim --build-arg NGINX_IMAGE=mirror.gcr.io/library/nginx:1.27-alpine`.
+
+## Sample data
+
+`pnpm sample:load` fills a running stack with fictional demo data through the public API, so audit, outbox, realtime and email all behave as they do for real traffic:
+
+- 4 teams, 7 agents and leads, 25 customers (invented people and companies on `example.*` domains).
+- 40 tickets across every status, priority and channel, with assignments, internal notes, email replies and status changes.
+- 3 web chats sent through the widget socket and 3 customer emails sent to the support mailbox.
+- Ticket timestamps spread over the last 14 days (a dev-only SQL step; skip with `-- --no-backdate`).
+
+Sign in as the admin, or as any sample user with the password `Sample-Passw0rd!`:
+
+| User                          | Role       | Team     |
+| ----------------------------- | ---------- | -------- |
+| `maya.lindqvist@tms.example`  | Team lead  | Orders   |
+| `priya.natarajan@tms.example` | Supervisor | Platform |
+| `jonah.reyes@tms.example`     | Agent      | Orders   |
+| `aiko.tanaka@tms.example`     | Agent      | Billing  |
+| `nora.quist@tms.example`      | Agent      | Billing  |
+| `sam.okafor@tms.example`      | Agent      | Returns  |
+| `leo.martin@tms.example`      | Agent      | Platform |
+
+The loader skips if the data is already there; to start over, `docker compose -f infra/docker-compose.yml --profile app down -v` and bring the stack up again. The data lives in `scripts/sample-data/data.ts`.
 
 ## Try the channels
 
@@ -98,6 +122,16 @@ pnpm test:int            # integration tests against real Postgres, Redis, S3 an
 ```
 
 Integration tests need `pnpm infra:up` (or at least `postgres redis objectstore greenmail`). They wipe and migrate the database at `TEST_DATABASE_URL` (default `postgres://tms:tms@localhost:5432/tms_test`) and use Redis db 15. Create the database once with `docker compose -f infra/docker-compose.yml exec postgres createdb -U tms tms_test`.
+
+End-to-end tests (`e2e/`, Playwright) drive both consoles, the chat widget and the mailbox against a running stack loaded with sample data:
+
+```bash
+pnpm docker:up && pnpm sample:load
+pnpm --filter @tms/e2e exec playwright install chromium   # once
+pnpm e2e                                                  # report: e2e/playwright-report
+```
+
+They default to the Docker ports; point them elsewhere with `API_URL`, `ORBIT_URL`, `WEB_URL`, `WIDGET_URL`, `MAILPIT_URL` and `SMTP_HOST`/`SMTP_PORT`. The latest run is written up in [`docs/testing/TEST_REPORT.md`](docs/testing/TEST_REPORT.md).
 
 ## Conventions
 

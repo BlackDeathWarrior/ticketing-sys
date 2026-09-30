@@ -2,7 +2,7 @@
 
 The support dashboard and UI element library for the ticketing system. Styled from [`docs/DESIGN.md`](../../docs/DESIGN.md) ("starlit violet cosmos").
 
-Built with Vite, React 19 and TypeScript, styled with CSS Modules, with no UI or chart libraries.
+Built with Vite, React 19 and TypeScript, styled with CSS Modules, with no UI or chart libraries. It signs in against the TMS API and reads live data: the queue from `GET /tickets`, dashboard figures from `GET /reports/overview` (team leads and up), and updates over the `/agent` socket. Run the API (`pnpm dev` or `pnpm docker:up`) and load `pnpm sample:load` to see it populated.
 
 ## Run
 
@@ -37,7 +37,9 @@ src/
   components/layout/       Sidebar, TopBar (floating nav pill), Logo
   features/dashboard/      page sections, TicketDrawer, NewTicketDialog
   features/elements/       the gallery page
-  data/                    typed mock data and saved views (swap for an API later)
+  data/                    API response adapters, view models and server-backed saved views
+  api/                     fetch client (token refresh) and the /agent realtime socket
+  features/auth/           sign-in page
 ```
 
 ## Design rules the code enforces
