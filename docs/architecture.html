@@ -166,14 +166,22 @@ body.mvp .p2{opacity:.16!important}
 .dec p{margin:0;font-size:14px;color:var(--muted)}
 .dec .why{font-size:12.5px;font-family:var(--font-mono);color:var(--ink)}
 footer{font-size:12.5px;color:var(--muted)}
+.pill.built{border:1px solid var(--line)}
+.built-txt{font-size:13.5px;margin:0}
+.asbuilt{padding:16px 18px;display:grid;gap:10px}
+.asbuilt table{border-collapse:collapse;width:100%;font-size:14px}
+.asbuilt th,.asbuilt td{text-align:left;vertical-align:top;padding:7px 10px;border-top:1px solid var(--line)}
+.asbuilt th{font-weight:600;color:var(--muted);font-size:12.5px;border-top:none}
+.asbuilt code{font-family:var(--font-mono);font-size:12.5px}
+.asbuilt .tw{overflow-x:auto}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Ticket Management System · Solution architecture v0.1</div>
+    <div class="eyebrow">Ticket Management System · Solution architecture v0.2 · build status as of 30 Sep 2026</div>
     <h1>TMS Architecture Map</h1>
-    <p class="lede">An omnichannel support platform where an AI agent handles first-level support, calls enterprise systems through governed MCP and API tools, and hands off to human agents in one workspace. Click any component to see what it owns. Pick a scenario to follow a request through the system step by step.</p>
+    <p class="lede">An omnichannel support platform where an AI agent handles first-level support, calls enterprise systems through governed MCP and API tools, and hands off to human agents in one workspace. Click any component to see what it owns and what exists in the repo today. Pick a scenario to follow a request through the system step by step.</p>
   </header>
 
   <div class="toolbar">
@@ -216,6 +224,25 @@ footer{font-size:12.5px;color:var(--muted)}
       <div class="card dec"><h3>Handover carries a context pack</h3><p>Summary, intent, actions taken, tools used, data retrieved and a recommended next step travel with the conversation, so the customer never repeats the issue.</p><div class="why">Covers §8 handover context, §9 agent UI</div></div>
       <div class="card dec"><h3>Events feed reporting and audit</h3><p>Services publish ticket and conversation events to one stream. Reporting, notifications and audit consume it instead of querying live services.</p><div class="why">Covers §12 notifications, §13 reporting</div></div>
     </div>
+  </section>
+
+  <section class="card asbuilt" aria-labelledby="builtH">
+    <h2 id="builtH">What runs today</h2>
+    <p style="margin:0;font-size:14px;color:var(--muted)">The map above is the target. This is what exists in the repo. The full gap list is in <code>docs/IMPLEMENTATION_PLAN.md</code> under "Reality check".</p>
+    <div class="tw"><table>
+      <thead><tr><th>Piece</th><th>Where</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>API</td><td><code>apps/api</code> → <code>dist/main.js</code></td><td>NestJS on Fastify: auth and RBAC, users, teams, categories, workflow, customers, tickets, notes, history, audit, conversations, replies, attachments, reports. Socket.IO <code>/agent</code> and <code>/chat</code></td></tr>
+        <tr><td>Worker</td><td><code>apps/api</code> → <code>dist/worker.js</code></td><td>Outbox relay (Postgres NOTIFY + BullMQ), delivery of replies (webchat, email), realtime fan-out, IMAP mailbox reader</td></tr>
+        <tr><td>Orbit Desk</td><td><code>apps/orbit-desk</code> (:8081)</td><td>The product console (ADR 0005): dashboard, queue views, ticket drawer, new ticket, live updates. Styled from <code>docs/DESIGN.md</code></td></tr>
+        <tr><td>Basic console</td><td><code>apps/web</code> (:8080)</td><td>Unstyled test console: tickets, ticket page, customers</td></tr>
+        <tr><td>Chat widget</td><td><code>apps/chat-widget</code></td><td>One-script-tag web chat with resumable sessions and signed identity</td></tr>
+        <tr><td>Reports</td><td><code>apps/api/src/reports</code></td><td><code>GET /reports/overview</code>: read-only aggregates across modules (ADR 0006)</td></tr>
+        <tr><td>Sample data</td><td><code>scripts/sample-data</code></td><td><code>pnpm sample:load</code>: fictional teams, users, customers, 40 tickets, live chats and emails, loaded through the public API (ADR 0007)</td></tr>
+        <tr><td>E2E suite</td><td><code>e2e/</code></td><td>23 Playwright tests against the Docker stack; a CI job runs them</td></tr>
+        <tr><td>Infrastructure</td><td><code>infra/docker-compose.yml</code>, <code>Dockerfile</code></td><td>Postgres 16 (pgvector image), Redis, SeaweedFS (S3), GreenMail + Mailpit, LiteLLM (running, not yet used)</td></tr>
+      </tbody>
+    </table></div>
   </section>
 
   <footer>Section numbers (§) refer to the Ticket Management System brief. Vendor names under “Suggested stack” are examples to evaluate, not decisions.</footer>
@@ -306,6 +333,34 @@ const INFO = {
   vault:{zone:"Platform",mvp:true,sum:"Credentials for enterprise APIs and MCP servers.",does:["Store and rotate secrets","Issue short-lived tokens to the Tool Gateway","Keep all secrets out of prompts and logs"],req:"§14",tech:"HashiCorp Vault or a cloud secrets manager"},
   obs:{zone:"Platform",mvp:true,sum:"Monitoring for the whole platform, including the AI.",does:["Logs, metrics and distributed traces","LLM latency, token cost and confidence distribution","Tool error rates and timeouts","Alerts on channel delivery failures"],req:"§16",tech:"OpenTelemetry into Grafana, Datadog or similar"},
   events:{zone:"Platform",mvp:true,sum:"One stream of ticket and conversation events that other services consume.",does:["message.received, ticket.created, handover.requested, tool.called, sla.breached and similar","Feeds reporting, notifications and audit","Decouples reporting load from live services"],req:"§12, §13, §16",tech:"Kafka, Pub/Sub or SQS/SNS"}
+};
+
+const BUILT = {
+ "email": "Built: IMAP IDLE reader (one worker holds a Redis lock) and SMTP replies with threading headers. Attachments go to S3. Graph/Gmail push are not built.",
+ "wa": "Not built. The channel and identity values exist. Plan: port the Cloud API adapter from whatsapp-crm (docs/research/whatsapp-crm.md).",
+ "webchat": "Built: Socket.IO /chat, the apps/chat-widget bundle, resumable signed sessions, host identity tokens, rate limit. No file upload or typing indicator yet.",
+ "voice": "Not built. Research: Sarvam STT/TTS over browser audio first, then Twilio/Exotel/Plivo (docs/research/voice-sarvam.md).",
+ "gw": "Built as MessageEnvelope (packages/shared) plus per-channel code in apps/api/src/channels and chat. Dedupe by (channel, channel_message_id).",
+ "orch": "Built: InboundService (advisory lock, dedupe, identity, threading, reopen) and OutboundService (pending replies). The controller field exists but only moves none → human; there is no AI dispatch or take-over endpoint.",
+ "ticket": "Built: tickets, configurable workflow, notes, history, lifecycle timestamps. The SLA clock is not built (sla_policy_id is unused).",
+ "profile": "Built: customers, identities with normalisation and verification, resolve-or-create, merge.",
+ "routing": "Not built. Manual assign and team only.",
+ "ai": "Not built (Phases 3 and 5). LiteLLM runs in compose but no code calls it.",
+ "handover": "Not built (Phase 7).",
+ "kb": "Not built (Phase 4). The pgvector image is used but the extension is not enabled.",
+ "tools": "Not built (Phase 6).",
+ "approval": "Not built (Phase 6). The approval:approve permission exists.",
+ "sources": "Not built.",
+ "enterprise": "Not built. Sample MCP servers are planned for Phase 6.",
+ "notify": "Partial: live console updates over /agent. No notification list, email alerts or push.",
+ "agentui": "Partial: Orbit Desk (dashboard, queue, drawer, reply, notes) and the basic console. No take-over, AI timeline, approvals, KB search or settings.",
+ "agents": "Built: roles agent, team lead, supervisor, admin, with 19 permissions.",
+ "reporting": "Partial: GET /reports/overview, computed live (ADR 0006). No AI vs human, SLA, CSAT or export.",
+ "iam": "Built: local accounts, JWT, rotating refresh tokens, permission guard. No SSO or MFA.",
+ "audit": "Built: append-only audit_log (a trigger blocks UPDATE and DELETE), written in the same transaction as each change.",
+ "vault": "Not built. Secrets are environment variables; encrypted storage is planned for Phase 3/6.",
+ "obs": "Partial: pino logs with request IDs, health checks, worker heartbeat, an optional OTel collector. No traces or metrics in code.",
+ "events": "Built: transactional outbox → BullMQ domain-events queue, woken by Postgres NOTIFY. Not Kafka."
 };
 
 const FLOWS = [
@@ -471,6 +526,7 @@ function renderNode(id){
     <div class="meta z-${n.z}"><span class="pill zone">${esc(i.zone)}</span><span class="pill ${i.mvp?"mvp":"p2"}">${i.mvp?"MVP":"PHASE 2"}</span></div>
     <h2>${esc(n.t)}</h2>
     <p>${esc(i.sum)}</p>
+    ${BUILT[id]?`<div><div class="lbl">In the repo today</div><p class="built-txt">${esc(BUILT[id])}</p></div>`:""}
     <div><div class="lbl">Responsibilities</div><ul>${i.does.map(d=>`<li>${esc(d)}</li>`).join("")}</ul></div>
     ${conns?`<div><div class="lbl">Talks to</div><ul style="list-style:none;padding:0">${conns}</ul></div>`:""}
     <div><div class="lbl">Suggested stack</div><div class="tech">${esc(i.tech)}</div></div>

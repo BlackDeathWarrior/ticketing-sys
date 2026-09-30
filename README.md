@@ -8,14 +8,24 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 
 ## Status
 
-| Phase | Scope                                                                                               | State   |
-| ----- | --------------------------------------------------------------------------------------------------- | ------- |
-| 0     | Monorepo, Docker Compose infra, API/worker skeletons, CI                                            | Done    |
-| 1     | Auth + RBAC, customers, tickets + workflow, audit log, outbox events, barebones UI                  | Done    |
-| 2     | Channel gateway + orchestrator, web chat widget, email (IMAP/SMTP), agent replies, live updates     | Done    |
-| —     | Orbit Desk dashboard wired to the API, reports overview, sample data, Playwright E2E suite          | Done    |
-| 3     | LiteLLM platform and provider/model settings                                                        | Next    |
-| 4–11  | Knowledge base, AI agent, tools/MCP, handover/routing/SLA, WhatsApp, reporting, hardening, frontend | Planned |
+| Phase | Scope                                                                                                                      | State   |
+| ----- | -------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 0     | Monorepo, Docker Compose infra, API/worker skeletons, CI                                                                   | Done    |
+| 1     | Auth + RBAC, customers, tickets + workflow, audit log, outbox events, barebones UI                                         | Done    |
+| 2     | Channel gateway + orchestrator, web chat widget, email (IMAP/SMTP), agent replies, live updates                            | Done    |
+| —     | Orbit Desk console wired to the API (ADR 0005), reports overview (ADR 0006), sample data + Playwright E2E suite (ADR 0007) | Done    |
+| 3     | LiteLLM platform and provider/model settings                                                                               | Next    |
+| 4     | Knowledge base (RAG)                                                                                                       | Planned |
+| 5     | AI agent (first-level support, classification)                                                                             | Planned |
+| 6     | Tools/MCP and approvals                                                                                                    | Planned |
+| 7     | Handover, routing, SLA, notifications                                                                                      | Planned |
+| 8     | WhatsApp (Meta Cloud API, ported from whatsapp-crm; see `docs/research/whatsapp-crm.md`)                                   | Planned |
+| 9     | Reporting (AI vs human, SLA, CSAT) and admin settings                                                                      | Planned |
+| 10    | Hardening (SSO, rate limits, tracing, IaC)                                                                                 | Planned |
+| 11    | Finish Orbit Desk: workspace, settings, reports, approvals                                                                 | Planned |
+| —     | Voice agent on Sarvam STT/TTS (see `docs/research/voice-sarvam.md`)                                                        | Planned |
+
+Not built yet, although the UI or schema hints at them: SLA and CSAT (Orbit Desk hides them until Phase 7), AI replies (`controller=ai` and AI-authored messages are never produced), approvals, and any settings pages. The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
 
 ## Layout
 
@@ -24,12 +34,14 @@ apps/
   api/          NestJS (Fastify) codebase with two entry points:
                   dist/main.js    HTTP API + Socket.IO  → http://localhost:3000/api/v1, docs at /docs
                   dist/worker.js  background worker: outbox relay, delivery, mailbox polling
-  web/          Barebones React agent console         → http://localhost:5173
-  orbit-desk/   Orbit Desk: the styled agent dashboard → http://localhost:5175 (design: docs/DESIGN.md)
+  web/          Barebones React test console           → http://localhost:5173
+  orbit-desk/   Orbit Desk: the product console        → http://localhost:5175 (design: docs/DESIGN.md)
   chat-widget/  Embeddable web chat widget (one script tag)
 packages/
   shared/       Zod schemas, permissions, workflow defaults, channel envelope, event contracts
   db/           Drizzle schema, SQL migrations, seed
+scripts/sample-data/  Fictional demo data loader (pnpm sample:load)
+e2e/                  Playwright suite against the running stack (pnpm e2e)
 infra/
   docker-compose.yml   Postgres (pgvector), Redis, SeaweedFS (S3), GreenMail + Mailpit (dev mail), LiteLLM, OTel
 ```

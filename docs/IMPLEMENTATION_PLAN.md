@@ -2,7 +2,7 @@
 
 ## Context
 
-The brief (forwarded email "Sub") asks for an omnichannel Ticket Management System: Email, WhatsApp, Web Chat and Voice channels, an AI Agent for first-level support that uses a knowledge base and MCP/API tools, AI-to-human handover, a unified Agent UI, routing/SLA, reporting, and RBAC/audit. We already published the target architecture as an interactive artifact (https://claude.ai/artifact/LCpSt9syuh5wmwAXRqQ5gH; source in scratchpad `tms-architecture.html`). The repo `ticketing-sys` is empty (README only), so this plan builds everything from scratch, following that architecture.
+The brief (forwarded email "Sub") asks for an omnichannel Ticket Management System: Email, WhatsApp, Web Chat and Voice channels, an AI Agent for first-level support that uses a knowledge base and MCP/API tools, AI-to-human handover, a unified Agent UI, routing/SLA, reporting, and RBAC/audit. We already published the target architecture as an interactive artifact (https://claude.ai/artifact/LCpSt9syuh5wmwAXRqQ5gH; source committed as `docs/architecture.html`). The repo `ticketing-sys` was empty (README only) when this plan was written, so it builds everything from scratch, following that architecture.
 
 Decisions confirmed with the user:
 
@@ -11,18 +11,149 @@ Decisions confirmed with the user:
 - **Docker Compose first**, cloud later.
 - **UI stays barebones** (unstyled React pages) until the final Frontend phase.
 
-Work happens on branch `claude/pensive-planck-yp2tyi`; each phase ends with a commit/push and a working demo.
+Phases 0–2 were built on `claude/pensive-planck-yp2tyi` and Orbit Desk on `claude/gifted-clarke-yl2r34`. Both are merged into `main`. From now on each phase is a feature branch and a pull request into `main`, and ends with a working demo.
 
 ## Progress
 
-| Phase          | State | Notes                                                                                                                                                                                                                                                                                                             |
-| -------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0 Foundations  | Done  | Monorepo, compose infra, API/worker skeletons, health checks, CI, ADRs 0001–0003, session hook                                                                                                                                                                                                                    |
-| 1 Core domain  | Done  | Auth (JWT + rotating refresh tokens), RBAC, users/teams/categories, customers with identity resolution and merge, tickets with configurable workflow, notes, history, append-only audit log, outbox → BullMQ relay, barebones UI. 4 unit + 23 API integration + 4 worker integration tests                        |
-| 2 Channels     | Done  | Channel envelope + inbound orchestrator (dedupe, identity resolution, email threading, reopen), agent replies with async delivery and status, web chat widget (Socket.IO, resumable sessions, signed identity), email over IMAP/SMTP with attachments in S3, live console updates. 23 unit + 35 integration tests |
-| 3 LLM platform | Next  |                                                                                                                                                                                                                                                                                                                   |
+| Phase                 | State   | Notes                                                                                                                                                                                                                                                                                                             |
+| --------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 Foundations         | Done    | Monorepo, compose infra, API/worker skeletons, health checks, CI, ADRs 0001–0003, session hook                                                                                                                                                                                                                    |
+| 1 Core domain         | Done    | Auth (JWT + rotating refresh tokens), RBAC, users/teams/categories, customers with identity resolution and merge, tickets with configurable workflow, notes, history, append-only audit log, outbox → BullMQ relay, barebones UI. 4 unit + 23 API integration + 4 worker integration tests                        |
+| 2 Channels            | Done    | Channel envelope + inbound orchestrator (dedupe, identity resolution, email threading, reopen), agent replies with async delivery and status, web chat widget (Socket.IO, resumable sessions, signed identity), email over IMAP/SMTP with attachments in S3, live console updates. 23 unit + 35 integration tests |
+| — Console and reports | Done    | Orbit Desk dashboard wired to the API (ADR 0005), `GET /reports/overview` (ADR 0006), fictional sample data loader and a 23-test Playwright suite against the Docker stack (ADR 0007). 52 unit + 38 integration + 23 E2E tests. See `docs/testing/TEST_REPORT.md`                                                 |
+| 3 LLM platform        | Next    | Nothing built yet. The LiteLLM container runs, but no code calls it                                                                                                                                                                                                                                               |
+| 4–11                  | Planned | See the gap list below                                                                                                                                                                                                                                                                                            |
 
-Also done: the whole stack runs in Docker (`pnpm docker:up`: root multi-stage `Dockerfile` with `api`, `worker`, `migrate`, `web` targets; compose profile `app`).
+Also done: the whole stack runs in Docker (`pnpm docker:up`: root multi-stage `Dockerfile` with `api`, `worker`, `migrate`, `web`, `orbit-desk` targets; compose profile `app`). CI runs a `check` job (format, lint, build, typecheck, unit and integration tests) and an `e2e` job (Docker stack + sample data + Playwright).
+
+## Reality check (30 September 2026)
+
+An audit of `main` at `2605316` against this plan, the ADRs, the README and both consoles. Research for the next phases is in [`docs/research/whatsapp-crm.md`](research/whatsapp-crm.md) and [`docs/research/voice-sarvam.md`](research/voice-sarvam.md).
+
+### What exists
+
+**Platform**
+
+- pnpm + Turborepo monorepo.
+- Docker Compose with Postgres 16 (pgvector image), Redis, SeaweedFS (S3), GreenMail, Mailpit and LiteLLM, plus an optional `observability` profile with an OTel collector.
+- A five-target `Dockerfile` and CI with `check` and `e2e` jobs.
+- Health: `/health/live` and `/health/ready`. Readiness checks the database and Redis, and also reports LiteLLM and the worker heartbeat.
+- pino logs with request IDs, Swagger at `/docs`, helmet, CORS, and an exception filter that maps Postgres errors 23505 → 409 and 23503 → 400.
+
+**Auth and RBAC**
+
+- argon2 passwords and 15-minute JWT access tokens.
+- Rotating refresh tokens with reuse detection (reuse revokes every session). Logout and `/me`.
+- Failed and successful logins are audited.
+- 19 permission strings and 4 system roles (agent, team lead, supervisor, admin), enforced by global `AuthGuard` + `PermissionsGuard`.
+
+**People and reference data**
+
+- **Users:** list, get, create, update (name, roles, teams, password, deactivate).
+- **Teams:** list and create.
+- **Categories:** a two-level tree; list and create.
+- **Workflow:** statuses and transitions are configurable at runtime: upsert status, deactivate status, replace transitions.
+
+**Customers**
+
+- List with fuzzy search, get, create and update.
+- Identities: email, phone, whatsapp, webchat session, external id. Values are normalised; only verified identities can link to an existing customer.
+- Resolve-or-create and merge.
+
+**Tickets**
+
+- List with filters, search and pagination (at most 200 per page). Get by UUID or `TMS-n`.
+- Create, update with a field-level diff, and workflow-checked transitions.
+- Assign. Assigning someone moves a New or AI Handling ticket to Human Assigned.
+- Internal notes, and history built from the audit log.
+- Lifecycle timestamps: first response, resolved, closed.
+
+**Audit and events**
+
+- Append-only `audit_log`, enforced by a trigger, and `GET /audit`.
+- Transactional outbox with an insert trigger that sends NOTIFY. The relay uses SKIP LOCKED and publishes to the BullMQ `domain-events` queue, with 5 attempts and exponential backoff.
+
+**Channels**
+
+- `MessageEnvelope`, and `InboundService`, which:
+  - takes an advisory lock per sender and drops duplicates;
+  - resolves the customer;
+  - threads email by Message-ID, then by a `[TMS-n]` subject tag (only when the sender owns that ticket);
+  - opens a new ticket when the old one is closed, and reopens resolved or pending tickets.
+- `OutboundService`: agent replies are stored as `pending`; an agent can also start a new email thread.
+- The worker's `DeliveryHandler` sends through the webchat and email senders.
+- Attachments are stored in S3, with a download endpoint.
+
+**Web chat**
+
+- The `/chat` Socket.IO namespace, with 30-day signed session tokens.
+- Host-signed identity tokens (HS256).
+- A rate limit of 10 messages per 10 seconds, and history on reconnect.
+- A vanilla TypeScript widget and a demo page.
+
+**Email**
+
+- IMAP IDLE with a Redis lock so only one worker reads the mailbox, plus a fallback poll.
+- Auto-replies are filtered out.
+- Replies go out over SMTP with Message-ID, In-Reply-To and References headers.
+
+**Realtime**
+
+- The `/agent` namespace (token-authenticated) with the Socket.IO Redis adapter.
+- The worker fans out ticket, message and conversation events through the Redis emitter.
+
+**Reports:** `GET /reports/overview` returns open and unassigned counts, resolved today and in 7 days, median resolution and first-response times, counts by status, channel and priority, 14-day volume, per-agent load and an activity feed.
+
+**Consoles**
+
+- **Basic console** (`apps/web`): login, ticket list, new ticket, ticket page (reply, start email, notes, history, assign, transitions) and customer pages.
+- **Orbit Desk** (`apps/orbit-desk`):
+  - login;
+  - a dashboard with a triage card, KPI tiles, the volume chart, queue breakdown, team load and activity feed;
+  - a queue with four saved views, search and status tabs;
+  - a ticket drawer with details, transitions, priority, assignee, notes and reply;
+  - a new-ticket dialog with customer search or inline create;
+  - live updates, a phone layout and an elements gallery.
+
+**Test data and tests**
+
+- `pnpm sample:load`: fictional teams, users, customers, 40 tickets, live chats and emails, loaded through the public API.
+- 23 Playwright specs and `docs/testing/TEST_REPORT.md`.
+
+### Gap list: named in the plan, ADRs, README or UI, but missing or partial
+
+| Area                                                | Missing                                                                                                                                                                                                                                                     | Partial                                                                                                                                                                                                                            |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **LLM platform (Phase 3)**                          | Settings module, providers/models/roles, LiteLLM admin calls, "test connection", `llm_calls`, usage and budgets, settings UI in either console. The `settings:llm` permission exists but no route uses it                                                   | LiteLLM runs in compose, and readiness reports it                                                                                                                                                                                  |
+| **Knowledge base (Phase 4)**                        | Sources, ingestion, chunking, embeddings, hybrid search, citations, KB UI. The `vector` extension is not created (only `pg_trgm`)                                                                                                                           | Postgres image ships pgvector                                                                                                                                                                                                      |
+| **AI agent (Phase 5)**                              | Agent loop, classifier, guardrails, confidence, prompts, evals. Nothing ever sets `controller=ai` or writes `authorType='ai'`, and `ai_handling` is reachable only by a manual transition. Orbit Desk would render AI messages as "system"                  | The schema has `controller` and `author_type='ai'`; the activity feed has an AI avatar ring                                                                                                                                        |
+| **Tools, MCP, approvals (Phase 6)**                 | Tool registry, MCP client, REST connectors, `secrets` table and encryption, `tool_calls`, approval queue and UI. The `approval:approve` permission exists but no route uses it                                                                              | —                                                                                                                                                                                                                                  |
+| **Handover, routing, SLA, notifications (Phase 7)** | Handover triggers and context packs, take-over and hand-back endpoints, routing rules, skills, presence, assignment strategies, SLA policies, business hours, timers, breach events, notifications, copilot. `tickets.sla_policy_id` has no table behind it | The controller moves `none` → `human` on the first agent reply. Orbit Desk hides SLA and CSAT: the "SLA at risk" view was removed and `SlaIndicator` appears only on the elements page. The sidebar's team entries are not filters |
+| **WhatsApp (Phase 8)**                              | Adapter, webhook, sender, templates, 24-hour window, media, simulator script. There is no identity type for Meta's business-scoped user ids                                                                                                                 | The `whatsapp` identity and channel values exist; sample tickets on the WhatsApp and voice channels are labels created through `POST /tickets`, with no conversations                                                              |
+| **Voice**                                           | Everything                                                                                                                                                                                                                                                  | `voice` is in the channel enum                                                                                                                                                                                                     |
+| **Reporting and admin (Phase 9)**                   | Fact tables, AI-vs-human metrics, handover rate, SLA compliance, CSAT, filters, CSV export. No admin UI for statuses, transitions, categories, teams or users (API only). No team update or delete, no category rename or deactivate, no role editing       | `GET /reports/overview`                                                                                                                                                                                                            |
+| **Hardening (Phase 10)**                            | OIDC SSO, MFA, HTTP rate limiting (login has none; only the chat socket is limited), field encryption, retention jobs, OTel tracing in code, DLQ alerts, backups, load tests, IaC. `StorageService` needs static S3 keys and can't use an IAM role          | helmet, CORS, the append-only audit log, graceful shutdown                                                                                                                                                                         |
+| **Frontend (Phase 11)**                             | 3-pane workspace, full ticket and customer pages, settings and admin, reports page, approvals, KB search, a branded widget, a WCAG audit                                                                                                                    | Orbit Desk implements the design system, dashboard, queue and drawer (ADR 0005)                                                                                                                                                    |
+
+### Where the code contradicts the docs
+
+1. **Outbox events:** CLAUDE.md and ADR 0002 say every state change writes an audit row **and** an outbox event. But:
+   - `OrgService` (team and category create) and `WorkflowService` (status upsert and deactivate, transition replace) write audit rows only.
+   - `DOMAIN_EVENT_TYPES` has no team, category or workflow events.
+   - Login is audited without an event, which is acceptable for auth.
+
+   This needs fixing in the next phase that touches admin settings.
+
+2. **`docs/DESIGN.md` paths:** it pointed at `frontend/…`; the code is in `apps/orbit-desk/…`. Fixed in this update.
+3. **Layout and verification sections below:** they describe the original target.
+   - The worker is not `apps/worker`; it is a second entry point of `apps/api` (ADR 0004).
+   - `packages/core`, `ai`, `tools`, `channels` and `mcp-servers` do not exist yet.
+   - E2E tests live in `e2e/` (Playwright), not `apps/api/test/e2e/`.
+   - Validation uses the custom `ZodPipe`, not `nestjs-zod`.
+   - There is no WhatsApp simulator script yet.
+4. **Phase 11:** the plan says to replace barebones pages and pick shadcn/Tailwind or Mantine. Orbit Desk already took that role, using CSS Modules and no UI library (ADR 0005). Phase 11 now means finishing Orbit Desk; `apps/web` stays a barebones test console.
+5. **Orbit Desk README:** it says lavender marks "breached SLAs", but SLA isn't shown anywhere yet.
+6. **`docs/architecture.html`:** it describes the target. Where it names a technology, the build sometimes differs: email uses IMAP/SMTP, not Graph or Gmail push; events use a Postgres outbox with BullMQ, not Kafka. The map now shows what exists per component.
 
 Deviations from the plan so far:
 
@@ -55,7 +186,9 @@ Deviations from the plan so far:
 | Observability         | pino logs, OpenTelemetry traces/metrics; optional Langfuse via LiteLLM callback                                                                   |
 | Dev mail / chat       | Mailpit (SMTP/IMAP sink), WhatsApp webhook simulator script                                                                                       |
 
-## Repo layout (target)
+## Repo layout (original target)
+
+Today the layout is `apps/api` (API **and** worker entry points), `apps/web`, `apps/orbit-desk`, `apps/chat-widget`, `packages/shared`, `packages/db`, `scripts/sample-data`, `e2e` and `infra`. The packages below are created when their phase needs them.
 
 ```
 apps/
@@ -220,6 +353,8 @@ Later phases add: `llm_*`, `kb_*`, `tools`, `tool_calls`, `approvals`, `handover
 
 ## Phase 11 — Frontend implementation (final)
 
+> Update (ADR 0005): Orbit Desk (`apps/orbit-desk`) is now the product console, built on `docs/DESIGN.md` with CSS Modules and no UI library. This phase finishes it: workspace, settings, reports, approvals, KB search. `apps/web` stays a barebones test console.
+
 - Replace barebones pages with the designed product: design system/tokens, component library (e.g. shadcn/ui + Tailwind or Mantine — decide at phase start), accessibility (WCAG 2.1 AA), dark mode.
 - Unified Agent UI: 3-pane workspace (queue / conversation / customer + AI context), keyboard shortcuts, live typing, take-over UX, approvals, copilot, KB search.
 - Admin & settings UI (including the LLM providers/models/roles dashboard), reports with charts, branded chat widget.
@@ -241,5 +376,5 @@ Voice channel (SIP/CCaaS e.g. Twilio/Exotel, streaming STT/TTS via LiteLLM audio
 ## Verification (per phase and overall)
 
 - `pnpm lint && pnpm typecheck && pnpm test` (unit) and `pnpm test:int` (Testcontainers) in CI on every push.
-- Phase exit demos scripted as E2E tests in `apps/api/test/e2e/` using the chat widget socket client, Mailpit API, WhatsApp simulator and LiteLLM `mock_response` so they run offline in CI.
+- Phase exit demos are scripted as Playwright specs in `e2e/tests` against the Docker stack loaded with `pnpm sample:load` (ADR 0007). They use the chat widget, the Mailpit API, a WhatsApp simulator (Phase 8) and LiteLLM `mock_response`, so they run offline in CI. API-level checks live in `apps/api/test/*.int.test.ts`.
 - A manual demo checklist per phase in `docs/runbooks/phase-N-demo.md`, mirroring the scenarios in the architecture artifact.
