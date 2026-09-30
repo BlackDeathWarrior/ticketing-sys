@@ -1,0 +1,39 @@
+.field {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: radial-gradient(ellipse 80% 90% at 50% 0%, #000 30%, transparent 80%);
+  mask-image: radial-gradient(ellipse 80% 90% at 50% 0%, #000 30%, transparent 80%);
+}
+
+.small,
+.large {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.small {
+  width: 1px;
+  height: 1px;
+  opacity: 0.55;
+}
+
+.large {
+  width: 2px;
+  height: 2px;
+  opacity: 0.45;
+  animation: twinkle 6s ease-in-out infinite alternate;
+}
+
+@keyframes twinkle {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 0.6;
+  }
+}

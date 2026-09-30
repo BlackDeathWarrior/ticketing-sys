@@ -1,0 +1,49 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.header {
+  padding: var(--spacing-24) var(--spacing-24) var(--spacing-16);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: var(--text-subheading);
+  line-height: var(--leading-subheading);
+  font-weight: var(--font-weight-medium);
+}
+
+.subtitle {
+  margin-top: 4px;
+  font-size: var(--text-body-sm);
+  color: var(--color-fog);
+}
+
+.fields {
+  display: grid;
+  gap: var(--spacing-16);
+  padding: var(--spacing-8) var(--spacing-24) var(--spacing-24);
+  overflow-y: auto;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-12);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-8);
+  padding: var(--spacing-16) var(--spacing-24);
+  border-top: 1px solid var(--line-subtle);
+}
+
+@media (max-width: 480px) {
+  .pair {
+    grid-template-columns: 1fr;
+  }
+}

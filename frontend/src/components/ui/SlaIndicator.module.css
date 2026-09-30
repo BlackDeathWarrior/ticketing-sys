@@ -1,0 +1,25 @@
+.sla {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-caption);
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.breached {
+  color: var(--color-lavender-accent);
+  font-weight: var(--font-weight-medium);
+}
+
+.at-risk {
+  color: var(--color-lilac-white);
+}
+
+.on-track {
+  color: var(--color-fog);
+}
+
+.done {
+  color: var(--color-dusk);
+}

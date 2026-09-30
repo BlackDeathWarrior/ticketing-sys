@@ -1,0 +1,114 @@
+/*
+ * Design tokens — "starlit violet cosmos" (see /DESIGN.md).
+ * Every component reads from these; never hard-code a color, radius or shadow.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Colors */
+  --color-void-canvas: #030014;
+  --color-midnight-surface: #060317;
+  --color-deep-indigo: #10093a;
+  --color-lilac-white: #f4f0ff;
+  --color-pearl: #ffffff;
+  --color-ash: #a8a6b7;
+  --color-fog: #918ea0;
+  --color-steel: #54525f;
+  --color-mercury: #cdccd0;
+  --color-dusk: #72707b;
+  --color-lavender-accent: #9382ff;
+  --color-iris: #5046e4;
+  --gradient-cosmic: linear-gradient(90.01deg, #e59cff 0.01%, #ba9cff 50.01%, #9cb2ff 100%);
+  --gradient-aurora: linear-gradient(180deg, rgba(183, 164, 251, 0) 0%, #b7a4fb 50%, #8562ff 100%, rgba(133, 98, 255, 0) 100%);
+  --gradient-aurora-x: linear-gradient(90deg, rgba(183, 164, 251, 0) 0%, #b7a4fb 50%, rgba(133, 98, 255, 0) 100%);
+
+  /* Hairlines — Fog/Mercury at low opacity; the system prefers glows over borders */
+  --line-subtle: rgba(205, 204, 208, 0.06);
+  --line: rgba(205, 204, 208, 0.1);
+  --line-strong: rgba(145, 142, 160, 0.28);
+  --accent-wash: rgba(147, 130, 255, 0.12);
+  --accent-wash-strong: rgba(147, 130, 255, 0.2);
+  --hover-wash: rgba(244, 240, 255, 0.04);
+
+  /* Typography — families (AeonikPro → DM Sans substitute, Inter V → Inter) */
+  --font-display: 'AeonikPro', 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Inter V', 'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-features: 'calt' 0, 'cv10', 'liga' 0, 'ss01';
+
+  /* Typography — scale */
+  --text-caption: 12px;
+  --leading-caption: 1.33;
+  --text-ui: 13px;
+  --text-body-sm: 14px;
+  --leading-body-sm: 1.43;
+  --text-ui-lg: 15px;
+  --text-body: 16px;
+  --leading-body: 1.5;
+  --text-body-lg: 18px;
+  --leading-body-lg: 1.56;
+  --text-subheading: 24px;
+  --leading-subheading: 1.33;
+  --text-heading-sm: 32px;
+  --leading-heading-sm: 1.25;
+  --tracking-heading-sm: -0.2px;
+  --text-heading: 48px;
+  --leading-heading: 1.17;
+  --tracking-heading: -0.3px;
+  --text-heading-lg: 56px;
+  --leading-heading-lg: 1.14;
+  --tracking-heading-lg: -0.4px;
+  --text-display: 72px;
+  --leading-display: 1.11;
+  --tracking-display: -0.5px;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+
+  /* Spacing — 4px base */
+  --spacing-4: 4px;
+  --spacing-8: 8px;
+  --spacing-12: 12px;
+  --spacing-16: 16px;
+  --spacing-20: 20px;
+  --spacing-24: 24px;
+  --spacing-28: 28px;
+  --spacing-32: 32px;
+  --spacing-36: 36px;
+  --spacing-48: 48px;
+  --spacing-52: 52px;
+  --spacing-56: 56px;
+  --spacing-64: 64px;
+  --spacing-72: 72px;
+  --spacing-108: 108px;
+
+  /* Radii — the only allowed set */
+  --radius-buttons: 5px;
+  --radius-inputs: 5px;
+  --radius-cards: 16px;
+  --radius-featureblocks: 24px;
+  --radius-badges: 32px;
+  --radius-navpill: 999px;
+
+  /* Elevation — inset rim-light only, never drop shadows */
+  --shadow-lg: rgba(255, 255, 255, 0.04) 0px 0px 24px 0px inset;
+  --shadow-lg-2: rgba(255, 255, 255, 0.06) 0px 0px 24px 0px inset;
+  --shadow-md: rgba(164, 143, 255, 0.12) 0px -7px 11px 0px inset;
+  --shadow-subtle-4: rgba(255, 255, 255, 0.03) 0px 0px 0px 8px inset;
+  --shadow-rim: inset 0 0 0 1px var(--line-subtle);
+
+  /* Layout */
+  --page-max-width: 1200px;
+  --sidebar-width: 248px;
+  --gutter: 32px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration: 200ms;
+}
+
+@media (max-width: 720px) {
+  :root {
+    --gutter: 16px;
+  }
+}
