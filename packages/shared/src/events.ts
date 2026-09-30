@@ -38,6 +38,16 @@ export const DOMAIN_EVENT_TYPES = [
   'kb.document_indexed',
   /** Re-embed everything, e.g. after the embedding model changed. */
   'kb.reindex_requested',
+  /** An AI turn finished (sent, drafted, handed over or failed). */
+  'ai.turn_completed',
+  /** The AI handed the conversation to humans. */
+  'ai.handover',
+  /** The classifier set category, priority, language, intent and sentiment. */
+  'ticket.classified',
+  /** An AI reply was stored as a draft for a human to approve. */
+  'message.drafted',
+  /** A draft was approved (and queued for delivery) or discarded. */
+  'message.draft_reviewed',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];

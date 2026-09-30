@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { AiDispatchHandler, AiWorker } from '../ai/ai.worker';
+import { AiModule } from '../ai/ai.module';
 import { AuditModule } from '../audit/audit.module';
 import { ChannelsModule } from '../channels/channels.module';
 import { EmailPollerService } from '../channels/email/email-poller.service';
@@ -44,6 +46,7 @@ const env = loadEnv();
     ChannelsModule,
     LlmModule,
     KbModule,
+    AiModule,
   ],
   providers: [
     emitterProvider,
@@ -62,9 +65,17 @@ const env = loadEnv();
     KbIndexerService,
     KbIngestWorker,
     KbIngestHandler,
+    AiWorker,
+    AiDispatchHandler,
     {
       provide: DOMAIN_EVENT_HANDLERS,
-      inject: [RealtimeFanoutHandler, DeliveryHandler, SettingsChangedHandler, KbIngestHandler],
+      inject: [
+        RealtimeFanoutHandler,
+        DeliveryHandler,
+        SettingsChangedHandler,
+        KbIngestHandler,
+        AiDispatchHandler,
+      ],
       useFactory: (...handlers: unknown[]) => handlers,
     },
     DomainEventsConsumer,

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 import type { Database, DbOrTx } from '@tms/db';
 import type { Channel } from '@tms/shared';
 import { AuditService } from '../audit/audit.service';
@@ -13,9 +13,10 @@ import { TicketsService } from '../tickets/tickets.service';
 import { replySubject } from './email/email.util';
 
 /**
- * Agent replies. The message is stored as `pending` together with a
+ * Agent and AI replies. A reply is stored as `pending` together with a
  * `message.outbound` event; the worker's delivery handler sends it on the
- * conversation's channel and records the result.
+ * conversation's channel and records the result. AI drafts are stored as
+ * `draft` and only go out once a human approves them.
  */
 @Injectable()
 export class OutboundService {
@@ -58,7 +59,115 @@ export class OutboundService {
     });
   }
 
-  private async replyInTx(tx: DbOrTx, ctx: RequestCtx, conv: Conversation, body: string) {
+  /**
+   * An AI reply on a conversation: `sent` is queued for delivery like an agent
+   * reply; `draft` is stored for a human to approve (never delivered as is).
+   */
+  async aiReply(
+    ctx: RequestCtx,
+    conversationId: string,
+    body: string,
+    opts: { draft: boolean; metadata?: Record<string, unknown> },
+    tx?: DbOrTx,
+  ) {
+    const run = async (t: DbOrTx) => {
+      const conv = await this.conversations.lock(t, conversationId);
+      return this.replyInTx(t, ctx, conv, body, {
+        author: 'ai',
+        draft: opts.draft,
+        metadata: opts.metadata,
+      });
+    };
+    return tx ? run(tx) : this.db.transaction(run);
+  }
+
+  /** A human approves an AI draft, optionally edited; it is then delivered. */
+  async approveDraft(ctx: RequestCtx, messageId: string, body?: string) {
+    return this.db.transaction(async (tx) => {
+      const message = await this.draft(tx, messageId);
+      const conv = await this.conversations.lock(tx, message.conversationId);
+      await this.conversations.reviewDraft(tx, messageId, {
+        status: 'pending',
+        body,
+        reviewedBy: ctx.user?.id ?? null,
+      });
+      const ticket = await this.tickets.lockRow(tx, conv.ticketId);
+      await this.tickets.recordAgentReply(tx, ctx, ticket, { byAi: true });
+      const data = {
+        conversationId: conv.id,
+        messageId,
+        channel: conv.channel,
+        decision: 'approved',
+        edited: body !== undefined && body !== message.body,
+      };
+      await this.audit.record(tx, ctx, {
+        action: 'message.draft_approved',
+        targetType: 'ticket',
+        targetId: ticket.id,
+        data,
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'message.draft_reviewed',
+        aggregateType: 'ticket',
+        aggregateId: ticket.id,
+        payload: data,
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'message.outbound',
+        aggregateType: 'ticket',
+        aggregateId: ticket.id,
+        payload: { conversationId: conv.id, messageId, channel: conv.channel },
+      });
+      return { messageId, status: 'pending' as const };
+    });
+  }
+
+  async discardDraft(ctx: RequestCtx, messageId: string) {
+    return this.db.transaction(async (tx) => {
+      const message = await this.draft(tx, messageId);
+      const conv = await this.conversations.get(message.conversationId);
+      await this.conversations.reviewDraft(tx, messageId, {
+        status: 'discarded',
+        reviewedBy: ctx.user?.id ?? null,
+      });
+      const data = {
+        conversationId: conv.id,
+        messageId,
+        channel: conv.channel,
+        decision: 'discarded',
+      };
+      await this.audit.record(tx, ctx, {
+        action: 'message.draft_discarded',
+        targetType: 'ticket',
+        targetId: conv.ticketId,
+        data,
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'message.draft_reviewed',
+        aggregateType: 'ticket',
+        aggregateId: conv.ticketId,
+        payload: data,
+      });
+      return { messageId, status: 'discarded' as const };
+    });
+  }
+
+  private async draft(tx: DbOrTx, messageId: string) {
+    const message = await this.conversations.lockMessage(tx, messageId);
+    if (message.deliveryStatus !== 'draft') {
+      throw new ConflictException('This message is not a draft waiting for review');
+    }
+    return message;
+  }
+
+  private async replyInTx(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    conv: Conversation,
+    body: string,
+    opts: { author?: 'agent' | 'ai'; draft?: boolean; metadata?: Record<string, unknown> } = {},
+  ) {
+    const byAi = opts.author === 'ai';
     const ourAddress = conv.channel === 'email' ? await this.emailAddress() : null;
     const ticket = await this.tickets.lockRow(tx, conv.ticketId);
     const email = ourAddress ? await this.emailHeaders(tx, conv, ticket.number, ourAddress) : null;
@@ -67,32 +176,60 @@ export class OutboundService {
       conversationId: conv.id,
       channel: conv.channel as Channel,
       direction: 'outbound',
-      authorType: 'agent',
-      authorUserId: ctx.user?.id ?? null,
+      authorType: byAi ? 'ai' : 'agent',
+      authorUserId: byAi ? null : (ctx.user?.id ?? null),
       body,
       channelMessageId: email?.messageId ?? null,
-      deliveryStatus: 'pending',
-      metadata: email ?? {},
+      deliveryStatus: opts.draft ? 'draft' : 'pending',
+      metadata: { ...(email ?? {}), ...(opts.metadata ?? {}) },
     });
     if (!conv.externalThreadId && email) {
       // A thread we started: its first Message-ID is the thread key.
       await this.conversations.setThreadKey(tx, conv.id, email.messageId);
     }
 
-    await this.tickets.recordAgentReply(tx, ctx, ticket);
-    if (conv.controller === 'none') {
-      await this.conversations.setController(tx, ctx, conv, 'human', ctx.user?.id ?? null);
+    if (!opts.draft) await this.tickets.recordAgentReply(tx, ctx, ticket, { byAi });
+    // A person replying takes the conversation over (from nobody, or from the AI),
+    // and any AI draft still waiting is superseded by their reply.
+    if (!byAi) {
+      if (conv.controller !== 'human') {
+        await this.conversations.setController(tx, ctx, conv, 'human', ctx.user?.id ?? null);
+      }
+      for (const draftId of await this.conversations.pendingDraftIds(tx, conv.id)) {
+        await this.conversations.reviewDraft(tx, draftId, {
+          status: 'discarded',
+          reviewedBy: ctx.user?.id ?? null,
+        });
+        const discarded = {
+          conversationId: conv.id,
+          messageId: draftId,
+          channel: conv.channel,
+          decision: 'superseded',
+        };
+        await this.audit.record(tx, ctx, {
+          action: 'message.draft_discarded',
+          targetType: 'ticket',
+          targetId: ticket.id,
+          data: discarded,
+        });
+        await this.outbox.publish(tx, ctx, {
+          type: 'message.draft_reviewed',
+          aggregateType: 'ticket',
+          aggregateId: ticket.id,
+          payload: discarded,
+        });
+      }
     }
 
     const data = { conversationId: conv.id, messageId: message.id, channel: conv.channel };
     await this.audit.record(tx, ctx, {
-      action: 'message.sent',
+      action: opts.draft ? 'message.drafted' : 'message.sent',
       targetType: 'ticket',
       targetId: ticket.id,
       data,
     });
     await this.outbox.publish(tx, ctx, {
-      type: 'message.outbound',
+      type: opts.draft ? 'message.drafted' : 'message.outbound',
       aggregateType: 'ticket',
       aggregateId: ticket.id,
       payload: data,

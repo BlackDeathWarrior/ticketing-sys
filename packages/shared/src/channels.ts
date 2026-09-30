@@ -51,7 +51,8 @@ export type ConversationController = (typeof CONVERSATION_CONTROLLERS)[number];
 export const MESSAGE_AUTHORS = ['customer', 'ai', 'agent', 'system'] as const;
 export type MessageAuthor = (typeof MESSAGE_AUTHORS)[number];
 
-export const DELIVERY_STATUSES = ['pending', 'sent', 'failed'] as const;
+/** `draft`: an AI reply waiting for a human; `discarded`: a draft the human threw away. */
+export const DELIVERY_STATUSES = ['pending', 'sent', 'failed', 'draft', 'discarded'] as const;
 export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
 
 // ---- API contracts ----

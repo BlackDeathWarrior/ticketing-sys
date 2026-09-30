@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
+import { AiModule } from './ai/ai.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { ChannelsModule } from './channels/channels.module';
@@ -42,6 +43,7 @@ const env = loadEnv();
     ReportsModule,
     LlmModule,
     KbModule,
+    AiModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],

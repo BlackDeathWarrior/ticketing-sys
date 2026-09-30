@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   NotFoundException,
   Param,
   ParseIntPipe,
@@ -12,6 +13,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
+  type ApproveDraftInput,
+  approveDraftSchema,
   type ReplyInput,
   replySchema,
   type StartConversationInput,
@@ -63,6 +66,26 @@ export class ChannelsController {
     @Body(new ZodPipe(replySchema)) body: ReplyInput,
   ) {
     return this.outbound.reply(ctx, id, body.body);
+  }
+
+  /** Sends an AI draft, optionally edited. */
+  @Post('messages/:id/approve')
+  @HttpCode(200)
+  @RequirePermission('message:approve_draft')
+  approve(
+    @Ctx() ctx: RequestCtx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(approveDraftSchema)) body: ApproveDraftInput,
+  ) {
+    return this.outbound.approveDraft(ctx, id, body.body);
+  }
+
+  /** Throws an AI draft away; the customer never sees it. */
+  @Post('messages/:id/discard')
+  @HttpCode(200)
+  @RequirePermission('message:approve_draft')
+  discard(@Ctx() ctx: RequestCtx, @Param('id', ParseUUIDPipe) id: string) {
+    return this.outbound.discardDraft(ctx, id);
   }
 
   @Get('messages/:id/attachments/:index')

@@ -15,6 +15,7 @@ import { CustomersService } from '../customers/customers.service';
 import { DB } from '../infra/tokens';
 import { type Ticket, TicketsService } from '../tickets/tickets.service';
 import { WorkflowService } from '../workflow/workflow.service';
+import { AiPolicyService } from './ai-policy.service';
 import { extractTicketNumber } from './email/email.util';
 
 export interface InboundResult {
@@ -43,6 +44,7 @@ export class InboundService {
     private readonly customers: CustomersService,
     private readonly tickets: TicketsService,
     private readonly workflow: WorkflowService,
+    private readonly aiPolicy: AiPolicyService,
   ) {}
 
   async handle(input: MessageEnvelope): Promise<InboundResult> {
@@ -104,17 +106,23 @@ export class InboundService {
         });
         createdTicket = true;
       } else {
-        await this.tickets.reopenOnCustomerReply(tx, ctx, ticket);
+        await this.tickets.reopenOnCustomerReply(tx, ctx, ticket, {
+          aiControlled: conversation?.controller === 'ai' && conversation.ticketId === ticket.id,
+        });
       }
 
       if (!conversation || conversation.ticketId !== ticket.id) {
+        // New conversations go to the AI when it is on for this channel and a model can serve it.
+        const aiTakesIt = await this.aiPolicy.takesNewConversations(env.channel);
         conversation = await this.conversations.create(tx, ctx, {
           ticketId: ticket.id,
           customerId: customer.id,
           channel: env.channel,
           externalThreadId: env.threadKey,
+          controller: aiTakesIt ? 'ai' : 'none',
           metadata: conversationMetadata(env),
         });
+        if (aiTakesIt) await this.tickets.moveIfAllowed(tx, ctx, ticket.id, 'ai_handling');
       }
 
       const message = await this.conversations.addMessage(tx, {

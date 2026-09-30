@@ -14,10 +14,11 @@ const can = (perms: Permission[]) => (p: Permission) => perms.includes(p);
 
 describe('settings tabs', () => {
   it('shows every tab to an admin and nothing to an agent', () => {
-    const admin = can(['settings:llm', 'settings:channels', 'settings:secrets']);
+    const admin = can(['settings:llm', 'settings:channels', 'settings:secrets', 'settings:ai']);
     expect(visibleTabs(admin).map((t) => t.value)).toEqual([
       'providers',
       'models',
+      'ai',
       'channels',
       'tools',
       'usage',

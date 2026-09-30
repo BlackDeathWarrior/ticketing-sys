@@ -929,6 +929,22 @@ export const chats = [
     email: 'lena.vogt@example.net',
     text: 'The size guide for the rain jackets does not load on my phone.',
   },
+  // The AI agent answers these from the knowledge base (or hands over).
+  {
+    name: 'Tom Whitaker',
+    email: 'tom.whitaker@example.com',
+    text: 'When will my refund reach my card? I returned the helmet last week.',
+  },
+  {
+    name: 'Aarav Kulkarni',
+    email: 'aarav.kulkarni@example.in',
+    text: 'मेरा रिफंड कब तक आएगा? मैंने पिछले हफ्ते सामान लौटाया था।',
+  },
+  {
+    name: 'Nina Petrova',
+    email: 'nina.petrova@example.org',
+    text: 'I would like to talk to a real person about my damaged cargo bike, please.',
+  },
 ];
 
 /** Customer emails sent to the support mailbox; the worker turns each into a ticket. */

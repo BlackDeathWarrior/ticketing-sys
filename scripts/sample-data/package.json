@@ -7,7 +7,8 @@
   "scripts": {
     "load": "tsx load.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "eval:kb": "tsx kb-eval.ts"
+    "eval:kb": "tsx kb-eval.ts",
+    "eval:ai": "tsx ai-eval.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
@@ -17,6 +18,8 @@
     "pg": "^8.16.0",
     "socket.io-client": "^4.8.1",
     "tsx": "^4.20.0",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "yaml": "^2.8.0",
+    "@tms/shared": "workspace:*"
   }
 }

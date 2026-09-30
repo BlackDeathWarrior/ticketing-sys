@@ -9,7 +9,7 @@ Guidance for working in this repo. Read `docs/IMPLEMENTATION_PLAN.md` for the ph
 - `pnpm demo:email` sends a customer email to the dev support mailbox.
 - `pnpm sample:load` loads the fictional sample data (`scripts/sample-data/data.ts`) through the API; `pnpm e2e` runs the Playwright suite in `e2e/` against the running stack.
 - `pnpm build` builds all packages (apps depend on `packages/*/dist`, so build after changing `shared` or `db`).
-- `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:int` (needs Postgres, Redis, LiteLLM and `fake-providers`; see README). On Windows, where `@swc/core` rejects its cache folder, run them with `bash scripts/check-in-docker.sh [steps]` (a Linux container on the compose network). `pnpm e2e` accepts `CHROMIUM_PATH`. `pnpm kb:eval` reports knowledge-base recall@5 against a running stack.
+- `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:int` (needs Postgres, Redis, LiteLLM and `fake-providers`; see README). On Windows, where `@swc/core` rejects its cache folder, run them with `bash scripts/check-in-docker.sh [steps]` (a Linux container on the compose network). `pnpm e2e` accepts `CHROMIUM_PATH`. `pnpm kb:eval` reports knowledge-base recall@5 and `pnpm ai:eval` runs the AI golden conversations against a running stack.
 - `pnpm db:generate` after schema edits; commit the SQL in `packages/db/drizzle`. Hand-written SQL goes in `drizzle-kit generate --custom` migrations.
 
 ## Rules
@@ -29,6 +29,7 @@ Guidance for working in this repo. Read `docs/IMPLEMENTATION_PLAN.md` for the ph
   - Check UI changes at ≈1440px and 390px with no horizontal scroll and no console errors.
 - Add integration tests in `apps/api/test/*.int.test.ts` for new endpoints, and an E2E spec in `e2e/tests` for new user-facing flows. Sample data stays fictional (`example.*` domains). Background behaviour: start the worker in-process with `startWorker()` from `test/helpers.ts`.
 - All LLM calls go through `LlmClientService` (`chat`/`embed` with a role), never a provider SDK directly. Credentials go through `SecretsService` (or LiteLLM for provider keys); no route may return a secret's value, and key fields need `settings:secrets` (ADR 0009). Channel settings come from `ChannelConfigService`, not `env` directly.
+- AI actions run with `AI_CTX` (actor type `ai`) and are recorded in `ai_runs` through `AiRunsService`. AI replies go through `OutboundService.aiReply` (sent or `draft`), never straight to a channel. Change prompts only with a version bump in `apps/api/src/ai/prompts.ts`, and add a golden to `apps/api/test/evals/` for new behaviour (ADR 0011).
 - Knowledge search goes through `KbSearchService`; anything shown or said to a customer uses `audience: 'customer'` (approved public documents only). Embeddings are 1024-dimensional and the `embedding` role is pinned (ADR 0010).
 - Demos and tests use `apps/fake-providers` (scripted LLM; later Meta Graph and Sarvam) instead of real keys.
 - Channels produce a `MessageEnvelope` and call `InboundService.handle()`; outbound messages are stored `pending` and sent by the worker's `DeliveryHandler`. Don't send to external services inside a request.

@@ -39,6 +39,37 @@ test.describe('report screenshots', () => {
     await page.screenshot({ path: shot('orbit-new-ticket') });
   });
 
+  test('Orbit Desk AI agent', async ({ page }) => {
+    const admin = (await login()).accessToken;
+    await signInOrbit(page);
+    const answered = await findTicket(
+      admin,
+      'Chat: When will my refund reach my card? I returned the helmet last week.',
+    );
+    await openTicket(page, answered.reference);
+    await page.getByText(/AI activity · \d+ steps?/).click();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: shot('orbit-ai-answered') });
+    await page.keyboard.press('Escape');
+
+    const drafted = await findTicket(admin, 'Invoice address for company purchase');
+    await openTicket(page, drafted.reference);
+    await expect(page.getByRole('group', { name: 'AI draft awaiting review' })).toBeVisible();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: shot('orbit-ai-draft') });
+    await page.keyboard.press('Escape');
+
+    // A fresh page load clears the ticket search left by the drawer steps.
+    await page.goto(`${env.orbit}/#/settings/ai`);
+    await page.reload();
+    await page.getByRole('button', { name: 'Run' }).click();
+    await expect(page.getByRole('status', { name: 'Agent result' })).toBeVisible();
+    // Full-page captures draw fixed bars where the page is scrolled to.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: shot('orbit-ai-settings'), fullPage: true });
+  });
+
   test('Orbit Desk knowledge base', async ({ page }) => {
     await signInOrbit(page);
     await page.goto(`${env.orbit}/#/kb`);

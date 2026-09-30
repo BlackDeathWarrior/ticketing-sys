@@ -1,4 +1,4 @@
-import type { StatusCategory } from '@tms/shared';
+import type { AiClassification, StatusCategory } from '@tms/shared';
 import type {
   Channel,
   Conversation,
@@ -41,6 +41,7 @@ export interface ApiTicket {
   };
   assignee: ApiRef | null;
   team: ApiRef | null;
+  aiClassification?: AiClassification | null;
 }
 
 export interface ApiWorkflow {
@@ -59,11 +60,15 @@ export interface ApiNote {
   body: string;
   createdAt: string;
   author: ApiRef | null;
+  /** user | ai | system */
+  authorType?: string;
 }
 
 export interface ApiConversation {
   id: string;
   channel: string;
+  /** ai | human | none: who answers the next customer message. */
+  controller?: string;
   lastMessageAt: string | null;
   metadata: { visitorName?: string; address?: string };
   messages: Array<{
@@ -75,6 +80,9 @@ export interface ApiConversation {
     body: string;
     createdAt: string;
     deliveryStatus: string | null;
+    metadata?: {
+      ai?: { confidence?: number | null; rules?: string[]; sources?: Array<{ label: string }> };
+    };
   }>;
 }
 
@@ -173,6 +181,7 @@ export function toTicket(t: ApiTicket, workflow: Workflow | undefined): Ticket {
     tags: t.tags,
     createdAt: new Date(t.createdAt),
     updatedAt: new Date(t.updatedAt),
+    aiClassification: t.aiClassification ?? null,
   };
 }
 
@@ -198,44 +207,71 @@ export function toThread(
       at: ticket.createdAt,
       delivery: null,
       channel: null,
+      byAi: false,
+      ai: null,
     });
   }
   for (const c of conversations) {
     for (const m of c.messages) {
+      // A draft the agent threw away is not part of the conversation.
+      if (m.deliveryStatus === 'discarded') continue;
       const fromCustomer = m.direction === 'inbound';
+      const byAi = !fromCustomer && m.authorType === 'ai';
       const author = fromCustomer
         ? (c.metadata.visitorName ?? ticket.customer.name)
-        : (m.authorName ?? (m.authorType === 'system' ? 'System' : 'Support'));
+        : byAi
+          ? 'AI agent'
+          : (m.authorName ?? (m.authorType === 'system' ? 'System' : 'Support'));
+      const meta = m.metadata?.ai;
       messages.push({
         id: m.id,
-        kind: fromCustomer ? 'customer' : m.authorType === 'agent' ? 'agent' : 'system',
+        kind: fromCustomer
+          ? 'customer'
+          : byAi
+            ? 'ai'
+            : m.authorType === 'agent'
+              ? 'agent'
+              : 'system',
         author,
-        initials: initials(author),
+        initials: byAi ? 'AI' : initials(author),
         authorId: m.authorUserId,
         body: m.body,
         at: new Date(m.createdAt),
         delivery: fromCustomer ? null : m.deliveryStatus,
         channel: c.channel,
+        byAi,
+        ai:
+          byAi && meta
+            ? {
+                confidence: meta.confidence ?? null,
+                rules: meta.rules ?? [],
+                sources: meta.sources ?? [],
+              }
+            : null,
       });
     }
   }
   for (const n of notes) {
-    const author = n.author?.name ?? 'Former user';
+    const byAi = n.authorType === 'ai';
+    const author = byAi ? 'AI agent' : (n.author?.name ?? 'Former user');
     messages.push({
       id: n.id,
       kind: 'note',
       author,
-      initials: initials(author),
+      initials: byAi ? 'AI' : initials(author),
       authorId: n.author?.id ?? null,
       body: n.body,
       at: new Date(n.createdAt),
       delivery: null,
       channel: null,
+      byAi,
+      ai: null,
     });
   }
   messages.sort((a, b) => a.at.getTime() - b.at.getTime());
   return {
     messages,
+    aiControlled: conversations.some((c) => c.controller === 'ai'),
     conversations: conversations.map((c): Conversation => ({
       id: c.id,
       channel: c.channel,

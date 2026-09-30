@@ -22,7 +22,8 @@ export class RealtimeFanoutHandler implements DomainEventHandler {
       type.startsWith('ticket.') ||
       type.startsWith('message.') ||
       type.startsWith('conversation.') ||
-      type.startsWith('kb.')
+      type.startsWith('kb.') ||
+      type.startsWith('ai.')
     );
   }
 

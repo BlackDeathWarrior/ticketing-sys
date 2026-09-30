@@ -1,4 +1,4 @@
-import type { Channel, Priority, StatusCategory } from '@tms/shared';
+import type { AiClassification, Channel, Priority, StatusCategory } from '@tms/shared';
 
 export type { Channel, Priority, StatusCategory };
 
@@ -40,9 +40,11 @@ export interface Ticket {
   tags: string[];
   createdAt: Date;
   updatedAt: Date;
+  /** What the AI classifier suggested, if it ran. */
+  aiClassification: AiClassification | null;
 }
 
-export type MessageKind = 'customer' | 'agent' | 'note' | 'system';
+export type MessageKind = 'customer' | 'agent' | 'ai' | 'note' | 'system';
 
 export interface Message {
   id: string;
@@ -52,9 +54,13 @@ export interface Message {
   authorId: string | null;
   body: string;
   at: Date;
-  /** Outbound delivery state for agent replies: pending, sent or failed. */
+  /** Outbound delivery state: pending, sent, failed, or draft (an AI reply awaiting review). */
   delivery: string | null;
   channel: string | null;
+  /** Written by the AI agent (a reply, a draft or a handover note). */
+  byAi: boolean;
+  /** What the AI recorded with its reply: confidence, rules, knowledge used. */
+  ai: { confidence: number | null; rules: string[]; sources: Array<{ label: string }> } | null;
 }
 
 export interface Conversation {
@@ -66,6 +72,8 @@ export interface Conversation {
 export interface Thread {
   messages: Message[];
   conversations: Conversation[];
+  /** Some conversation on the ticket is being answered by the AI right now. */
+  aiControlled: boolean;
 }
 
 export interface Workflow {
