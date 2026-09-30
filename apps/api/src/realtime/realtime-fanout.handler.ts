@@ -23,15 +23,23 @@ export class RealtimeFanoutHandler implements DomainEventHandler {
       type.startsWith('message.') ||
       type.startsWith('conversation.') ||
       type.startsWith('kb.') ||
-      type.startsWith('ai.')
+      type.startsWith('ai.') ||
+      type.startsWith('approval.') ||
+      type === 'tool.called'
     );
   }
 
   async handle(event: DomainEvent): Promise<void> {
-    const p = event.payload as { conversationId?: string; messageId?: string; documentId?: string };
+    const p = event.payload as {
+      conversationId?: string;
+      messageId?: string;
+      documentId?: string;
+      ticketId?: string;
+    };
     const payload: AgentEvent = {
       type: event.type,
-      ticketId: event.aggregateType === 'ticket' ? event.aggregateId : undefined,
+      // Approval events are about an approval; their payload names the ticket.
+      ticketId: event.aggregateType === 'ticket' ? event.aggregateId : p.ticketId,
       conversationId: p.conversationId,
       messageId: p.messageId,
       documentId: event.aggregateType === 'kb' ? (p.documentId ?? undefined) : undefined,

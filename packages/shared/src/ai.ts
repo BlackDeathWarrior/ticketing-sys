@@ -68,6 +68,8 @@ export const AI_RULES = [
   'model_error',
   'draft_channel',
   'no_answer',
+  'approval_expired',
+  'action_failed',
 ] as const;
 export type AiRule = (typeof AI_RULES)[number];
 
@@ -83,6 +85,8 @@ export const AI_RULE_LABELS: Record<AiRule, string> = {
   model_error: 'The AI model failed',
   draft_channel: 'This channel only gets drafts',
   no_answer: 'The model gave no answer',
+  approval_expired: 'An approval request expired',
+  action_failed: 'An approved action failed',
 };
 
 export const SENTIMENTS = ['positive', 'neutral', 'negative'] as const;
@@ -103,7 +107,7 @@ export interface AiClassification {
 
 export interface AiRunView {
   id: string;
-  kind: 'turn' | 'classify';
+  kind: 'turn' | 'classify' | 'followup';
   decision: AiDecision;
   confidence: number | null;
   rules: AiRule[];
@@ -140,6 +144,8 @@ export const simulateAiSchema = z.object({
     )
     .min(1)
     .max(30),
+  /** Lets customer-bound company tools run in the dry run (read tools only). */
+  customerEmail: z.string().email().optional(),
 });
 export type SimulateAiInput = z.infer<typeof simulateAiSchema>;
 
@@ -187,6 +193,8 @@ export function asksForHuman(text: string): boolean {
 export interface AiGolden {
   name: string;
   channel?: (typeof AI_CHANNELS)[number];
+  /** The customer's email, for goldens that use company tools (read tools only in a dry run). */
+  customerEmail?: string;
   messages: Array<{ customer?: string; ai?: string; agent?: string }>;
   expect: {
     decision?: AiDecision | AiDecision[];
@@ -195,6 +203,8 @@ export interface AiGolden {
     sentReplyExcludes?: string[];
     usesKnowledge?: boolean;
     rules?: AiRule[];
+    /** Company tools the AI must have called (by tool name, e.g. order_status). */
+    tools?: string[];
   };
 }
 
@@ -202,6 +212,7 @@ export interface AiGolden {
 export function goldenToSimulation(g: AiGolden): SimulateAiInput {
   return {
     channel: g.channel ?? 'webchat',
+    ...(g.customerEmail ? { customerEmail: g.customerEmail } : {}),
     messages: g.messages.map((m) =>
       m.customer !== undefined
         ? { author: 'customer' as const, body: m.customer }
@@ -235,6 +246,9 @@ export function checkAiGolden(g: AiGolden, r: SimulateAiResult): string[] {
   if (e.usesKnowledge && !r.sources.length) problems.push('no knowledge source cited');
   for (const rule of e.rules ?? []) {
     if (!r.rules.includes(rule)) problems.push(`missing rule ${rule}`);
+  }
+  for (const tool of e.tools ?? []) {
+    if (!r.tools.some((t) => t.name === tool)) problems.push(`did not call ${tool}`);
   }
   return problems;
 }

@@ -5,6 +5,7 @@ import { KbModule } from '../kb/kb.module';
 import { LlmModule } from '../llm/llm.module';
 import { OrgModule } from '../org/org.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { ToolsModule } from '../tools/tools.module';
 import { AiAgentService } from './ai-agent.service';
 import { AiClassifierService } from './ai-classifier.service';
 import { AiRunsService } from './ai-runs.service';
@@ -17,7 +18,15 @@ import { LanguageService } from './language.service';
  * (worker.module.ts).
  */
 @Module({
-  imports: [LlmModule, KbModule, ChannelsModule, TicketsModule, CustomersModule, OrgModule],
+  imports: [
+    LlmModule,
+    KbModule,
+    ChannelsModule,
+    TicketsModule,
+    CustomersModule,
+    OrgModule,
+    ToolsModule,
+  ],
   controllers: [AiController],
   providers: [AiAgentService, AiClassifierService, AiRunsService, LanguageService],
   exports: [AiAgentService, AiClassifierService, AiRunsService],

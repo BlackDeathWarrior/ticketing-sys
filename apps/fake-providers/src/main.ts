@@ -1,5 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { chatCompletion, type ChatRequest, embed } from './llm';
+import { resetDemoStore } from './demo-store';
+import { handleMcp } from './mcp';
 
 /**
  * Fake external providers for offline demos and tests. Never point real
@@ -8,6 +10,8 @@ import { chatCompletion, type ChatRequest, embed } from './llm';
  *   POST /v1/chat/completions   OpenAI-compatible scripted LLM
  *   POST /v1/embeddings         deterministic embeddings
  *   GET  /v1/models
+ *   POST /mcp                   sample MCP server: fictional Demo Store orders and payments
+ *   POST /demo-store/reset      forget refunds made through the sample server (tests, demo resets)
  *   GET  /health
  */
 const PORT = Number(process.env.PORT ?? 4010);
@@ -28,6 +32,15 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   try {
     if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { status: 'ok' });
+
+    if (req.method === 'POST' && url.pathname === '/demo-store/reset') {
+      resetDemoStore();
+      return send(res, 200, { status: 'reset' });
+    }
+
+    if (url.pathname === '/mcp') {
+      return await handleMcp(req, res, req.method === 'POST' ? await readJson(req) : undefined);
+    }
 
     if (req.method === 'GET' && url.pathname === '/v1/models') {
       return send(res, 200, {

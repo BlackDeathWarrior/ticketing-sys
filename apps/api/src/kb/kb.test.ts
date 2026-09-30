@@ -4,7 +4,7 @@ import { makePdf } from '../../test/pdf-fixture';
 import { chunkText, estimateTokens, splitSections } from './chunker';
 import { detectKind, extractText, htmlTitle, htmlToText } from './extract';
 import { snippet, withinDocument } from './kb-search.service';
-import { assertPublicUrl, isPrivateAddress } from './url-fetch';
+import { assertPublicUrl, isPrivateAddress } from '../common/url-fetch';
 
 describe('chunker', () => {
   const doc = [

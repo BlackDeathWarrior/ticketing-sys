@@ -26,6 +26,7 @@ import {
 } from '../ai/AiParts';
 import { aiMetaText } from '../ai/logic';
 import { KbSearch } from '../kb/KbSearch';
+import { ToolCalls } from '../tools/ToolCalls';
 import kbStyles from '../kb/Kb.module.css';
 import { useGet } from '../../lib/useGet';
 import {
@@ -424,6 +425,8 @@ function DrawerContent({
             </ol>
           )}
         </section>
+
+        <ToolCalls ticketId={ticket.id} liveTick={liveTick} />
 
         <AiActivity ticketId={ticket.id} liveTick={liveTick} />
 

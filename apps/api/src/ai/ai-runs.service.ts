@@ -8,7 +8,7 @@ import { AI_CTX } from '../common/request-context';
 import { DB } from '../infra/tokens';
 
 export interface NewAiRun {
-  kind: 'turn' | 'classify';
+  kind: 'turn' | 'classify' | 'followup';
   ticketId: string | null;
   conversationId?: string | null;
   triggerMessageId?: string | null;
@@ -114,5 +114,15 @@ export class AiRunsService {
     ];
     if (after) where.push(gt(aiRuns.createdAt, after));
     return this.db.$count(aiRuns, and(...where));
+  }
+
+  /** A follow-up for this approval was already recorded (the job is being retried). */
+  async followedUp(approvalId: string): Promise<boolean> {
+    return (
+      (await this.db.$count(
+        aiRuns,
+        and(eq(aiRuns.kind, 'followup'), eq(aiRuns.triggerMessageId, approvalId)),
+      )) > 0
+    );
   }
 }

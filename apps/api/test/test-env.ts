@@ -7,6 +7,10 @@ export const testRedisUrl = () => process.env.TEST_REDIS_URL ?? 'redis://localho
 
 /** LiteLLM from compose; it reaches the fake LLM at TEST_FAKE_LLM_URL (a compose hostname). */
 export const testLitellmUrl = () => process.env.TEST_LITELLM_URL ?? 'http://localhost:4000';
+/** The sample MCP server as the API process (not LiteLLM) reaches it. */
+export const FAKE_MCP_URL = process.env.TEST_FAKE_MCP_URL ?? 'http://localhost:4010/mcp';
+export const FAKE_MCP_TOKEN = 'demo-store-token';
+
 export const FAKE_LLM_BASE_URL = `${process.env.TEST_FAKE_LLM_URL ?? 'http://fake-providers:4010'}/v1`;
 
 /** Environment for the app under test; applied before the app module is imported. */
@@ -26,6 +30,7 @@ export function applyTestEnv() {
     S3_SECRET_KEY: 'tms-dev-secret',
     S3_BUCKET: 'tms-test',
     EMAIL_ENABLED: 'false',
+    TOOL_PRIVATE_HOSTS: new URL(FAKE_MCP_URL).hostname,
   });
 }
 

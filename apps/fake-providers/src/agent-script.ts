@@ -9,6 +9,10 @@ import type { ChatMessage, ChatRequest, ScriptedReply } from './llm';
  *   least two meaningful words with the question, 0.7 when it shares fewer
  *   (the agent drafts), and 0.3 when nothing was found (it hands over).
  *   Asking for a person calls request_human.
+ * - Company tools (Phase 6): a message naming an order (DS-12345) calls the
+ *   `…__order_status` tool, or `…__issue_refund` when it asks for a refund.
+ *   A refund waiting for approval is reported as "with the team"; an
+ *   <approval_update> in the system prompt is reported to the customer.
  * - Classifier: picks the category whose words best match the ticket.
  * - Summarizer: the first sentence of each customer message.
  */
@@ -54,6 +58,109 @@ export function isAgentRequest(req: ChatRequest): boolean {
   return !!req.tools?.some((t) => t.function.name === 'send_reply');
 }
 
+const ORDER = /\b(DS-\d{4,6})\b/i;
+const REFUND = /\b(refund|money back|charged (?:me )?twice|double charge|charged two times)\b/i;
+const WHERE = /\b(where|status|track|tracking|shipped|deliver(?:y|ed)?|arriv(?:e|ing|al))\b/i;
+
+/** The name of an offered company tool ending in `__<suffix>`, if any. */
+function companyTool(req: ChatRequest, suffix: string): string | undefined {
+  return req.tools?.map((t) => t.function.name).find((n) => n.endsWith(`__${suffix}`));
+}
+
+/** Which tool produced each tool message, from the assistant's calls before it. */
+function toolNameOf(req: ChatRequest, toolMessage: ChatMessage): string {
+  for (const m of req.messages) {
+    for (const c of (m.tool_calls ?? []) as Array<{ id: string; function: { name: string } }>) {
+      if (c.id === toolMessage.tool_call_id) return c.function.name;
+    }
+  }
+  return '';
+}
+
+function reply(message: string, confidence: number, extra: Record<string, unknown> = {}) {
+  return call('send_reply', { message, confidence, sources: [], language: 'en', ...extra });
+}
+
+/** Company-tool flows; undefined when the message isn't about an order. */
+function companyFlow(req: ChatRequest, question: string): ScriptedReply | undefined {
+  const system = textOf(req.messages.find((m) => m.role === 'system'));
+  const update =
+    /<approval_update tool="([^"]*)" status="(done|rejected)">\s*([\s\S]*?)\s*<\/approval_update>/.exec(
+      system,
+    );
+  if (update) {
+    const [, , status, detail] = update;
+    if (status === 'rejected') {
+      return reply(
+        "I'm sorry, our team could not approve this request. A colleague will follow up if anything else is needed.",
+        0.85,
+        { intent: 'approval_outcome' },
+      );
+    }
+    let d: Record<string, unknown> = {};
+    try {
+      d = JSON.parse(detail ?? '{}') as Record<string, unknown>;
+    } catch {
+      d = {};
+    }
+    const money =
+      typeof d.amount === 'number'
+        ? `${d.amount.toFixed(2)} ${String(d.currency ?? '')}`.trim()
+        : '';
+    return reply(
+      d.refund_id
+        ? `Good news: your refund${money ? ` of ${money}` : ''} for order ${String(d.order_id ?? '')} has been issued (reference ${String(d.refund_id)}). It should arrive in ${String(d.arrives_in ?? '5 to 7 business days')}.`
+        : 'Good news: your request has been approved and completed.',
+      0.92,
+      { intent: 'approval_outcome', resolves_issue: true },
+    );
+  }
+
+  const results = req.messages.filter((m) => m.role === 'tool');
+  const last = results.at(-1);
+  const lastName = last ? toolNameOf(req, last) : '';
+  if (last && /__(order_status|issue_refund|payment_status|lookup_customer)$/.test(lastName)) {
+    let r: Record<string, unknown> = {};
+    try {
+      r = JSON.parse(textOf(last)) as Record<string, unknown>;
+    } catch {
+      r = {};
+    }
+    const order = ORDER.exec(question)?.[1]?.toUpperCase() ?? 'your order';
+    if (r.status === 'pending_approval' || r.status === 'simulated') {
+      return reply(
+        `I've sent your refund request for order ${order} to our team for approval. You'll get an update here as soon as it has been reviewed.`,
+        0.9,
+        { intent: 'refund_request' },
+      );
+    }
+    if (r.ok === false || r.error) {
+      return call('request_human', {
+        reason: `The order system could not help: ${String(r.error ?? 'unknown error')}`,
+      });
+    }
+    const o = (r.result ?? {}) as Record<string, unknown>;
+    const parts = [
+      `Order ${String(o.order_id ?? order)} is ${String(o.status ?? 'being processed')}`,
+    ];
+    if (o.carrier) parts[0] += ` with ${String(o.carrier)}`;
+    if (o.tracking_number) parts.push(`the tracking number is ${String(o.tracking_number)}`);
+    if (o.estimated_delivery)
+      parts.push(`the carrier's estimate is ${String(o.estimated_delivery)}`);
+    return reply(`${parts.join('; ')}.`, 0.92, { intent: 'order_status', resolves_issue: true });
+  }
+
+  const orderId = ORDER.exec(question)?.[1]?.toUpperCase();
+  if (!orderId || results.length) return undefined;
+  const refund = companyTool(req, 'issue_refund');
+  if (REFUND.test(question) && refund) {
+    return call(refund, { order_id: orderId, reason: `Customer asked: ${question.slice(0, 150)}` });
+  }
+  const status = companyTool(req, 'order_status');
+  if (WHERE.test(question) && status) return call(status, { order_id: orderId });
+  return undefined;
+}
+
 export function agentReply(req: ChatRequest): ScriptedReply {
   const question = stripTags(textOf([...req.messages].reverse().find((m) => m.role === 'user')));
   const toolResults = req.messages.filter((m) => m.role === 'tool');
@@ -63,6 +170,8 @@ export function agentReply(req: ChatRequest): ScriptedReply {
   if (/\b(human|real person|someone real|representative|manager)\b|इंसान/i.test(question)) {
     return call('request_human', { reason: 'The customer asked for a person' });
   }
+  const company = companyFlow(req, question);
+  if (company) return company;
   if (!toolResults.length) return call('search_knowledge', { query: question.slice(0, 300) });
 
   let results: Array<{ id: string; source: string; text: string }> = [];

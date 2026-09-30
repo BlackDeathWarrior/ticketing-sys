@@ -21,6 +21,7 @@ import { StorageModule } from './storage/storage.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { UsersModule } from './users/users.module';
 import { WorkflowModule } from './workflow/workflow.module';
+import { ToolsModule } from './tools/tools.module';
 import { WebFormModule } from './web-form/web-form.module';
 
 const env = loadEnv();
@@ -46,6 +47,7 @@ const env = loadEnv();
     KbModule,
     AiModule,
     WebFormModule,
+    ToolsModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],

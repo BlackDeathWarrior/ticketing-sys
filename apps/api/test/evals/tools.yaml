@@ -1,0 +1,31 @@
+# Golden conversations that use company tools (ADR 0013). They need the Demo
+# Store MCP server registered with its tools on: tools.int.test.ts runs them
+# after registering it, and `pnpm ai:eval` against the sample stack has it.
+# Dry runs only run read tools; transactional ones report "not run".
+
+- name: Order status comes from the order system
+  customerEmail: bea.sandoval@example.com
+  messages:
+    - customer: Where is my order DS-10421?
+  expect:
+    decision: sent
+    tools: [order_status]
+    replyIncludes: ['DS-10421', 'shipped']
+
+- name: Another customer's order is not found, so it hands over
+  customerEmail: omar.farouk@example.org
+  messages:
+    - customer: Where is my order DS-10421?
+  expect:
+    decision: handover
+    tools: [order_status]
+    rules: [ai_requested]
+
+- name: A refund is requested, never promised
+  customerEmail: tom.whitaker@example.com
+  messages:
+    - customer: I was charged twice for order DS-10388, please refund me
+  expect:
+    tools: [issue_refund]
+    replyIncludes: ['approval']
+    sentReplyExcludes: ['has been issued', 'refunded']

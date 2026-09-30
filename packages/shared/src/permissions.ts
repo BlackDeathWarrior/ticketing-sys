@@ -33,6 +33,8 @@ export const PERMISSIONS = [
   'message:approve_draft',
   /** AI behaviour: autonomy per channel, thresholds. */
   'settings:ai',
+  /** Register MCP servers, enable tools, set risk tiers, run test calls. Admin only. */
+  'tool:manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

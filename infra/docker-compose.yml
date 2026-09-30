@@ -14,6 +14,8 @@ x-app-env: &app-env
   # Dev default only. Set JWT_SECRET in the environment for anything shared.
   JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me-0123456789abcdef}
   CORS_ORIGINS: http://localhost:8080,http://localhost:8081
+  # MCP servers may live on these compose hosts (the sample Demo Store server in fake-providers).
+  TOOL_PRIVATE_HOSTS: ${TOOL_PRIVATE_HOSTS:-fake-providers}
   API_DOCS: ${API_DOCS:-true}
   # Object storage (SeaweedFS S3 API)
   S3_ENDPOINT: http://objectstore:8333

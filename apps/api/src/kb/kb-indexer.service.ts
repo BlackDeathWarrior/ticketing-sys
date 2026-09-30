@@ -12,7 +12,7 @@ import { StorageService } from '../storage/storage.service';
 import { chunkText } from './chunker';
 import { detectKind, extractText, htmlTitle, htmlToText } from './extract';
 import { contentHash, KbService } from './kb.service';
-import { fetchPublicUrl } from './url-fetch';
+import { fetchPublicUrl } from '../common/url-fetch';
 
 const EMBED_BATCH = 32;
 

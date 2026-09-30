@@ -18,15 +18,15 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 | 4     | Knowledge base: uploads, URL and FAQ sources, review, pgvector hybrid search with citations (ADR 0010)                     | Done    |
 | 5     | AI agent: answers chat, drafts email, hands over; confidence policy, classifier, AI marks in Orbit Desk (ADR 0011)         | Done    |
 | 5b    | Help center: public request form (channel `web_form`) with attachments, email acknowledgement and replies (ADR 0012)       | Done    |
-| 6     | Tools/MCP and approvals                                                                                                    | Next    |
-| 7     | Handover, take-over, routing, SLA, notifications, AI-vs-human views                                                        | Planned |
+| 6     | Tools over MCP (Demo Store sample server), risk tiers, supervisor approvals, AI follow-ups (ADR 0013)                      | Done    |
+| 7     | Handover, take-over, routing, SLA, notifications, AI-vs-human views                                                        | Next    |
 | 8     | WhatsApp (Meta Cloud API, ported from whatsapp-crm; see `docs/research/whatsapp-crm.md`)                                   | Planned |
 | 9     | Voice agent on Sarvam STT/TTS, in the browser (see `docs/research/voice-sarvam.md`)                                        | Planned |
 | 10    | Reporting (AI vs human, SLA, CSAT), admin settings, customer portal (sign-in link, my tickets, reply, rate)                | Planned |
 | 11    | Hardening for the demo                                                                                                     | Planned |
 | 12    | AWS live demo                                                                                                              | Planned |
 
-Not built yet, although the UI or schema hints at them: SLA and CSAT (Orbit Desk hides them until Phase 7), explicit take-over/hand-back and routing (Phase 7), and approvals (Phase 6). The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
+Not built yet, although the UI or schema hints at them: SLA and CSAT (Orbit Desk hides them until Phase 7), explicit take-over/hand-back and routing (Phase 7). The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
 
 ## Layout
 
@@ -128,6 +128,21 @@ When a model is configured (Settings), new web chats, WhatsApp chats and calls g
 - **Settings → AI behaviour** sets each channel's mode and the thresholds, and has **Try the agent** for a dry run.
 
 `pnpm ai:eval` runs the golden conversations against the configured models. See ADR 0011 and [`docs/runbooks/phase-5-demo.md`](docs/runbooks/phase-5-demo.md).
+
+## Company tools and approvals
+
+The AI can look up and act on company systems through MCP servers (ADR 0013).
+
+- **Register a server:** an admin adds it in Orbit Desk → Settings → Tools & MCP, stores its token (write-only), and syncs its tools.
+- **Switch tools on:** each tool starts off. The admin enables it and sets its risk:
+  - read only;
+  - changes data;
+  - needs approval.
+- **Customer binding:** TMS fills the customer's email into the tool from the ticket, so the AI can only reach that customer's data.
+- **Approvals:** a needs-approval tool (such as a refund) doesn't run. It waits in **Approvals** (`#/approvals`, supervisors) and inline in the ticket drawer. Once someone approves, the worker runs it and the AI tells the customer the result. Rejected and expired requests are handled too.
+- **Demo:** the sample data registers **Demo Store systems**, a fictional order and payment server inside `fake-providers`. Try "Where is my order DS-20517?" or "I was charged twice for order DS-20533" in the widget.
+
+See [`docs/runbooks/phase-6-demo.md`](docs/runbooks/phase-6-demo.md).
 
 ## Knowledge base
 

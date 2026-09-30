@@ -9,13 +9,14 @@ import {
   asksForHuman,
   type SimulateAiInput,
   type SimulateAiResult,
+  describeArgs,
 } from '@tms/shared';
 import Redis from 'ioredis';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import { OutboundService } from '../channels/outbound.service';
-import { AI_CTX } from '../common/request-context';
+import { AI_CTX, SYSTEM_CTX } from '../common/request-context';
 import { ConversationsService } from '../conversations/conversations.service';
 import { CustomersService } from '../customers/customers.service';
 import { DB, REDIS } from '../infra/tokens';
@@ -24,6 +25,9 @@ import { LlmClientService, LlmUnavailableError } from '../llm/llm-client.service
 import { OrgService } from '../org/org.service';
 import { AiBehaviourService } from '../settings/ai-behaviour.service';
 import { TicketsService } from '../tickets/tickets.service';
+import { ApprovalsService } from '../tools/approvals.service';
+import { forModel, type InvokeResult, ToolGatewayService } from '../tools/tool-gateway.service';
+import { type AgentTool, ToolsService } from '../tools/tools.service';
 import { AiRunsService } from './ai-runs.service';
 import { LanguageService } from './language.service';
 import { assess, handoverMessage, handoverNote } from './policy';
@@ -69,6 +73,14 @@ interface ThinkInput {
   language: string | null;
   unconfidentTurnsBefore: number;
   conversationId: string | null;
+  /** Fills company tools' customer argument; null leaves those tools refusing. */
+  customerEmail: string | null;
+  /** Dry run: read tools only, nothing stored. */
+  dryRun: boolean;
+  /** Follow-up after an approval decision. */
+  update: { tool: string; status: 'done' | 'rejected'; detail: string } | null;
+  /** The outcome being reported was confirmed by a company system. */
+  confirmedByTool: boolean;
 }
 
 export interface ThinkResult {
@@ -121,16 +133,135 @@ export class AiAgentService {
     private readonly language: LanguageService,
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
+    private readonly tools: ToolsService,
+    private readonly gateway: ToolGatewayService,
+    private readonly approvals: ApprovalsService,
   ) {}
 
   /** Answers the conversation's unanswered customer message(s), if the AI still owns it. */
   async runTurn(conversationId: string, triggerMessageId: string | null): Promise<AiDecision> {
+    return this.withLock(conversationId, () => this.turn(conversationId, triggerMessageId));
+  }
+
+  /**
+   * After a supervisor decides on a transactional tool call (or it expires):
+   * runs the approved action, then tells the customer the outcome if the AI
+   * still owns the conversation, or leaves a note for the humans who do.
+   * Idempotent per approval.
+   */
+  async followUp(approvalId: string): Promise<AiDecision> {
+    const { approval, call, tool } = await this.approvals.withCall(approvalId);
+    if (approval.status === 'pending' || (await this.runs.followedUp(approvalId))) return 'skipped';
+
+    let outcome: FollowUpOutcome;
+    if (approval.status === 'approved') {
+      const ex = await this.gateway.executeApproved(SYSTEM_CTX, call.id);
+      outcome =
+        ex.status === 'ok'
+          ? { status: 'done', detail: JSON.stringify(ex.result ?? {}).slice(0, 2000) }
+          : ex.status === 'running'
+            ? { status: 'running', detail: '' }
+            : { status: 'failed', detail: ex.error ?? 'The action failed' };
+    } else if (approval.status === 'rejected') {
+      outcome = { status: 'rejected', detail: approval.note ?? '' };
+    } else {
+      outcome = { status: 'expired', detail: '' };
+    }
+
+    const action = tool.title ?? tool.name;
+    const conv = approval.conversationId
+      ? await this.conversations.get(approval.conversationId).catch(() => null)
+      : null;
+    const behaviour = await this.behaviour.get();
+    const mode = conv
+      ? ((behaviour.channels as Record<string, AiChannelMode>)[conv.channel] ?? 'off')
+      : 'off';
+    const summaryLine = { name: tool.name, summary: `${approval.summary} → ${outcome.status}` };
+    if (!conv || conv.controller !== 'ai' || mode === 'off' || outcome.status === 'running') {
+      await this.db.transaction(async (tx) => {
+        await this.tickets.addNoteInTx(
+          tx,
+          AI_CTX,
+          approval.ticketId,
+          followUpNote(approval.summary, outcome),
+        );
+        await this.runs.record(tx, {
+          kind: 'followup',
+          ticketId: approval.ticketId,
+          conversationId: conv?.id ?? null,
+          triggerMessageId: approvalId,
+          decision: 'skipped',
+          promptVersion: AGENT_PROMPT_VERSION,
+          tools: [summaryLine],
+        });
+      });
+      return 'skipped';
+    }
+
+    return this.withLock(conv.id, async () => {
+      if (await this.runs.followedUp(approvalId)) return 'skipped';
+      const ticket = await this.tickets.get(conv.ticketId);
+      const customer = await this.customers.get(ticket.customerId);
+      const rows = await this.conversations.transcript(conv.id, 30);
+      const lastCustomer = [...rows].reverse().find((m) => m.authorType === 'customer');
+      const language = conv.language ?? null;
+      let r: ThinkResult;
+      if (outcome.status === 'done' || outcome.status === 'rejected') {
+        r = await this.think({
+          channel: conv.channel,
+          mode,
+          behaviour,
+          transcript: rows
+            .filter((m) => m.authorType !== 'system')
+            .slice(-HISTORY_TAIL)
+            .map((m) => ({ author: m.authorType as Line['author'], body: m.body })),
+          summary: conv.summary,
+          ticket: {
+            id: ticket.id,
+            reference: ticket.reference,
+            subject: ticket.subject,
+            status: ticket.status,
+            category: ticket.category?.name ?? null,
+          },
+          customer: { name: customer.displayName, type: customer.customerType },
+          language,
+          unconfidentTurnsBefore: 0,
+          conversationId: conv.id,
+          customerEmail: emailOf(customer),
+          dryRun: false,
+          update: { tool: action, status: outcome.status, detail: outcome.detail },
+          confirmedByTool: outcome.status === 'done',
+        });
+      } else {
+        r = {
+          ...blankResult(language),
+          rules: [outcome.status === 'expired' ? 'approval_expired' : 'action_failed'],
+          handoverReason: outcome.detail || null,
+        };
+      }
+      r.tools = [summaryLine, ...r.tools];
+      return this.apply({
+        conv,
+        ticket,
+        r,
+        language,
+        lastCustomerBody: lastCustomer?.body ?? '',
+        aiReplies: rows.filter((m) => m.authorType === 'ai').length,
+        mode,
+        behaviour,
+        triggerMessageId: approvalId,
+        kind: 'followup',
+      });
+    });
+  }
+
+  private async withLock<T>(conversationId: string, fn: () => Promise<T>): Promise<T> {
     const lockKey = `tms:lock:ai:${conversationId}`;
     const token = `${process.pid}:${Date.now()}`;
     if ((await this.redis.set(lockKey, token, 'PX', LOCK_MS, 'NX')) !== 'OK')
       throw new ConversationBusyError();
     try {
-      return await this.turn(conversationId, triggerMessageId);
+      return await fn();
     } finally {
       await this.redis
         .eval(
@@ -165,6 +296,10 @@ export class AiAgentService {
       language: await this.language.detect(last),
       unconfidentTurnsBefore: 0,
       conversationId: null,
+      customerEmail: input.customerEmail ?? null,
+      dryRun: true,
+      update: null,
+      confirmedByTool: false,
     });
     return {
       decision: r.decision,
@@ -226,8 +361,40 @@ export class AiAgentService {
         lastHandover,
       ),
       conversationId: conv.id,
+      customerEmail: emailOf(customer),
+      dryRun: false,
+      update: null,
+      confirmedByTool: false,
     });
 
+    return this.apply({
+      conv,
+      ticket,
+      r,
+      language,
+      lastCustomerBody: lastRow.body,
+      aiReplies: rows.filter((m) => m.authorType === 'ai').length,
+      mode,
+      behaviour,
+      triggerMessageId,
+      kind: 'turn',
+    });
+  }
+
+  /** Sends, drafts or hands over as the turn decided, and records the run, in one transaction. */
+  private async apply(p: {
+    conv: { id: string; channel: string };
+    ticket: { id: string; reference: string };
+    r: ThinkResult;
+    language: string | null;
+    lastCustomerBody: string;
+    aiReplies: number;
+    mode: AiChannelMode;
+    behaviour: AiBehaviour;
+    triggerMessageId: string | null;
+    kind: 'turn' | 'followup';
+  }): Promise<AiDecision> {
+    const { conv, ticket, r, language, mode, behaviour, triggerMessageId } = p;
     if (Object.keys(r.ticketUpdate).length && r.decision !== 'error') {
       await this.applyTicketUpdate(ticket.id, r.ticketUpdate).catch((err: Error) =>
         this.logger.warn(`AI ticket update failed on ${ticket.reference}: ${err.message}`),
@@ -267,8 +434,8 @@ export class AiAgentService {
           ticket.id,
           handoverNote({
             reasons,
-            lastCustomerMessage: lastRow.body,
-            aiReplies: rows.filter((m) => m.authorType === 'ai').length,
+            lastCustomerMessage: p.lastCustomerBody,
+            aiReplies: p.aiReplies,
             sources: r.seenSources,
             draft: r.reply,
           }),
@@ -304,7 +471,7 @@ export class AiAgentService {
           : {}),
       });
       await this.runs.record(tx, {
-        kind: 'turn',
+        kind: p.kind,
         ticketId: ticket.id,
         conversationId: conv.id,
         triggerMessageId,
@@ -331,25 +498,7 @@ export class AiAgentService {
   /** The model loop, shared by live turns and dry runs. No side effects beyond LLM calls and searches. */
   private async think(i: ThinkInput): Promise<ThinkResult> {
     const started = Date.now();
-    const out: ThinkResult = {
-      decision: 'handover',
-      reply: null,
-      confidence: null,
-      selfConfidence: null,
-      rules: [],
-      handoverReason: null,
-      language: i.language,
-      intent: null,
-      resolves: false,
-      ticketUpdate: {},
-      tools: [],
-      sources: [],
-      seenSources: [],
-      model: null,
-      costUsd: 0,
-      latencyMs: 0,
-      error: null,
-    };
+    const out: ThinkResult = blankResult(i.language);
     const finish = () => ({ ...out, latencyMs: Date.now() - started });
     const last = [...i.transcript].reverse().find((l) => l.author === 'customer')?.body ?? '';
 
@@ -372,6 +521,12 @@ export class AiAgentService {
 
     const knowledge = await search(last, 3).catch(() => []);
     const categories = await this.categoryLabels();
+    const companyTools: AgentTool[] = await this.tools.agentTools().catch(() => []);
+    /** Company-system results the reply may rest on; they count as sources. */
+    const toolSources: Array<{ chunkId: string; label: string }> = [];
+    if (i.update)
+      toolSources.push({ chunkId: 'approval', label: `${i.update.tool} · ${i.update.status}` });
+    let confirmed = i.confirmedByTool;
     const messages: ChatCompletionMessageParam[] = [
       {
         role: 'system',
@@ -383,6 +538,8 @@ export class AiAgentService {
           summary: i.summary,
           knowledge: knowledge.map((k) => ({ id: k.id, label: k.source, text: k.text })),
           categories,
+          companyTools: companyTools.length > 0,
+          update: i.update,
         }),
       },
       ...i.transcript.map<ChatCompletionMessageParam>((l) =>
@@ -402,7 +559,7 @@ export class AiAgentService {
         const r = await this.llm.chat({
           role: i.channel === 'voice' ? 'chat_agent_voice' : 'chat_agent',
           messages,
-          tools: AGENT_TOOLS,
+          tools: [...AGENT_TOOLS, ...companyTools.map((t) => t.definition)],
           maxTokens: 700,
           temperature: 0.2,
           ticketId: i.ticket.id,
@@ -468,7 +625,35 @@ export class AiAgentService {
             result = { ok: true };
           } else result = { error: a.error };
         } else {
-          result = { error: `Unknown tool ${name}` };
+          const ct = companyTools.find((t) => t.qualifiedName === name);
+          if (!ct) {
+            result = { error: `Unknown tool ${name}` };
+          } else {
+            const res = await this.gateway.invoke(AI_CTX, {
+              tool: ct.tool,
+              server: ct.server,
+              args: call.function.arguments,
+              ticketId: i.ticket.id,
+              conversationId: i.conversationId,
+              customerEmail: i.customerEmail,
+              reasoning: msg?.content?.trim() || null,
+              evidence: last,
+              dryRun: i.dryRun,
+            });
+            result = forModel(res);
+            out.tools.push({
+              name: ct.tool.name,
+              summary: toolSummary(res, call.function.arguments, ct.tool.customerArg),
+            });
+            // A result, or a request the system accepted for approval, is something to stand on.
+            if (res.status === 'ok' || res.status === 'awaiting_approval') {
+              toolSources.push({
+                chunkId: `tool:${res.callId ?? ct.tool.id}`,
+                label: `${ct.server.name} · ${ct.tool.title ?? ct.tool.name}`,
+              });
+            }
+            if (res.status === 'ok' && ct.tool.tier !== 'read') confirmed = true;
+          }
         }
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
       }
@@ -489,8 +674,8 @@ export class AiAgentService {
     const verdict = assess({
       selfConfidence: a.confidence,
       reply: a.message,
-      citedSources: cited.length,
-      confirmedByTool: false,
+      citedSources: cited.length + toolSources.length,
+      confirmedByTool: confirmed,
       unconfidentTurnsBefore: i.unconfidentTurnsBefore,
       mode: i.mode,
       behaviour: i.behaviour,
@@ -503,7 +688,7 @@ export class AiAgentService {
     out.language = a.language?.split('-')[0] ?? i.language;
     out.intent = a.intent ?? null;
     out.resolves = !!a.resolves_issue;
-    out.sources = cited.map((id) => ({ chunkId: id, label: labels.get(id)! }));
+    out.sources = [...cited.map((id) => ({ chunkId: id, label: labels.get(id)! })), ...toolSources];
     return finish();
   }
 
@@ -583,4 +768,78 @@ export class AiAgentService {
     const sub = subName ? cat.children.find((s) => s.name.toLowerCase() === subName) : undefined;
     return { categoryId: cat.id, subcategoryId: sub?.id ?? null };
   }
+}
+
+function emailOf(customer: {
+  primaryEmail: string | null;
+  identities: Array<{ type: string; value: string }>;
+}): string | null {
+  return (
+    customer.primaryEmail ?? customer.identities.find((x) => x.type === 'email')?.value ?? null
+  );
+}
+
+function toolSummary(r: InvokeResult, rawArgs: string, customerArg: string | null): string {
+  let args = '';
+  try {
+    args = describeArgs(JSON.parse(rawArgs || '{}') as Record<string, unknown>, [
+      customerArg ?? '',
+    ]);
+  } catch {
+    args = '';
+  }
+  const outcome =
+    r.status === 'ok'
+      ? 'done'
+      : r.status === 'awaiting_approval'
+        ? 'sent for approval'
+        : r.status === 'simulated'
+          ? 'not run (dry run)'
+          : `${r.status}: ${r.error}`;
+  return `${args ? `${args} → ` : ''}${outcome}`.slice(0, 200);
+}
+
+type FollowUpOutcome = {
+  status: 'done' | 'rejected' | 'failed' | 'expired' | 'running';
+  detail: string;
+};
+
+function followUpNote(summary: string, o: FollowUpOutcome): string {
+  const what = {
+    done: 'was approved and done',
+    rejected: 'was not approved',
+    failed: 'was approved, but the action failed',
+    expired: 'expired before anyone decided',
+    running: 'was approved, but its result is unknown (the worker stopped while it ran)',
+  }[o.status];
+  return [
+    `The request "${summary}" ${what}.`,
+    o.detail ? `Details: ${o.detail}` : '',
+    'The AI is not handling this conversation, so please let the customer know.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** A turn that did nothing yet: hands over unless the model says otherwise. */
+function blankResult(language: string | null): ThinkResult {
+  return {
+    decision: 'handover',
+    reply: null,
+    confidence: null,
+    selfConfidence: null,
+    rules: [],
+    handoverReason: null,
+    language,
+    intent: null,
+    resolves: false,
+    ticketUpdate: {},
+    tools: [],
+    sources: [],
+    seenSources: [],
+    model: null,
+    costUsd: 0,
+    latencyMs: 0,
+    error: null,
+  };
 }

@@ -19,7 +19,8 @@ export const AI_QUEUE = 'ai-turns';
 
 type AiJob =
   | { kind: 'turn'; conversationId: string; messageId: string }
-  | { kind: 'classify'; ticketId: string };
+  | { kind: 'classify'; ticketId: string }
+  | { kind: 'followup'; approvalId: string };
 
 /**
  * AI work runs on its own queue so slow model calls never hold up delivery
@@ -61,7 +62,12 @@ export class AiWorker implements OnApplicationBootstrap, BeforeApplicationShutdo
   }
 
   async enqueue(job: AiJob) {
-    const jobId = job.kind === 'turn' ? `turn--${job.messageId}` : `classify--${job.ticketId}`;
+    const jobId =
+      job.kind === 'turn'
+        ? `turn--${job.messageId}`
+        : job.kind === 'classify'
+          ? `classify--${job.ticketId}`
+          : `followup--${job.approvalId}`;
     await this.queue.add(job.kind, job, {
       jobId,
       attempts: 8,
@@ -74,11 +80,15 @@ export class AiWorker implements OnApplicationBootstrap, BeforeApplicationShutdo
   private async process(job: Job<AiJob>) {
     const d = job.data;
     if (d.kind === 'turn') return this.agent.runTurn(d.conversationId, d.messageId);
+    if (d.kind === 'followup') return this.agent.followUp(d.approvalId);
     return this.classifier.classify(d.ticketId);
   }
 }
 
-/** Sends customer messages on AI-owned conversations, and new customer tickets, to the AI queue. */
+/**
+ * Sends customer messages on AI-owned conversations, new customer tickets,
+ * and decided or expired approvals (the follow-up) to the AI queue.
+ */
 @Injectable()
 export class AiDispatchHandler implements DomainEventHandler {
   readonly name = 'ai-dispatch';
@@ -89,10 +99,19 @@ export class AiDispatchHandler implements DomainEventHandler {
   ) {}
 
   handles(type: DomainEventType): boolean {
-    return type === 'message.received' || type === 'ticket.created';
+    return (
+      type === 'message.received' ||
+      type === 'ticket.created' ||
+      type === 'approval.decided' ||
+      type === 'approval.expired'
+    );
   }
 
   async handle(event: DomainEvent): Promise<void> {
+    if (event.type === 'approval.decided' || event.type === 'approval.expired') {
+      await this.ai.enqueue({ kind: 'followup', approvalId: event.aggregateId });
+      return;
+    }
     if (event.type === 'ticket.created') {
       // Only tickets customers opened through a channel; agents set their own categories.
       if (event.actor.type === 'customer') {

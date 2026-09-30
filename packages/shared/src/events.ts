@@ -48,6 +48,16 @@ export const DOMAIN_EVENT_TYPES = [
   'message.drafted',
   /** A draft was approved (and queued for delivery) or discarded. */
   'message.draft_reviewed',
+  /** An MCP server was added, changed, synced or removed, or a tool's settings changed. */
+  'tool.config_changed',
+  /** A company-system tool ran (or was refused); the payload has status, never secrets. */
+  'tool.called',
+  /** A transactional tool call waits for a supervisor. */
+  'approval.requested',
+  /** A supervisor approved or rejected it; approved calls run next, then the AI follows up. */
+  'approval.decided',
+  /** Nobody decided in time. */
+  'approval.expired',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
@@ -62,7 +72,9 @@ export type AggregateType =
   | 'workflow'
   | 'settings'
   | 'llm'
-  | 'kb';
+  | 'kb'
+  | 'tool'
+  | 'approval';
 
 export interface DomainEvent<P = Record<string, unknown>> {
   id: string;

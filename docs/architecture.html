@@ -243,6 +243,7 @@ footer{font-size:12.5px;color:var(--muted)}
         <tr><td>E2E suite</td><td><code>e2e/</code></td><td>23 Playwright tests against the Docker stack; a CI job runs them</td></tr>
         <tr><td>Settings and LLM</td><td><code>apps/api/src/settings</code>, <code>apps/api/src/llm</code></td><td>Encrypted secrets, channel settings, providers/models/roles on LiteLLM with cheapest-first routing and caps (ADR 0008, 0009). Fake providers in <code>apps/fake-providers</code></td></tr>
         <tr><td>Knowledge base</td><td><code>apps/api/src/kb</code></td><td>Documents, review, indexing queue, hybrid search with citations (ADR 0010); Orbit Desk <code>#/kb</code> and the drawer panel</td></tr>
+        <tr><td>Tools and approvals</td><td><code>apps/api/src/tools</code></td><td>MCP servers, tool registry, gateway, <code>tool_calls</code>, approvals with expiry (ADR 0013); sample Demo Store server in <code>apps/fake-providers</code>; Orbit Desk Settings → Tools &amp; MCP, <code>#/approvals</code>, drawer company actions</td></tr>
         <tr><td>AI agent</td><td><code>apps/api/src/ai</code></td><td>Turns, confidence policy, drafts, handover, classifier, <code>ai_runs</code> (ADR 0011); Orbit Desk AI marks and Settings → AI behaviour</td></tr>
         <tr><td>Infrastructure</td><td><code>infra/docker-compose.yml</code>, <code>Dockerfile</code></td><td>Postgres 16 (pgvector image), Redis, SeaweedFS (S3), GreenMail + Mailpit, LiteLLM, fake providers (scripted LLM)</td></tr>
       </tbody>
@@ -352,8 +353,8 @@ const BUILT = {
  "ai": "Built (Phase 5): agent turns on the ai-turns queue with knowledge search and tools, a confidence policy (send, draft, hand over), a classifier, language detection and ai_runs records; models routed cheapest-first via LiteLLM (ADR 0008, 0011). Company-system tools come in Phase 6.",
  "handover": "Partial (Phase 5): the AI hands over on request, low confidence, repeated failures, budget or errors, with an internal note and a customer message. Context packs, routing and take-over controls come in Phase 7.",
  "kb": "Built (Phase 4): pgvector (1024) + full-text chunks in Postgres, hybrid search with reciprocal rank fusion and citations, review and visibility rules, background indexing in the worker (ADR 0010).",
- "tools": "Not built (Phase 6).",
- "approval": "Not built (Phase 6). The approval:approve permission exists.",
+ "tools": "Built (Phase 6): MCP servers registered in Settings → Tools & MCP; tools listed by sync and switched on by an admin with a risk tier; ToolGatewayService validates arguments, fills the customer from the ticket, runs calls with timeouts, retries for reads and a circuit breaker, and records tool_calls (ADR 0013). REST connectors are not built; wrap them as MCP servers.",
+ "approval": "Built (Phase 6): transactional tool calls wait in Orbit Desk #/approvals (and inline in the ticket drawer) for someone with approval:approve; the worker runs approved calls, expires stale ones, and the AI tells the customer the outcome.",
  "sources": "Partial: file uploads (PDF, DOCX, Markdown, HTML, text), web pages and FAQ entries. SharePoint/Confluence connectors are not built.",
  "enterprise": "Not built. Sample MCP servers are planned for Phase 6.",
  "notify": "Partial: live console updates over /agent. No notification list, email alerts or push.",

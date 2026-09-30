@@ -2,7 +2,7 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
 /**
- * Fetches a knowledge-base URL without letting it reach internal services
+ * Fetches a URL (knowledge-base sources; MCP servers use assertPublicUrl) without letting it reach internal services
  * (SSRF): only http(s), no private, loopback, link-local or metadata
  * addresses, redirects re-checked hop by hop, a size cap and a timeout.
  * The idea follows whatsapp-crm's `lib/webhooks/ssrf.ts` (MIT).

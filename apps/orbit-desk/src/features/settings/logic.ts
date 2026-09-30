@@ -7,7 +7,7 @@ export const SETTINGS_TABS: Array<{ value: SettingsTab; label: string; needs: Pe
   { value: 'models', label: 'Models & roles', needs: ['settings:llm'] },
   { value: 'ai', label: 'AI behaviour', needs: ['settings:ai'] },
   { value: 'channels', label: 'Channels', needs: ['settings:channels'] },
-  { value: 'tools', label: 'Tools & MCP', needs: ['settings:secrets'] },
+  { value: 'tools', label: 'Tools & MCP', needs: ['tool:manage'] },
   { value: 'usage', label: 'Usage', needs: ['settings:llm'] },
 ];
 

@@ -1,0 +1,238 @@
+/* Tools & MCP settings, the approvals inbox and the drawer's actions list (DESIGN.md tokens only). */
+
+.list {
+  display: grid;
+  gap: var(--spacing-12);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tool {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--spacing-12);
+  align-items: start;
+  padding: var(--spacing-12) 0;
+  border-top: 1px solid var(--line-subtle);
+}
+
+.toolName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-8);
+  font-size: var(--text-body-sm);
+  color: var(--color-lilac-white);
+  font-weight: var(--font-weight-medium);
+}
+
+.toolKey {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+  font-weight: var(--font-weight-regular);
+}
+
+.toolDesc {
+  margin: 4px 0 0;
+  font-size: var(--text-ui);
+  color: var(--color-ash);
+  line-height: 1.5;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 150px)) auto;
+  gap: var(--spacing-8);
+  align-items: end;
+}
+
+.off {
+  opacity: 0.55;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-12);
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-caption);
+  color: var(--color-ash);
+}
+
+/* Needs attention: lavender, never a traffic-light colour. */
+.attention {
+  color: var(--color-lavender-accent);
+}
+
+.quiet {
+  opacity: 0.6;
+}
+
+.pre {
+  margin: 0;
+  padding: var(--spacing-12);
+  border-radius: var(--radius-buttons);
+  background: rgba(3, 0, 20, 0.6);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-caption);
+  color: var(--color-ash);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow: auto;
+}
+
+/* ---- approvals ---- */
+
+.approval {
+  display: grid;
+  gap: var(--spacing-12);
+}
+
+.approvalHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-8);
+}
+
+.approvalTitle {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-lilac-white);
+  overflow-wrap: anywhere;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--spacing-8) var(--spacing-16);
+  margin: 0;
+}
+
+.facts dt {
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.facts dd {
+  margin: 2px 0 0;
+  font-size: var(--text-body-sm);
+  color: var(--color-lilac-white);
+  overflow-wrap: anywhere;
+}
+
+.quote {
+  margin: 0;
+  padding-left: var(--spacing-12);
+  box-shadow: inset 2px 0 0 var(--line-subtle);
+  font-size: var(--text-body-sm);
+  color: var(--color-ash);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.label {
+  margin: 0 0 4px;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.decide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--spacing-8);
+  align-items: end;
+}
+
+.decideButtons {
+  display: flex;
+  gap: var(--spacing-8);
+}
+
+/* ---- drawer ---- */
+
+.calls {
+  display: grid;
+  gap: var(--spacing-8);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.call {
+  display: grid;
+  gap: 6px;
+  padding: var(--spacing-12);
+  border-radius: var(--radius-buttons);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+}
+
+.callHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-8);
+  font-size: var(--text-body-sm);
+  color: var(--color-lilac-white);
+}
+
+.callArgs {
+  font-size: var(--text-ui);
+  color: var(--color-ash);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .tool {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .decide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-lavender-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* A drawer section, like the knowledge base and AI activity panels. */
+.panel {
+  padding: var(--spacing-20) var(--spacing-24) var(--spacing-24);
+  border-top: 1px solid var(--line-subtle);
+}
+
+.panelTitle {
+  margin: 0 0 var(--spacing-12);
+  font-size: var(--text-ui);
+  font-weight: var(--font-weight-regular);
+  color: var(--color-ash);
+}
+
+@media (max-width: 560px) {
+  .panel {
+    padding: var(--spacing-16);
+  }
+}

@@ -24,12 +24,14 @@ import { type Session, SessionContext } from './lib/session';
 import { useGet } from './lib/useGet';
 import { useHashRoute } from './lib/useHashRoute';
 import styles from './App.module.css';
+import { ApprovalsPage } from './features/tools/ApprovalsPage';
 
 const ROUTE_TITLES = {
   dashboard: 'Overview',
   elements: 'Elements',
   settings: 'Settings',
   kb: 'Knowledge base',
+  approvals: 'Approvals',
 } as const;
 
 /** Most tickets a list view loads at once (the API's page limit). */
@@ -121,6 +123,10 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
     ready ? `/tickets${qs({ status: openStatuses.join(','), limit: PAGE })}` : null,
   );
   const overview = useGet<OverviewReport>(can('report:read') ? '/reports/overview' : null);
+  const approvals = useGet<Array<{ status: string }>>(
+    can('approval:approve') ? '/approvals?status=pending&limit=200' : null,
+  );
+  const pendingApprovals = can('approval:approve') ? approvals.data?.length : undefined;
   const teams =
     useGet<Array<{ id: string; name: string; members: Array<{ id: string }> }>>('/teams');
   const countAll = useGet<{ total: number }>(pathFor('all', { limit: 1 }));
@@ -128,7 +134,16 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
   const countUnassigned = useGet<{ total: number }>(pathFor('unassigned', { limit: 1 }));
   const countUrgent = useGet<{ total: number }>(pathFor('urgent', { limit: 1 }));
 
-  const refreshers = [queue, open, overview, countAll, countMine, countUnassigned, countUrgent];
+  const refreshers = [
+    queue,
+    open,
+    overview,
+    approvals,
+    countAll,
+    countMine,
+    countUnassigned,
+    countUrgent,
+  ];
   const refresh = () => refreshers.forEach((r) => void r.reload());
 
   useAgentEvents((e) => {
@@ -184,6 +199,7 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
             urgent: countUrgent.data?.total,
           }}
           teams={teams.data ?? []}
+          pendingApprovals={pendingApprovals}
         />
 
         <div className={styles.main}>
@@ -206,6 +222,8 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
               <SettingsPage />
             ) : route === 'kb' ? (
               <KbPage />
+            ) : route === 'approvals' ? (
+              <ApprovalsPage liveTick={liveTick} onOpenTicket={setSelectedId} />
             ) : (
               <DashboardPage
                 queue={{

@@ -194,7 +194,7 @@ describe('AI agent on web chat', () => {
     expect(run).toMatchObject({
       decision: 'sent',
       model: 'openai/scripted-cheap',
-      promptVersion: 'agent-v1',
+      promptVersion: 'agent-v2',
     });
     expect(run.sources.length).toBeGreaterThan(0);
     const reply = await waitFor(async () => {
