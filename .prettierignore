@@ -4,3 +4,5 @@ node_modules
 pnpm-lock.yaml
 packages/db/drizzle
 docs/architecture.html
+**/playwright-report
+**/test-results

@@ -9,8 +9,13 @@
 #
 # Behind a TLS-intercepting proxy, pass its CA as a build secret:
 #   docker build --secret id=extra_ca,src=/path/to/ca.pem ...
+#
+# Rate-limited by Docker Hub? Point the base images at a mirror:
+#   --build-arg NODE_IMAGE=mirror.gcr.io/library/node:22-bookworm-slim
+#   --build-arg NGINX_IMAGE=mirror.gcr.io/library/nginx:1.27-alpine
 
 ARG NODE_IMAGE=node:22-bookworm-slim
+ARG NGINX_IMAGE=nginx:1.27-alpine
 
 FROM ${NODE_IMAGE} AS base
 ENV PNPM_HOME=/pnpm \
@@ -65,13 +70,13 @@ FROM runtime AS migrate
 COPY --from=build --chown=node:node /out/db ./
 CMD ["sh", "-c", "node dist/scripts/migrate.js && node dist/scripts/seed.js"]
 
-FROM nginx:1.27-alpine AS web
+FROM ${NGINX_IMAGE} AS web
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 COPY --from=build /repo/apps/chat-widget/dist /usr/share/nginx/html/widget
 EXPOSE 80
 
-FROM nginx:1.27-alpine AS orbit-desk
+FROM ${NGINX_IMAGE} AS orbit-desk
 COPY apps/orbit-desk/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/orbit-desk/dist /usr/share/nginx/html
 EXPOSE 80
