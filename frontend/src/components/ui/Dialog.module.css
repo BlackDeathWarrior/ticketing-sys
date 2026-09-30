@@ -1,0 +1,73 @@
+.dialog {
+  padding: 0;
+  border: 0;
+  color: var(--color-lilac-white);
+  background: var(--color-midnight-surface);
+  box-shadow: var(--shadow-lg-2), inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+
+.dialog::backdrop {
+  background: rgba(3, 0, 20, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.body {
+  height: 100%;
+  max-height: inherit;
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer {
+  width: min(560px, 100vw);
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0 0 0 auto;
+  border-radius: var(--radius-cards) 0 0 var(--radius-cards);
+}
+
+.drawer[open] {
+  animation: slide-in 260ms var(--ease-out);
+}
+
+.modal {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(720px, calc(100dvh - 32px));
+  border-radius: var(--radius-cards);
+}
+
+.modal[open] {
+  animation: rise-in 220ms var(--ease-out);
+}
+
+.dialog[open]::backdrop {
+  animation: fade-in 200ms var(--ease-out);
+}
+
+@media (max-width: 560px) {
+  .drawer {
+    border-radius: 0;
+  }
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(32px);
+    opacity: 0;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}

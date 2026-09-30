@@ -1,0 +1,71 @@
+.card {
+  display: flex;
+  flex-direction: column;
+}
+
+.list,
+.channels {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list {
+  display: grid;
+  gap: var(--spacing-16);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  row-gap: var(--spacing-8);
+  align-items: center;
+}
+
+.name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  font-size: var(--text-body-sm);
+  color: var(--color-ash);
+}
+
+.count {
+  font-size: var(--text-body-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-lilac-white);
+}
+
+.meter {
+  grid-column: 1 / -1;
+}
+
+.subhead {
+  margin: var(--spacing-24) 0 var(--spacing-12);
+  padding-top: var(--spacing-20);
+  border-top: 1px solid var(--line-subtle);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-dusk);
+}
+
+.channels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-12) var(--spacing-16);
+}
+
+.channels li {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  color: var(--color-fog);
+}
+
+.channelName {
+  flex: 1;
+  font-size: var(--text-ui);
+  color: var(--color-ash);
+  white-space: nowrap;
+}

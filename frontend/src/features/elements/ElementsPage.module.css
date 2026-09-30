@@ -1,0 +1,337 @@
+.page {
+  display: grid;
+  gap: var(--spacing-56);
+  padding-bottom: var(--spacing-32);
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--spacing-20);
+  padding: var(--spacing-72) 0 var(--spacing-16);
+}
+
+.heading {
+  font-family: var(--font-display);
+  font-size: var(--text-heading-lg);
+  line-height: var(--leading-heading-lg);
+  letter-spacing: var(--tracking-heading-lg);
+  font-weight: var(--font-weight-medium);
+}
+
+.lede {
+  max-width: 58ch;
+  font-size: var(--text-body-lg);
+  line-height: var(--leading-body-lg);
+  color: var(--color-ash);
+}
+
+.section {
+  display: grid;
+  gap: var(--spacing-20);
+}
+
+.sectionHead {
+  display: grid;
+  gap: 4px;
+}
+
+.sectionTitle {
+  font-family: var(--font-display);
+  font-size: var(--text-subheading);
+  line-height: var(--leading-subheading);
+  font-weight: var(--font-weight-medium);
+}
+
+.sectionText {
+  font-size: var(--text-body-sm);
+  color: var(--color-fog);
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: var(--spacing-16);
+}
+
+.swatch {
+  display: grid;
+  gap: 2px;
+}
+
+.chip,
+.gradientStroke,
+.auroraChip {
+  display: block;
+  height: 72px;
+  margin-bottom: var(--spacing-8);
+  border-radius: var(--radius-cards);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.gradientStroke {
+  position: relative;
+  background: var(--color-void-canvas);
+}
+
+.gradientStroke::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 50%;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--gradient-cosmic);
+}
+
+.auroraChip {
+  display: flex;
+  justify-content: center;
+  background: var(--color-void-canvas);
+}
+
+.swatchName {
+  font-size: var(--text-ui);
+  font-weight: var(--font-weight-medium);
+}
+
+.code {
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  color: var(--color-lavender-accent);
+}
+
+.swatchRole {
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.typeCard {
+  overflow: hidden;
+}
+
+.typeRow {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--spacing-24);
+  padding: var(--spacing-16) var(--spacing-24);
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.typeRow:last-child {
+  border-bottom: 0;
+}
+
+.typeMeta {
+  display: grid;
+  font-size: var(--text-caption);
+  color: var(--color-ash);
+}
+
+.typeMeta span {
+  color: var(--color-dusk);
+}
+
+.display {
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.15;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.body {
+  font-family: var(--font-body);
+  color: var(--color-ash);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stack {
+  display: grid;
+  gap: var(--spacing-20);
+  align-content: start;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-12);
+}
+
+.rowBetween {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--spacing-12);
+}
+
+.column {
+  display: grid;
+  justify-items: start;
+  gap: var(--spacing-12);
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-16);
+}
+
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-16);
+}
+
+.span2 {
+  grid-column: 1 / -1;
+}
+
+.group {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.groupLabel {
+  font-size: var(--text-ui);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-ash);
+}
+
+.caption {
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.meters {
+  display: grid;
+  gap: var(--spacing-12);
+}
+
+.statValue {
+  margin: var(--spacing-8) 0;
+  font-family: var(--font-display);
+  font-size: var(--text-heading-sm);
+  line-height: var(--leading-heading-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.quoteHead {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-12);
+  margin-bottom: var(--spacing-16);
+}
+
+.quoteName {
+  font-size: var(--text-ui-lg);
+  font-weight: var(--font-weight-medium);
+}
+
+.quote {
+  font-size: var(--text-ui-lg);
+  line-height: 1.6;
+}
+
+.mention {
+  color: var(--color-lavender-accent);
+}
+
+.flatCard {
+  display: grid;
+  gap: var(--spacing-8);
+  align-content: start;
+  justify-items: start;
+  padding: var(--spacing-16);
+}
+
+.featureIcon {
+  margin-bottom: var(--spacing-8);
+  color: var(--color-lilac-white);
+}
+
+.featureTitle {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: var(--font-weight-medium);
+}
+
+.featureText {
+  font-size: var(--text-ui-lg);
+  color: var(--color-fog);
+}
+
+.icons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: var(--spacing-8);
+}
+
+.iconCell {
+  display: grid;
+  justify-items: center;
+  gap: var(--spacing-8);
+  padding: var(--spacing-16) var(--spacing-8);
+  border-radius: var(--radius-buttons);
+  font-size: 11px;
+  color: var(--color-fog);
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.iconCell svg {
+  color: var(--color-lilac-white);
+}
+
+.iconCell:hover {
+  background: var(--hover-wash);
+  color: var(--color-lilac-white);
+}
+
+@media (max-width: 899px) {
+  .grid3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .page {
+    gap: var(--spacing-48);
+  }
+
+  .hero {
+    padding-top: var(--spacing-48);
+  }
+
+  .heading {
+    font-size: var(--text-heading-sm);
+    line-height: var(--leading-heading-sm);
+  }
+
+  .lede {
+    font-size: var(--text-body);
+  }
+
+  .grid2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .typeRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--spacing-4);
+    padding: var(--spacing-12) var(--spacing-16);
+  }
+
+  .display {
+    font-size: min(var(--text-subheading), 24px) !important;
+  }
+}

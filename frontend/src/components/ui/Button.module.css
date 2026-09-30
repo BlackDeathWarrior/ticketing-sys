@@ -1,0 +1,90 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-8);
+  border-radius: var(--radius-buttons);
+  font-size: var(--text-ui-lg);
+  font-weight: var(--font-weight-medium);
+  line-height: 20px;
+  white-space: nowrap;
+  transition:
+    background-color var(--duration) var(--ease-out),
+    color var(--duration) var(--ease-out),
+    box-shadow var(--duration) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.md {
+  padding: 10px 16px;
+}
+
+.sm {
+  padding: 6px 10px;
+  font-size: var(--text-ui);
+  line-height: 18px;
+  gap: 6px;
+}
+
+.iconOnly.md {
+  padding: 10px;
+}
+
+.iconOnly.sm {
+  padding: 7px;
+}
+
+/* Filled iris — reserved for the single most important action on a view. */
+.primary {
+  background: var(--color-iris);
+  color: var(--color-pearl);
+  box-shadow: var(--shadow-md);
+}
+.primary:hover:not(:disabled) {
+  background: #5d54ea;
+  box-shadow: rgba(255, 255, 255, 0.14) 0 0 16px 0 inset;
+}
+.primary:active:not(:disabled) {
+  background: var(--color-deep-indigo);
+}
+
+/* Deep indigo surface — the default control on the void canvas. */
+.secondary {
+  background: var(--color-deep-indigo);
+  color: var(--color-lilac-white);
+  box-shadow: var(--shadow-md), var(--shadow-rim);
+}
+.secondary:hover:not(:disabled) {
+  background: #160d4a;
+  box-shadow: var(--shadow-md), inset 0 0 0 1px rgba(147, 130, 255, 0.24);
+}
+
+.ghost {
+  color: var(--color-fog);
+  font-weight: var(--font-weight-regular);
+}
+.ghost:hover:not(:disabled) {
+  color: var(--color-lilac-white);
+  background: var(--hover-wash);
+}
+
+.link {
+  color: var(--color-lavender-accent);
+  padding-inline: 0;
+  gap: var(--spacing-4);
+}
+.link:hover:not(:disabled) {
+  color: var(--color-lilac-white);
+}
+.link:hover .trailing {
+  transform: translateX(2px);
+}
+
+.trailing {
+  transition: transform var(--duration) var(--ease-out);
+}

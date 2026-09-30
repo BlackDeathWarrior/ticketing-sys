@@ -1,0 +1,35 @@
+.priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-caption);
+  line-height: 18px;
+  color: var(--color-ash);
+  white-space: nowrap;
+}
+
+.on {
+  fill: var(--color-lilac-white);
+}
+
+.off {
+  fill: var(--color-steel);
+  opacity: 0.6;
+}
+
+.low .on {
+  fill: var(--color-fog);
+}
+
+.urgent .on {
+  fill: var(--color-lavender-accent);
+}
+
+.urgent .label {
+  color: var(--color-lavender-accent);
+  font-weight: var(--font-weight-medium);
+}
+
+.high .label {
+  color: var(--color-lilac-white);
+}

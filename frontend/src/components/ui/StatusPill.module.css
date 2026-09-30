@@ -1,0 +1,52 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px 2px 8px;
+  border-radius: var(--radius-badges);
+  font-size: var(--text-caption);
+  font-weight: var(--font-weight-medium);
+  line-height: 18px;
+  white-space: nowrap;
+  background: rgba(244, 240, 255, 0.04);
+  box-shadow: var(--shadow-rim);
+}
+
+.bare {
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.glyph {
+  flex-shrink: 0;
+}
+
+/* Glyph colors: lavender marks the one state needing attention; the rest step down in lightness. */
+.glyph.open {
+  color: var(--color-lavender-accent);
+}
+.glyph.in_progress {
+  color: var(--color-lilac-white);
+}
+.glyph.waiting {
+  color: var(--color-fog);
+}
+.glyph.resolved {
+  color: var(--color-dusk);
+}
+
+.pill.open .label,
+.pill.in_progress .label {
+  color: var(--color-lilac-white);
+}
+.pill.waiting .label {
+  color: var(--color-ash);
+}
+.pill.resolved .label {
+  color: var(--color-fog);
+}
+.pill.open:not(.bare) {
+  background: var(--accent-wash);
+  box-shadow: inset 0 0 0 1px rgba(147, 130, 255, 0.18);
+}

@@ -1,0 +1,18 @@
+.spark {
+  display: block;
+  overflow: visible;
+}
+
+.line {
+  fill: none;
+  stroke: var(--color-lavender-accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dot {
+  fill: var(--color-lilac-white);
+  stroke: var(--color-midnight-surface);
+  stroke-width: 2;
+}

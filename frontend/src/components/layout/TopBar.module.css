@@ -1,0 +1,121 @@
+.wrap {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  padding: var(--spacing-16) var(--gutter) 0;
+}
+
+.wrap::before {
+  /* Fade the canvas under the pill so scrolled content doesn't collide with it. */
+  content: '';
+  position: absolute;
+  inset: 0 0 -16px;
+  background: linear-gradient(180deg, var(--color-void-canvas) 55%, rgba(3, 0, 20, 0));
+  pointer-events: none;
+}
+
+.pill {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-12);
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  padding: 6px 6px 6px 20px;
+  border-radius: var(--radius-navpill);
+  background: rgba(6, 3, 23, 0.86);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-lg), inset 0 0 0 1px var(--line);
+}
+
+.menu {
+  display: none;
+  padding: 6px;
+  margin-left: -8px;
+  border-radius: var(--radius-buttons);
+  color: var(--color-ash);
+}
+.menu:hover {
+  color: var(--color-lilac-white);
+  background: var(--hover-wash);
+}
+
+.title {
+  font-size: var(--text-ui-lg);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+
+.search {
+  flex: 1;
+  max-width: 420px;
+  margin-left: auto;
+}
+
+.search input {
+  height: 36px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  margin-left: auto;
+}
+
+.search + .actions {
+  margin-left: 0;
+}
+
+.iconButton {
+  position: relative;
+  display: inline-flex;
+  padding: 9px;
+  border-radius: 50%;
+  color: var(--color-fog);
+}
+.iconButton:hover {
+  color: var(--color-lilac-white);
+  background: var(--hover-wash);
+}
+
+.dot {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-lavender-accent);
+  box-shadow: 0 0 0 2px var(--color-midnight-surface);
+}
+
+@media (max-width: 1023px) {
+  .menu {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 720px) {
+  .pill {
+    flex-wrap: wrap;
+    border-radius: var(--radius-cards);
+    padding: 8px 8px 8px 14px;
+  }
+
+  .search {
+    order: 3;
+    flex-basis: 100%;
+    max-width: none;
+    margin: 0;
+  }
+
+  .actions {
+    margin-left: auto;
+  }
+
+  .actions .cta {
+    padding: 8px 12px;
+  }
+}

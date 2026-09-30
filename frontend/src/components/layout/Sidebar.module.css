@@ -1,0 +1,225 @@
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 40;
+  width: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-midnight-surface);
+  box-shadow: inset -1px 0 0 var(--line-subtle), var(--shadow-lg);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-12);
+  height: 72px;
+  padding: 0 var(--spacing-20);
+}
+
+.brandName {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: -0.2px;
+}
+
+.close {
+  display: none;
+  margin-left: auto;
+  padding: 6px;
+  border-radius: var(--radius-buttons);
+  color: var(--color-fog);
+}
+.close:hover {
+  color: var(--color-lilac-white);
+  background: var(--hover-wash);
+}
+
+.nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-4) var(--spacing-12) var(--spacing-16);
+}
+
+.group + .group {
+  margin-top: var(--spacing-20);
+}
+
+.groupLabel {
+  padding: 0 var(--spacing-8) var(--spacing-8);
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-dusk);
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-12);
+  height: 34px;
+  padding: 0 var(--spacing-8);
+  border-radius: var(--radius-buttons);
+  font-size: var(--text-body-sm);
+  color: var(--color-ash);
+  transition: color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out);
+}
+
+.item:not(.static):hover {
+  color: var(--color-lilac-white);
+  background: var(--hover-wash);
+}
+
+.item svg {
+  flex-shrink: 0;
+  color: var(--color-fog);
+}
+
+.itemLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active {
+  color: var(--color-lilac-white);
+  background: var(--color-deep-indigo);
+  box-shadow: var(--shadow-md);
+}
+
+/* The selected queue view is a filter inside Overview, so it reads one step quieter. */
+.activeView {
+  color: var(--color-lilac-white);
+}
+
+.active svg,
+.activeView svg {
+  color: var(--color-lavender-accent);
+}
+
+.active::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-lavender-accent);
+}
+
+.count {
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.activeView .count {
+  color: var(--color-lavender-accent);
+}
+
+.teamDot {
+  width: 16px;
+  display: inline-flex;
+  justify-content: center;
+}
+.teamDot::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--color-dusk);
+}
+
+.profile {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-12);
+  margin: var(--spacing-12);
+  padding: var(--spacing-12);
+  border-radius: var(--radius-cards);
+  background: rgba(244, 240, 255, 0.02);
+  box-shadow: var(--shadow-lg), var(--shadow-rim);
+}
+
+.profileText {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+
+.profileName {
+  font-size: var(--text-ui);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profileMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+  white-space: nowrap;
+}
+
+.online {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-lavender-accent);
+}
+
+.iconButton {
+  padding: 6px;
+  border-radius: var(--radius-buttons);
+  color: var(--color-fog);
+}
+.iconButton:hover {
+  color: var(--color-lilac-white);
+  background: var(--hover-wash);
+}
+
+.scrim {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform var(--duration) var(--ease-out);
+    visibility: hidden;
+  }
+
+  .open {
+    transform: none;
+    visibility: visible;
+  }
+
+  .close {
+    display: inline-flex;
+  }
+
+  .scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background: rgba(3, 0, 20, 0.7);
+    backdrop-filter: blur(2px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration) var(--ease-out);
+  }
+
+  .scrimOpen {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
