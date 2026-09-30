@@ -147,6 +147,10 @@ export function TicketPage({ user }: { user: CurrentUser }) {
 
       {can('ticket:assign') && (
         <form
+          // Remount once the option lists arrive (and after each save): an
+          // uncontrolled <select> ignores a defaultValue whose option didn't
+          // exist yet, which would submit "None" and clear the real value.
+          key={`assign-${t.updatedAt}-${!!teams.data}-${!!users.data}`}
           onSubmit={(e) => {
             e.preventDefault();
             const f = new FormData(e.currentTarget);
@@ -182,6 +186,7 @@ export function TicketPage({ user }: { user: CurrentUser }) {
 
       {can('ticket:update') && (
         <form
+          key={`edit-${t.updatedAt}-${!!categories.data}`}
           onSubmit={(e) => {
             e.preventDefault();
             const f = new FormData(e.currentTarget);
