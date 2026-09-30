@@ -1,4 +1,10 @@
-import { CHANNELS, type Channel } from '@tms/shared';
+import {
+  CHANNELS,
+  type Channel,
+  HANDLING_LABELS,
+  TICKET_HANDLING,
+  type TicketHandling,
+} from '@tms/shared';
 import { useMemo, useState } from 'react';
 import { channelLabels, minutesSince } from '../../data/adapters';
 import type { Ticket } from '../../data/types';
@@ -9,12 +15,19 @@ import {
   Card,
   PriorityGlyph,
   Select,
+  SlaIndicator,
   StatusPill,
   Tabs,
   type TabItem,
 } from '../../components/ui';
+import { AiMark } from '../ai/AiParts';
 import { byUrgency, inTab, type StatusTab, statusTabs } from './logic';
 import styles from './TicketTable.module.css';
+
+const HANDLING_OPTIONS = [
+  { value: '', label: 'Anyone handling' },
+  ...TICKET_HANDLING.map((h) => ({ value: h, label: HANDLING_LABELS[h] })),
+];
 
 const CHANNEL_OPTIONS = [
   { value: '', label: 'All channels' },
@@ -31,6 +44,9 @@ interface TicketTableProps {
   search: string;
   channel: Channel | '';
   onChannel: (channel: Channel | '') => void;
+  /** AI-handled, human-handled or handed-over tickets only. */
+  handling: TicketHandling | '';
+  onHandling: (handling: TicketHandling | '') => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onClearFilters: () => void;
@@ -45,6 +61,8 @@ export function TicketTable({
   search,
   channel,
   onChannel,
+  handling,
+  onHandling,
   selectedId,
   onSelect,
   onClearFilters,
@@ -77,10 +95,20 @@ export function TicketTable({
               </>
             )}
             {channel && ` · ${channelLabels[channel]} only`}
+            {handling && ` · ${HANDLING_LABELS[handling]}`}
             {total > tickets.length && ` · showing ${tickets.length} of ${total}`}
           </p>
         </div>
         <div className={styles.controls}>
+          <Select
+            id="queue-handling"
+            label="Handled by"
+            hideLabel
+            className={styles.channelSelect}
+            value={handling}
+            options={HANDLING_OPTIONS}
+            onChange={(e) => onHandling(e.target.value as TicketHandling | '')}
+          />
           <Select
             id="queue-channel"
             label="Channel"
@@ -192,6 +220,15 @@ export function TicketTable({
                   </td>
                   <td className={styles.colStatus}>
                     <StatusPill status={t.status.glyph} label={t.status.name} />
+                    {t.sla && t.sla.raw !== 'met' && (
+                      <span className={styles.sla} data-sla={t.sla.raw}>
+                        <SlaIndicator
+                          minutes={t.sla.minutes}
+                          state={t.sla.state}
+                          label={t.sla.label}
+                        />
+                      </span>
+                    )}
                   </td>
                   <td className={styles.colPriority}>
                     <PriorityGlyph priority={t.priority} showLabel />
@@ -204,6 +241,19 @@ export function TicketTable({
                       </span>
                     ) : (
                       <span className={styles.unassigned}>Unassigned</span>
+                    )}
+                    {t.handling === 'ai' && (
+                      <span className={styles.handling} data-handling="ai">
+                        <AiMark label="AI" />
+                      </span>
+                    )}
+                    {t.handling === 'handed_over' && (
+                      <span
+                        className={cx(styles.handling, styles.handedOver)}
+                        data-handling="handed_over"
+                      >
+                        Handed over
+                      </span>
                     )}
                   </td>
                   <td className={cx(styles.colSla, styles.updated)}>{channelLabels[t.channel]}</td>

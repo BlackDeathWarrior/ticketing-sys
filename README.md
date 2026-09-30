@@ -8,25 +8,25 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 
 ## Status
 
-| Phase | Scope                                                                                                                      | State   |
-| ----- | -------------------------------------------------------------------------------------------------------------------------- | ------- |
-| 0     | Monorepo, Docker Compose infra, API/worker skeletons, CI                                                                   | Done    |
-| 1     | Auth + RBAC, customers, tickets + workflow, audit log, outbox events, barebones UI                                         | Done    |
-| 2     | Channel gateway + orchestrator, web chat widget, email (IMAP/SMTP), agent replies, live updates                            | Done    |
-| —     | Orbit Desk console wired to the API (ADR 0005), reports overview (ADR 0006), sample data + Playwright E2E suite (ADR 0007) | Done    |
-| 3     | LLM platform on LiteLLM, Settings for AI and channel keys, cheapest-first routing with per-provider caps (ADR 0008, 0009)  | Done    |
-| 4     | Knowledge base: uploads, URL and FAQ sources, review, pgvector hybrid search with citations (ADR 0010)                     | Done    |
-| 5     | AI agent: answers chat, drafts email, hands over; confidence policy, classifier, AI marks in Orbit Desk (ADR 0011)         | Done    |
-| 5b    | Help center: public request form (channel `web_form`) with attachments, email acknowledgement and replies (ADR 0012)       | Done    |
-| 6     | Tools over MCP (Demo Store sample server), risk tiers, supervisor approvals, AI follow-ups (ADR 0013)                      | Done    |
-| 7     | Handover, take-over, routing, SLA, notifications, AI-vs-human views                                                        | Next    |
-| 8     | WhatsApp (Meta Cloud API, ported from whatsapp-crm; see `docs/research/whatsapp-crm.md`)                                   | Planned |
-| 9     | Voice agent on Sarvam STT/TTS, in the browser (see `docs/research/voice-sarvam.md`)                                        | Planned |
-| 10    | Reporting (AI vs human, SLA, CSAT), admin settings, customer portal (sign-in link, my tickets, reply, rate)                | Planned |
-| 11    | Hardening for the demo                                                                                                     | Planned |
-| 12    | AWS live demo                                                                                                              | Planned |
+| Phase | Scope                                                                                                                                                 | State   |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 0     | Monorepo, Docker Compose infra, API/worker skeletons, CI                                                                                              | Done    |
+| 1     | Auth + RBAC, customers, tickets + workflow, audit log, outbox events, barebones UI                                                                    | Done    |
+| 2     | Channel gateway + orchestrator, web chat widget, email (IMAP/SMTP), agent replies, live updates                                                       | Done    |
+| —     | Orbit Desk console wired to the API (ADR 0005), reports overview (ADR 0006), sample data + Playwright E2E suite (ADR 0007)                            | Done    |
+| 3     | LLM platform on LiteLLM, Settings for AI and channel keys, cheapest-first routing with per-provider caps (ADR 0008, 0009)                             | Done    |
+| 4     | Knowledge base: uploads, URL and FAQ sources, review, pgvector hybrid search with citations (ADR 0010)                                                | Done    |
+| 5     | AI agent: answers chat, drafts email, hands over; confidence policy, classifier, AI marks in Orbit Desk (ADR 0011)                                    | Done    |
+| 5b    | Help center: public request form (channel `web_form`) with attachments, email acknowledgement and replies (ADR 0012)                                  | Done    |
+| 6     | Tools over MCP (Demo Store sample server), risk tiers, supervisor approvals, AI follow-ups (ADR 0013)                                                 | Done    |
+| 7     | Handover with context packs, take-over/hand-back, routing (rules, skills, presence), SLA timers, notifications, copilot, AI-vs-human views (ADR 0014) | Done    |
+| 8     | WhatsApp (Meta Cloud API, ported from whatsapp-crm; see `docs/research/whatsapp-crm.md`)                                                              | Next    |
+| 9     | Voice agent on Sarvam STT/TTS, in the browser (see `docs/research/voice-sarvam.md`)                                                                   | Planned |
+| 10    | Reporting (AI vs human, SLA, CSAT), admin settings, customer portal (sign-in link, my tickets, reply, rate)                                           | Planned |
+| 11    | Hardening for the demo                                                                                                                                | Planned |
+| 12    | AWS live demo                                                                                                                                         | Planned |
 
-Not built yet, although the UI or schema hints at them: SLA and CSAT (Orbit Desk hides them until Phase 7), explicit take-over/hand-back and routing (Phase 7). The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
+Not built yet, although the UI or schema hints at them: CSAT (Phase 10), WhatsApp (Phase 8) and voice (Phase 9). The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
 
 ## Layout
 
@@ -143,6 +143,16 @@ The AI can look up and act on company systems through MCP servers (ADR 0013).
 - **Demo:** the sample data registers **Demo Store systems**, a fictional order and payment server inside `fake-providers`. Try "Where is my order DS-20517?" or "I was charged twice for order DS-20533" in the widget.
 
 See [`docs/runbooks/phase-6-demo.md`](docs/runbooks/phase-6-demo.md).
+
+## Handover, routing and SLA
+
+- **Handover:** when the AI (or an agent) hands over, the ticket is routed. Ordered rules pick a team; an online agent with the skill and room under their capacity is chosen. The person gets a notification, and the drawer shows a **context pack**: a summary, what was done and the next step.
+- **Taking over:** agents take a conversation over from the AI or the queue, and only one person can. They can hand it back to the AI, pass it to another team, or escalate it.
+- **SLA:** first-response and resolution targets per priority and customer type, counted in business hours (time zone, holidays) and paused while waiting on the customer. At 80% the ticket is at risk; at 100% it is breached. The assignee and team leads are told, and breaches are also emailed.
+- **AI vs human:** the queue filters by who is handling each ticket and shows SLA countdowns. The drawer can show the conversation as **AI | People** lanes, and history filters by who acted.
+- **Where to set it up:** Settings → Routing and Settings → SLA.
+
+See [`docs/runbooks/phase-7-demo.md`](docs/runbooks/phase-7-demo.md).
 
 ## Knowledge base
 

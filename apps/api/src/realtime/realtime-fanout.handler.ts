@@ -25,6 +25,11 @@ export class RealtimeFanoutHandler implements DomainEventHandler {
       type.startsWith('kb.') ||
       type.startsWith('ai.') ||
       type.startsWith('approval.') ||
+      type.startsWith('handover.') ||
+      type.startsWith('sla.') ||
+      type === 'ticket.routed' ||
+      type === 'presence.changed' ||
+      type === 'notification.created' ||
       type === 'tool.called'
     );
   }
@@ -44,6 +49,12 @@ export class RealtimeFanoutHandler implements DomainEventHandler {
       messageId: p.messageId,
       documentId: event.aggregateType === 'kb' ? (p.documentId ?? undefined) : undefined,
     };
+    // A notification is for one person only.
+    if (event.type === 'notification.created') {
+      const userId = (event.payload as { userId?: string }).userId;
+      if (userId) this.emitter.of(AGENT_NAMESPACE).to(`user:${userId}`).emit('event', payload);
+      return;
+    }
     this.emitter.of(AGENT_NAMESPACE).to(AGENTS_ROOM).emit('event', payload);
   }
 }

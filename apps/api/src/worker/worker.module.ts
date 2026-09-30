@@ -22,6 +22,14 @@ import { SettingsChangedHandler } from '../settings/settings-changed.handler';
 import { SettingsModule } from '../settings/settings.module';
 import { StorageModule } from '../storage/storage.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { HandoverHandler, RoutingHandler } from '../handover/handover.handler';
+import { HandoverModule } from '../handover/handover.module';
+import { NotificationMailer, NotificationsHandler } from '../notifications/notifications.handler';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { RoutingModule } from '../routing/routing.module';
+import { SlaModule } from '../sla/sla.module';
+import { SlaHandler, SlaSweepWorker } from '../sla/sla.worker';
+import { UsersModule } from '../users/users.module';
 import { ApprovalExpiryWorker, ApprovalsHandler } from '../tools/approvals.worker';
 import { ToolsModule } from '../tools/tools.module';
 import { WebFormAckHandler } from '../web-form/web-form-ack.handler';
@@ -53,6 +61,11 @@ const env = loadEnv();
     AiModule,
     WebFormModule,
     ToolsModule,
+    SlaModule,
+    RoutingModule,
+    NotificationsModule,
+    HandoverModule,
+    UsersModule,
   ],
   providers: [
     emitterProvider,
@@ -75,6 +88,12 @@ const env = loadEnv();
     AiDispatchHandler,
     ApprovalExpiryWorker,
     ApprovalsHandler,
+    SlaSweepWorker,
+    SlaHandler,
+    NotificationsHandler,
+    NotificationMailer,
+    HandoverHandler,
+    RoutingHandler,
     {
       provide: DOMAIN_EVENT_HANDLERS,
       inject: [
@@ -85,6 +104,11 @@ const env = loadEnv();
         AiDispatchHandler,
         WebFormAckHandler,
         ApprovalsHandler,
+        SlaHandler,
+        NotificationsHandler,
+        NotificationMailer,
+        HandoverHandler,
+        RoutingHandler,
       ],
       useFactory: (...handlers: unknown[]) => handlers,
     },

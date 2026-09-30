@@ -7,10 +7,10 @@ const FAKE_LLM_URL = process.env.FAKE_LLM_URL ?? 'http://fake-providers:4010/v1'
 
 async function openSettings(page: import('@playwright/test').Page) {
   await page.getByRole('link', { name: 'Settings' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'AI and channel keys' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Workspace settings' })).toBeVisible();
 }
 
-test.describe('Settings → AI and channel keys', () => {
+test.describe('Settings: AI, channels and keys', () => {
   test('shows the demo provider with a masked key and tests it', async ({ page }) => {
     await signInOrbit(page);
     await openSettings(page);
@@ -102,9 +102,7 @@ test.describe('Settings → AI and channel keys', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await signInOrbit(page);
     await page.goto(`${env.orbit}/#/settings/models`);
-    await expect(
-      page.getByRole('heading', { level: 1, name: 'AI and channel keys' }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Workspace settings' })).toBeVisible();
     for (const tab of ['Models & roles', 'Channels', 'Usage', 'AI providers']) {
       await page.getByRole('tab', { name: tab }).click();
       await page.waitForTimeout(300);

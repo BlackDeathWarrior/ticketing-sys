@@ -219,11 +219,14 @@ export class ConversationsService {
 
   /** Conversations of a ticket with their messages and author names, oldest first. */
   async listForTicket(ticketId: string) {
-    const convs = await this.db
-      .select()
+    const convRows = await this.db
+      .select({ conv: conversations, controllerName: users.name })
       .from(conversations)
+      .leftJoin(users, eq(users.id, conversations.controllerUserId))
       .where(eq(conversations.ticketId, ticketId))
       .orderBy(asc(conversations.createdAt));
+    // Who is answering, by name, so everyone (not only people who list users) sees it.
+    const convs = convRows.map((r) => ({ ...r.conv, controllerName: r.controllerName }));
     if (!convs.length) return [];
     const rows = await this.db
       .select({ message: messages, authorName: users.name })

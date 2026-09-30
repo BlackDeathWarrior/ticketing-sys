@@ -1,4 +1,4 @@
-import type { Channel, CurrentUser, OverviewReport, Permission } from '@tms/shared';
+import type { Channel, CurrentUser, OverviewReport, Permission, TicketHandling } from '@tms/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, hasSession, logout, qs } from './api/client';
 import { closeAgentSocket, useAgentEvents } from './api/realtime';
@@ -90,6 +90,7 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
   const [view, setView] = useState<ViewId>('all');
   const [search, setSearch] = useState('');
   const [channel, setChannel] = useState<Channel | ''>('');
+  const [handling, setHandling] = useState<TicketHandling | ''>('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -117,7 +118,12 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
     ready ? `/tickets${qs({ ...viewById(id).query(openStatuses), ...extra })}` : null;
 
   const queue = useGet<{ items: ApiTicket[]; total: number }>(
-    pathFor(view, { q, channel: channel || undefined, limit: PAGE }),
+    pathFor(view, {
+      q,
+      channel: channel || undefined,
+      handling: handling || undefined,
+      limit: PAGE,
+    }),
   );
   const open = useGet<{ items: ApiTicket[]; total: number }>(
     ready ? `/tickets${qs({ status: openStatuses.join(','), limit: PAGE })}` : null,
@@ -133,6 +139,7 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
   const countMine = useGet<{ total: number }>(pathFor('mine', { limit: 1 }));
   const countUnassigned = useGet<{ total: number }>(pathFor('unassigned', { limit: 1 }));
   const countUrgent = useGet<{ total: number }>(pathFor('urgent', { limit: 1 }));
+  const countSla = useGet<{ total: number }>(pathFor('sla', { limit: 1 }));
 
   const refreshers = [
     queue,
@@ -143,6 +150,7 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
     countMine,
     countUnassigned,
     countUrgent,
+    countSla,
   ];
   const refresh = () => refreshers.forEach((r) => void r.reload());
 
@@ -197,6 +205,7 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
             mine: countMine.data?.total,
             unassigned: countUnassigned.data?.total,
             urgent: countUrgent.data?.total,
+            sla: countSla.data?.total,
           }}
           teams={teams.data ?? []}
           pendingApprovals={pendingApprovals}
@@ -214,6 +223,7 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
             }}
             onOpenMenu={() => setMenuOpen(true)}
             onNewTicket={() => setComposerOpen(true)}
+            onOpenTicket={setSelectedId}
           />
           <main id="main" className={styles.content} tabIndex={-1}>
             {route === 'elements' ? (
@@ -238,12 +248,15 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
                 search={search}
                 channel={channel}
                 onChannel={setChannel}
+                handling={handling}
+                onHandling={setHandling}
                 selectedId={selectedId}
                 onOpenTicket={setSelectedId}
                 onShowUrgent={() => selectView('urgent')}
                 onClearFilters={() => {
                   setSearch('');
                   setChannel('');
+                  setHandling('');
                   setView('all');
                 }}
               />

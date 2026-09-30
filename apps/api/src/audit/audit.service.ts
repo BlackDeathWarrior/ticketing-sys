@@ -15,6 +15,7 @@ export interface AuditQuery {
   targetType?: string;
   targetId?: string;
   actorId?: string;
+  actorType?: string;
   action?: string;
   limit: number;
   before?: number;
@@ -43,6 +44,7 @@ export class AuditService {
     if (q.targetType) where.push(eq(auditLog.targetType, q.targetType));
     if (q.targetId) where.push(eq(auditLog.targetId, q.targetId));
     if (q.actorId) where.push(eq(auditLog.actorId, q.actorId));
+    if (q.actorType) where.push(eq(auditLog.actorType, q.actorType));
     if (q.action) where.push(eq(auditLog.action, q.action));
     if (q.before) where.push(lt(auditLog.id, q.before));
     return this.db

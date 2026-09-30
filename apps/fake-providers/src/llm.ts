@@ -3,8 +3,12 @@ import {
   classifierReply,
   isAgentRequest,
   isClassifierRequest,
+  isCopilotRequest,
+  isHandoverRequest,
   isSummaryRequest,
   summaryReply,
+  copilotReply,
+  handoverReply,
 } from './agent-script';
 
 /**
@@ -55,6 +59,8 @@ export function scriptedReply(req: ChatRequest): ScriptedReply {
   if (isAgentRequest(req)) return agentReply(req);
   if (isClassifierRequest(req)) return classifierReply(req);
   if (isSummaryRequest(req)) return summaryReply(req);
+  if (isHandoverRequest(req)) return handoverReply(req);
+  if (isCopilotRequest(req)) return copilotReply(req);
   const lastUser = textOf([...req.messages].reverse().find((m) => m.role === 'user')?.content);
   for (const rule of CHAT_RULES) if (rule.when(lastUser, req)) return rule.reply(lastUser, req);
   const snippet = lastUser.replace(/\s+/g, ' ').trim().slice(0, 80);

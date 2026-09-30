@@ -124,7 +124,10 @@ export class InboundService {
           controller: aiTakesIt ? 'ai' : 'none',
           metadata: conversationMetadata(env),
         });
-        if (aiTakesIt) await this.tickets.moveIfAllowed(tx, ctx, ticket.id, 'ai_handling');
+        if (aiTakesIt) {
+          await this.tickets.moveIfAllowed(tx, ctx, ticket.id, 'ai_handling');
+          await this.tickets.setHandling(tx, ticket.id, 'ai');
+        }
       }
 
       const message = await this.conversations.addMessage(tx, {

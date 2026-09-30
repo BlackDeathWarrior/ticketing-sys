@@ -35,6 +35,14 @@ export const PERMISSIONS = [
   'settings:ai',
   /** Register MCP servers, enable tools, set risk tiers, run test calls. Admin only. */
   'tool:manage',
+  /** Take a conversation over from the AI or the queue, and hand it back. */
+  'conversation:takeover',
+  /** Routing rules, agent skills and capacities. */
+  'settings:routing',
+  /** SLA policies, business hours and holidays. */
+  'settings:sla',
+  /** Raise a ticket's priority and send it to a team lead. */
+  'ticket:escalate',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -44,6 +52,7 @@ export function isPermission(value: string): value is Permission {
 }
 
 const AGENT: Permission[] = [
+  'conversation:takeover',
   'kb:read',
   'message:approve_draft',
   'ticket:read',
@@ -56,7 +65,13 @@ const AGENT: Permission[] = [
   'customer:write',
 ];
 
-const TEAM_LEAD: Permission[] = [...AGENT, 'ticket:assign', 'user:read', 'report:read'];
+const TEAM_LEAD: Permission[] = [
+  ...AGENT,
+  'ticket:assign',
+  'ticket:escalate',
+  'user:read',
+  'report:read',
+];
 
 const SUPERVISOR: Permission[] = [
   ...TEAM_LEAD,

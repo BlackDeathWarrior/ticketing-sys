@@ -22,6 +22,7 @@ import {
   formatTicketNumber,
   type ListTicketsQuery,
   parseTicketNumber,
+  type TicketHandling,
   type TransitionTicketInput,
   UNASSIGNED_STATUSES,
   type UpdateTicketInput,
@@ -82,6 +83,9 @@ export class TicketsService {
         or(eq(tickets.categoryId, q.categoryId), eq(tickets.subcategoryId, q.categoryId))!,
       );
     if (q.tag) where.push(arrayContains(tickets.tags, [q.tag]));
+    if (q.handling) where.push(inArray(tickets.handling, q.handling.split(',')));
+    if (q.sla === 'breached') where.push(eq(tickets.slaState, 'breached'));
+    else if (q.sla === 'at_risk') where.push(inArray(tickets.slaState, ['at_risk', 'breached']));
     if (q.assigneeId === 'none') where.push(isNull(tickets.assigneeId));
     else if (q.assigneeId === 'me') where.push(eq(tickets.assigneeId, ctx.user!.id));
     else if (q.assigneeId) where.push(eq(tickets.assigneeId, q.assigneeId));
@@ -205,7 +209,13 @@ export class TicketsService {
    * New or with the AI moves it to Human Assigned when the workflow allows.
    */
   async assign(ctx: RequestCtx, id: string, input: AssignTicketInput) {
-    await this.db.transaction(async (tx) => {
+    await this.db.transaction((tx) => this.assignInTx(tx, ctx, id, input));
+    return this.get(id);
+  }
+
+  /** `assign` inside the caller's transaction (take-over, handover). */
+  async assignInTx(tx: DbOrTx, ctx: RequestCtx, id: string, input: AssignTicketInput) {
+    {
       const current = await this.lock(tx, id);
       if (input.assigneeId) {
         const [u] = await tx.select().from(users).where(eq(users.id, input.assigneeId));
@@ -241,6 +251,34 @@ export class TicketsService {
         if (check.ok)
           await this.applyTransition(tx, ctx, { ...current, ...patch }, 'human_assigned');
       }
+    }
+  }
+
+  /**
+   * A team lead escalates: priority goes up one step (to urgent at most) and
+   * the team's leads are told (`ticket.escalated`).
+   */
+  async escalate(ctx: RequestCtx, id: string, reason: string) {
+    await this.db.transaction(async (tx) => {
+      const current = await this.lock(tx, id);
+      const order = ['low', 'normal', 'high', 'urgent'];
+      const next = order[Math.min(order.indexOf(current.priority) + 1, order.length - 1)]!;
+      if (next !== current.priority) {
+        await tx.update(tickets).set({ priority: next }).where(eq(tickets.id, id));
+      }
+      const data = { reason, from: current.priority, to: next };
+      await this.audit.record(tx, ctx, {
+        action: 'ticket.escalated',
+        targetType: 'ticket',
+        targetId: id,
+        data,
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'ticket.escalated',
+        aggregateType: 'ticket',
+        aggregateId: id,
+        payload: data,
+      });
     });
     return this.get(id);
   }
@@ -292,7 +330,7 @@ export class TicketsService {
       .orderBy(asc(internalNotes.createdAt));
   }
 
-  async history(id: string) {
+  async history(id: string, actorType?: string) {
     const ticket = await this.get(id);
     return this.db
       .select({
@@ -306,7 +344,13 @@ export class TicketsService {
       })
       .from(auditLog)
       .leftJoin(users, sql`${users.id}::text = ${auditLog.actorId}`)
-      .where(and(eq(auditLog.targetType, 'ticket'), eq(auditLog.targetId, ticket.id)))
+      .where(
+        and(
+          eq(auditLog.targetType, 'ticket'),
+          eq(auditLog.targetId, ticket.id),
+          actorType ? eq(auditLog.actorType, actorType) : undefined,
+        ),
+      )
       .orderBy(asc(auditLog.id));
   }
 
@@ -347,6 +391,20 @@ export class TicketsService {
     if (current.status === to || !(await this.workflow.check(current.status, to)).ok) return false;
     await this.applyTransition(tx, ctx, current, to, resolution);
     return true;
+  }
+
+  /**
+   * Moves to `to`, stepping through `via` when the workflow has no direct
+   * transition (e.g. AI Handling → Human Assigned → In Progress on take-over).
+   */
+  async moveVia(tx: DbOrTx, ctx: RequestCtx, ticketId: string, to: string, via: string) {
+    const current = await this.lock(tx, ticketId);
+    if (current.status === to) return true;
+    if (await this.moveIfAllowed(tx, ctx, ticketId, to)) return true;
+    if (!(await this.workflow.check(current.status, via)).ok) return false;
+    if (!(await this.workflow.check(via, to)).ok) return false;
+    await this.moveIfAllowed(tx, ctx, ticketId, via);
+    return this.moveIfAllowed(tx, ctx, ticketId, to);
   }
 
   /** Stores what the classifier found and applies the parts it may change. */
@@ -401,6 +459,23 @@ export class TicketsService {
         await this.applyTransition(tx, ctx, ticket, 'in_progress');
       }
     }
+  }
+
+  /**
+   * Who is answering (ADR 0014). Derived state, written in the same
+   * transaction as the controller change that caused it (which is audited).
+   */
+  async setHandling(tx: DbOrTx, id: string, handling: TicketHandling) {
+    await tx.update(tickets).set({ handling }).where(eq(tickets.id, id));
+  }
+
+  /** The SLA summary the queue shows; written by the SLA service with the timers. */
+  async setSlaSummary(
+    tx: DbOrTx,
+    id: string,
+    s: { slaPolicyId: string | null; slaState: string | null; slaDueAt: Date | null },
+  ) {
+    await tx.update(tickets).set(s).where(eq(tickets.id, id));
   }
 
   /** Locks and returns the ticket row, for callers composing their own transaction. */

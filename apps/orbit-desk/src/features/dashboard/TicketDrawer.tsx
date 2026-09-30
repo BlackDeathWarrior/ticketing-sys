@@ -1,4 +1,4 @@
-import { PRIORITIES } from '@tms/shared';
+import { type CopilotSuggestion, PRIORITIES } from '@tms/shared';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, downloadFile } from '../../api/client';
 import {
@@ -26,6 +26,9 @@ import {
 } from '../ai/AiParts';
 import { aiMetaText } from '../ai/logic';
 import { KbSearch } from '../kb/KbSearch';
+import { ControlBar } from '../handover/ControlBar';
+import { laneRows } from '../handover/logic';
+import { HandoverContext, History, SlaPanel } from '../handover/Panels';
 import { ToolCalls } from '../tools/ToolCalls';
 import kbStyles from '../kb/Kb.module.css';
 import { useGet } from '../../lib/useGet';
@@ -197,8 +200,35 @@ function DrawerContent({
   );
   const target = replyTarget(thread);
   const canReply = can('message:send') && (target !== null || !!ticket.customer.email);
-  const [mode, setMode] = useState<'reply' | 'note'>(canReply ? 'reply' : 'note');
+  const [mode, setModeState] = useState<'reply' | 'note'>(canReply ? 'reply' : 'note');
+  const [modeChosen, setModeChosen] = useState(false);
+  const setMode = (m: 'reply' | 'note') => {
+    setModeChosen(true);
+    setModeState(m);
+  };
+  // Conversations can arrive after the ticket: switch to replying once that's possible,
+  // unless the agent already picked a mode.
+  useEffect(() => {
+    if (canReply && !modeChosen) setModeState('reply');
+  }, [canReply, modeChosen]);
   const [draft, setDraft] = useState('');
+  const [layout, setLayout] = useState<'timeline' | 'lanes'>('timeline');
+  const [suggesting, setSuggesting] = useState(false);
+
+  /** Copilot: fills the composer with a suggested reply to edit. */
+  const suggest = async () => {
+    setSuggesting(true);
+    setError(undefined);
+    try {
+      const r = await api<CopilotSuggestion>('POST', `/tickets/${ticket.id}/copilot`, {});
+      setMode('reply');
+      setDraft(r.suggestion);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSuggesting(false);
+    }
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const users = useGet<Array<ApiRef & { isActive: boolean }>>(
@@ -243,7 +273,6 @@ function DrawerContent({
         <div className={styles.topline}>
           <span className={styles.id}>{ticket.reference}</span>
           <StatusPill status={ticket.status.glyph} label={ticket.status.name} />
-          {thread.aiControlled && <AiMark label="AI is replying" />}
           <span className={styles.spacer} />
           <Button variant="ghost" size="sm" icon="x" iconOnly onClick={onClose} autoFocus>
             Close ticket panel
@@ -252,6 +281,7 @@ function DrawerContent({
         <h2 id="drawer-title" className={styles.title}>
           {ticket.subject}
         </h2>
+        <ControlBar ticket={ticket} target={target} onChanged={() => void onChanged()} />
         {ticket.tags.length > 0 && (
           <div className={styles.tags}>
             {ticket.tags.map((tag) => (
@@ -373,55 +403,90 @@ function DrawerContent({
           </dl>
         </section>
 
+        <SlaPanel ticketId={ticket.id} liveTick={liveTick} />
+        <HandoverContext ticketId={ticket.id} liveTick={liveTick} />
+
         <section className={styles.thread} aria-label="Conversation">
-          <h3 className={styles.threadTitle}>Conversation</h3>
+          <div className={styles.threadHead}>
+            <h3 className={styles.threadTitle}>Conversation</h3>
+            {thread.messages.length > 0 && (
+              <Tabs
+                label="Conversation layout"
+                value={layout}
+                onChange={setLayout}
+                items={[
+                  { value: 'timeline' as const, label: 'Timeline' },
+                  { value: 'lanes' as const, label: 'AI | People' },
+                ]}
+              />
+            )}
+          </div>
           {thread.messages.length === 0 ? (
             <p className={styles.hint}>No messages yet.</p>
           ) : (
-            <ol className={styles.messages}>
-              {thread.messages.map((m) => (
-                <li
-                  key={m.id}
-                  className={cx(
-                    styles.message,
-                    styles[m.kind],
-                    m.byAi && m.delivery !== 'draft' && aiClass,
-                  )}
-                  data-kind={m.kind}
-                  data-ai={m.byAi || undefined}
-                >
-                  <Avatar
-                    initials={m.initials}
-                    size={32}
-                    highlight={m.authorId === user.id || m.byAi}
-                  />
-                  <div className={styles.bubble}>
-                    <p className={styles.author}>
-                      <span>{m.author}</span>
-                      {m.byAi && <AiMark />}
-                      {m.kind === 'note' && <span className={styles.noteLabel}>Internal note</span>}
-                      {m.delivery && m.delivery !== 'sent' && m.delivery !== 'draft' && (
-                        <span className={styles.noteLabel}>{m.delivery}</span>
-                      )}
-                      <time className={styles.time} dateTime={m.at.toISOString()}>
-                        {relativeTime(minutesSince(m.at))}
-                      </time>
-                    </p>
-                    <p className={styles.body}>{withMentions(m.body)}</p>
-                    {m.attachments.length > 0 && <AttachmentList files={m.attachments} />}
-                    {m.delivery === 'draft' ? (
-                      <DraftReview
-                        messageId={m.id}
-                        body={m.body}
-                        confidence={m.ai?.confidence ?? null}
-                        onChanged={onChanged}
-                      />
-                    ) : (
-                      m.ai && <p className={aiMetaClass}>{aiMetaText(m.ai)}</p>
-                    )}
-                  </div>
+            <ol className={cx(styles.messages, layout === 'lanes' && styles.lanes)}>
+              {layout === 'lanes' && (
+                <li className={styles.laneHeads} aria-hidden="true">
+                  <span>AI</span>
+                  <span>People</span>
                 </li>
-              ))}
+              )}
+              {laneRows(thread.messages).map((row, i) => {
+                if (row.type === 'switch') {
+                  return layout === 'lanes' ? (
+                    <li key={`switch-${i}`} className={styles.laneSwitch} data-switch={row.to}>
+                      {row.to === 'human' ? 'A person took over' : 'Back with the AI'}
+                    </li>
+                  ) : null;
+                }
+                const m = row.message;
+                return (
+                  <li
+                    key={m.id}
+                    className={cx(
+                      styles.message,
+                      styles[m.kind],
+                      m.byAi && m.delivery !== 'draft' && aiClass,
+                    )}
+                    data-kind={m.kind}
+                    data-lane={row.lane}
+                    data-ai={m.byAi || undefined}
+                  >
+                    <Avatar
+                      initials={m.initials}
+                      size={32}
+                      highlight={m.authorId === user.id || m.byAi}
+                    />
+                    <div className={styles.bubble}>
+                      <p className={styles.author}>
+                        <span>{m.author}</span>
+                        {m.byAi && <AiMark />}
+                        {m.kind === 'note' && (
+                          <span className={styles.noteLabel}>Internal note</span>
+                        )}
+                        {m.delivery && m.delivery !== 'sent' && m.delivery !== 'draft' && (
+                          <span className={styles.noteLabel}>{m.delivery}</span>
+                        )}
+                        <time className={styles.time} dateTime={m.at.toISOString()}>
+                          {relativeTime(minutesSince(m.at))}
+                        </time>
+                      </p>
+                      <p className={styles.body}>{withMentions(m.body)}</p>
+                      {m.attachments.length > 0 && <AttachmentList files={m.attachments} />}
+                      {m.delivery === 'draft' ? (
+                        <DraftReview
+                          messageId={m.id}
+                          body={m.body}
+                          confidence={m.ai?.confidence ?? null}
+                          onChanged={onChanged}
+                        />
+                      ) : (
+                        m.ai && <p className={aiMetaClass}>{aiMetaText(m.ai)}</p>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ol>
           )}
         </section>
@@ -429,6 +494,7 @@ function DrawerContent({
         <ToolCalls ticketId={ticket.id} liveTick={liveTick} />
 
         <AiActivity ticketId={ticket.id} liveTick={liveTick} />
+        <History ticketId={ticket.id} liveTick={liveTick} />
 
         {can('kb:read') && (
           <section className={kbStyles.panel} aria-label="Knowledge base">
@@ -488,6 +554,17 @@ function DrawerContent({
           <span className={styles.hint}>
             <Icon name="sparkle" size={14} /> ⌘ Enter to send
           </span>
+          {canReply && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="sparkle"
+              disabled={suggesting}
+              onClick={() => void suggest()}
+            >
+              {suggesting ? 'Suggesting…' : 'Suggest a reply'}
+            </Button>
+          )}
           <Button type="submit" variant="secondary" icon="send" disabled={!draft.trim() || busy}>
             {mode === 'reply' ? 'Send reply' : 'Add note'}
           </Button>

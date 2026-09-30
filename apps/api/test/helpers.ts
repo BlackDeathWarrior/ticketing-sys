@@ -93,3 +93,34 @@ export async function waitFor<T>(
   }
   throw new Error(`Timed out waiting for ${what}${last ? `: ${String(last)}` : ''}`);
 }
+
+/** Creates a team; returns its id. */
+export async function makeTeam(t: TestClient, admin: string, name = uniq('Team')) {
+  const res = await t.call<{ id: string }>('POST', '/teams', { token: admin, body: { name } });
+  if (res.status !== 201) throw new Error(`team: ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body.id;
+}
+
+/** Creates a user with a role (and teams) and signs them in. */
+export async function makeUser(
+  t: TestClient,
+  admin: string,
+  role: string,
+  opts: { name?: string; teamIds?: string[] } = {},
+) {
+  const email = `${uniq(role)}@test.local`;
+  const password = 'Phase7-Passw0rd!';
+  const res = await t.call<{ id: string }>('POST', '/users', {
+    token: admin,
+    body: {
+      email,
+      name: opts.name ?? `User ${uniq()}`,
+      password,
+      roles: [role],
+      teamIds: opts.teamIds ?? [],
+    },
+  });
+  if (res.status !== 201) throw new Error(`user: ${res.status} ${JSON.stringify(res.body)}`);
+  const token = (await t.login(email, password)).accessToken;
+  return { id: res.body.id, email, token, name: opts.name };
+}

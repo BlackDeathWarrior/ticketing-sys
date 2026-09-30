@@ -1,6 +1,109 @@
 # Test report
 
-## Latest: Phase 6, company tools and approvals
+## Latest: Phase 7, handover, routing, SLA and notifications
+
+Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-7-handover-sla`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                          |
+| ------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                            |
+| `pnpm test`                                       | 151 passed (api 69, Orbit Desk 51, fake providers 15, shared 11, help center 5) |
+| `pnpm test:int`                                   | 113 passed (12 files)                                                           |
+| `pnpm e2e`                                        | 51 passed; 9 screenshot-only specs skipped as designed                          |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                      |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed                                              |
+
+### What the sample data shows
+
+- **SLA states** after the loader and one sweep: 13 tickets breached (old open ones), 19 met, 14 on track, 7 paused while waiting on the customer.
+- **Handover:** Nina Petrova's request for a person (TMS-46) was handed over by the AI. Routing gave it to Jonah Reyes (online, Orders team, web chat taken in turns), and the context pack was written by the model.
+
+### New tests
+
+| Where                                        | Tests | Covers                                                                                                                                                                     |
+| -------------------------------------------- | ----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/sla/sla.test.ts`               |     6 | Business-time maths: always open; nights, weekends and holidays; add and count agree; Berlin across the October DST change. Policy specificity; routing condition matching |
+| `apps/api/src/routing/routing.test.ts`       |     3 | Least loaded; round robin; skills, exclusions, team queue, offline                                                                                                         |
+| `apps/orbit-desk/.../handover/logic.test.ts` |     3 | Lanes with switch markers, who-is-replying text, SLA timer lines, history labels                                                                                           |
+| `apps/orbit-desk/.../components.test.tsx`    |    +1 | Handled-by filter, SLA countdown and "Handed over" in queue rows                                                                                                           |
+| `apps/api/test/sla.int.test.ts`              |     5 | See below                                                                                                                                                                  |
+| `apps/api/test/handover.int.test.ts`         |     9 | See below                                                                                                                                                                  |
+| `e2e/tests/handover.spec.ts`                 |     6 | See below                                                                                                                                                                  |
+
+`sla.int.test.ts` covers:
+
+- SLA settings are admin-only and validated (unknown time zone, backwards window).
+- Hours and policies are created, and hours still in use can't be deleted.
+- Timers start with the ticket; the first response is met by a reply; resolution pauses while pending and resumes when the customer writes.
+- A priority change switches to the most specific policy.
+- At 80% the ticket is at risk (and appears in the `sla=at_risk` list); at 100% it is breached, once. The assignee and team lead are notified, and the lead gets the breach by email.
+- Reading clears the unread count.
+
+`handover.int.test.ts` covers:
+
+- Routing and presence permissions; rules are kept in order.
+- A Hindi request for a person goes to the online agent with the "hindi" skill, who is notified. The context pack is written by the model.
+- History filtered to the AI shows only AI entries.
+- Round robin spreads work and skips offline agents.
+- Two simultaneous take-overs give one 200 and one 409 naming the winner. The ticket is assigned to the winner and In Progress, and the AI stays quiet.
+- Hand-back lets the AI answer the waiting question, and a second hand-back gets 409.
+- An agent handover to another team waits in that team's queue.
+- The copilot suggests a reply.
+- Team leads can escalate; agents can't.
+- Handling and audit actor filters.
+
+`handover.spec.ts` covers:
+
+- A widget visitor asks for a person: context pack, take over, reply delivered, AI | People lanes with a switch marker, hand back.
+- A second person trying to take over is told who has it.
+- A notification opens its ticket.
+- The SLA at risk view and the drawer's timers.
+- Handled-by filter and History by actor.
+- Settings → Routing and SLA, and phone width.
+
+### Bugs found and fixed
+
+1. **The reply box could stay on "Internal note"** (found by the new browser test). The composer chose its mode on first render, before the ticket's conversations had loaded. It now switches to replying once that is possible, unless the agent already picked a mode.
+2. **Take-over left the routed agent assigned.** Found while testing; the person who takes over now owns the ticket.
+3. **Take-over and hand-back needed transitions the default workflow doesn't have** (AI Handling → In Progress, In Progress → AI Handling). They now step through Human Assigned, which the workflow allows.
+4. **The sample loader showed 31 breached tickets instead of 13.** Its backdating set first-response and resolution times in the database without settling the timers. The loader now marks them met, or breached when late.
+5. **The handover test depended on the AI tests' knowledge base.** Run alone, the AI couldn't answer. The test now seeds its own FAQ.
+
+### Known limits
+
+- Presence is set by hand (online, away, offline), with no automatic offline on disconnect.
+- SLA states update every 30 seconds (the sweep interval).
+- Notification emails go to agents' addresses through the email channel's SMTP (Mailpit in the dev stack).
+
+### Screenshots
+
+The queue on the SLA at risk view, with countdowns and the Handled-by filter:
+
+![SLA queue](screenshots/orbit-sla-queue.png)
+
+A ticket handed over by the AI, waiting for a person:
+
+![Handover](screenshots/orbit-handover.png)
+
+The same conversation as AI | People lanes:
+
+![Lanes](screenshots/orbit-lanes.png)
+
+The notification bell:
+
+![Notifications](screenshots/orbit-notifications.png)
+
+Settings → Routing and Settings → SLA:
+
+![Routing settings](screenshots/orbit-settings-routing.png)
+
+![SLA settings](screenshots/orbit-settings-sla.png)
+
+---
+
+## Phase 6: company tools and approvals
 
 Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-6-tools`.
 

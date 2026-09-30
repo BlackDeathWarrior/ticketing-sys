@@ -11,7 +11,7 @@ import {
 } from '@tms/db';
 import type { CreateUserInput, CurrentUser, UpdateUserInput } from '@tms/shared';
 import argon2 from 'argon2';
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import type { RequestCtx } from '../common/request-context';
@@ -82,6 +82,37 @@ export class UsersService {
   async list() {
     const rows = await this.db.select(PUBLIC_COLUMNS).from(users).orderBy(asc(users.name));
     return this.withRolesAndTeams(rows);
+  }
+
+  /**
+   * Active users holding a permission (through any of their roles), optionally
+   * only members of a team. Used to pick who gets a notification.
+   */
+  async withPermission(
+    permission: string,
+    teamId?: string | null,
+  ): Promise<Array<{ id: string; name: string; email: string }>> {
+    const rows = await this.db
+      .selectDistinct({ id: users.id, name: users.name, email: users.email })
+      .from(users)
+      .innerJoin(userRoles, eq(userRoles.userId, users.id))
+      .innerJoin(rolePermissions, eq(rolePermissions.roleId, userRoles.roleId))
+      .where(
+        and(
+          eq(users.isActive, true),
+          eq(rolePermissions.permission, permission),
+          teamId
+            ? inArray(
+                users.id,
+                this.db
+                  .select({ id: teamMembers.userId })
+                  .from(teamMembers)
+                  .where(eq(teamMembers.teamId, teamId)),
+              )
+            : undefined,
+        ),
+      );
+    return rows;
   }
 
   async get(id: string) {

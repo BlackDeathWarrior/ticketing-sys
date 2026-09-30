@@ -15,6 +15,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { teams, timestamps, users } from './auth';
 import { customers } from './customers';
+import { slaPolicies } from './operations';
 
 export const ticketStatuses = pgTable('ticket_statuses', {
   key: text('key').primaryKey(),
@@ -78,8 +79,14 @@ export const tickets = pgTable(
     status: text('status')
       .notNull()
       .references(() => ticketStatuses.key),
-    /** Filled by the SLA module (Phase 7). */
-    slaPolicyId: uuid('sla_policy_id'),
+    /** The SLA policy whose timers run on this ticket (ADR 0014). */
+    slaPolicyId: uuid('sla_policy_id').references(() => slaPolicies.id, { onDelete: 'set null' }),
+    /** ok | at_risk | breached | paused | met: the most urgent timer, for the queue. */
+    slaState: text('sla_state'),
+    /** When the most urgent running timer is due. */
+    slaDueAt: timestamp('sla_due_at', { withTimezone: true }),
+    /** none | ai | human | handed_over: who is answering right now. */
+    handling: text('handling').notNull().default('none'),
     teamId: uuid('team_id').references(() => teams.id, { onDelete: 'set null' }),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     resolution: text('resolution'),
@@ -100,6 +107,8 @@ export const tickets = pgTable(
     index('tickets_team_idx').on(t.teamId),
     index('tickets_customer_idx').on(t.customerId),
     index('tickets_created_idx').on(t.createdAt),
+    index('tickets_sla_idx').on(t.slaState, t.slaDueAt),
+    index('tickets_handling_idx').on(t.handling),
     index('tickets_tags_gin').using('gin', t.tags),
     index('tickets_subject_trgm').using('gin', sql`${t.subject} gin_trgm_ops`),
   ],

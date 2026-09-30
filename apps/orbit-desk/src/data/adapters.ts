@@ -1,4 +1,5 @@
-import type { AiClassification, StatusCategory } from '@tms/shared';
+import type { AiClassification, StatusCategory, TicketHandling } from '@tms/shared';
+import type { SlaState } from '../lib/format';
 import type {
   Channel,
   Conversation,
@@ -44,6 +45,9 @@ export interface ApiTicket {
   category?: ApiRef | null;
   subcategory?: ApiRef | null;
   aiClassification?: AiClassification | null;
+  handling?: string;
+  slaState?: string | null;
+  slaDueAt?: string | null;
 }
 
 export interface ApiWorkflow {
@@ -71,6 +75,8 @@ export interface ApiConversation {
   channel: string;
   /** ai | human | none: who answers the next customer message. */
   controller?: string;
+  controllerUserId?: string | null;
+  controllerName?: string | null;
   lastMessageAt: string | null;
   metadata: { visitorName?: string; address?: string };
   messages: Array<{
@@ -188,7 +194,25 @@ export function toTicket(t: ApiTicket, workflow: Workflow | undefined): Ticket {
     createdAt: new Date(t.createdAt),
     updatedAt: new Date(t.updatedAt),
     aiClassification: t.aiClassification ?? null,
+    handling: (t.handling ?? 'none') as TicketHandling,
+    sla: toSla(t.slaState ?? null, t.slaDueAt ?? null),
   };
+}
+
+/** The queue's SLA view of a ticket: the server's state and minutes to the next deadline. */
+export function toSla(state: string | null, dueAt: string | null, now = new Date()): Ticket['sla'] {
+  if (!state) return null;
+  const minutes = dueAt ? Math.round((new Date(dueAt).getTime() - now.getTime()) / 60_000) : null;
+  const ui: SlaState =
+    state === 'breached'
+      ? 'breached'
+      : state === 'at_risk'
+        ? 'at-risk'
+        : state === 'ok'
+          ? 'on-track'
+          : 'done';
+  const label = state === 'paused' ? 'Paused' : state === 'met' ? 'Met' : undefined;
+  return { state: ui, minutes, label, raw: state };
 }
 
 /**
@@ -289,6 +313,9 @@ export function toThread(
       id: c.id,
       channel: c.channel,
       lastMessageAt: c.lastMessageAt ? new Date(c.lastMessageAt) : null,
+      controller: c.controller ?? 'none',
+      controllerUserId: c.controllerUserId ?? null,
+      controllerName: c.controllerName ?? null,
     })),
   };
 }

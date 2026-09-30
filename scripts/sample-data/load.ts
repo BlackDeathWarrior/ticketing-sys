@@ -33,6 +33,7 @@ import {
   teams,
   tickets,
   users,
+  operations,
   tools,
   webForms,
 } from './data';
@@ -159,6 +160,7 @@ async function main() {
   }
   log(`${users.length} agents and leads (password ${SAMPLE_PASSWORD})`);
   const tokenOf = (key?: string) => (key ? tokens.get(key)! : admin);
+  await loadOperations(admin, teamIds, userIds);
   const lead = tokens.get('maya')!;
 
   // ---- customers ----
@@ -342,6 +344,37 @@ async function loadLlm(admin: string) {
     await call(admin, 'POST', '/settings/llm/roles/chat_agent/try', {});
   }
   log(`demo LLM provider with ${llm.models.length} models`);
+}
+
+/** SLA hours and policies, routing rules, skills and presence (Phase 7). */
+async function loadOperations(
+  admin: string,
+  teamIds: Map<string, string>,
+  userIds: Map<string, string>,
+) {
+  const hours = await call<Ref>(admin, 'POST', '/sla/business-hours', operations.hours);
+  for (const { supportHours, ...p } of operations.policies as Array<
+    Record<string, unknown> & { supportHours?: boolean }
+  >) {
+    await call(admin, 'POST', '/sla/policies', {
+      ...p,
+      ...(supportHours ? { businessHoursId: hours.id } : {}),
+    });
+  }
+  for (const r of operations.rules) {
+    const { team, ...rule } = r;
+    await call(admin, 'POST', '/routing/rules', { ...rule, teamId: teamIds.get(team) });
+  }
+  for (const [key, skills] of Object.entries(operations.skills)) {
+    await call(admin, 'PUT', `/routing/agents/${userIds.get(key)}/skills`, { skills });
+  }
+  for (const [key, p] of Object.entries(operations.presence)) {
+    await call(admin, 'PUT', `/routing/agents/${userIds.get(key)}/presence`, p);
+  }
+  log(
+    `${operations.policies.length} SLA policies, ${operations.rules.length} routing rules, ` +
+      `${Object.values(operations.presence).filter((p) => p.status === 'online').length} agents online`,
+  );
 }
 
 /** Registers the Demo Store MCP server, stores its placeholder token and turns its tools on. */
@@ -528,6 +561,15 @@ async function answer(
 async function backdate(items: Array<{ spec: SampleTicket; ticket: Ticket }>) {
   const client = new pg.Client({ connectionString: DATABASE_URL });
   await client.connect();
+  const ids = items.map((x) => x.ticket.id);
+  // The worker starts SLA timers from ticket events; wait for them before shifting time.
+  await waitFor('SLA timers on the sample tickets', async () => {
+    const r = await client.query<{ n: string }>(
+      'SELECT count(DISTINCT ticket_id) AS n FROM sla_timers WHERE ticket_id = ANY($1)',
+      [ids],
+    );
+    return Number(r.rows[0]?.n) >= ids.length || undefined;
+  });
   try {
     await client.query('BEGIN');
     for (const [i, { spec, ticket }] of items.entries()) {
@@ -553,6 +595,49 @@ async function backdate(items: Array<{ spec: SampleTicket; ticket: Ticket }>) {
         ],
       );
     }
+    // Timers move with their tickets: same start, deadlines shifted by the same amount.
+    await client.query(
+      `UPDATE sla_timers s SET
+         due_at = s.due_at - (s.started_at - t.created_at),
+         at_risk_at = s.at_risk_at - (s.started_at - t.created_at),
+         resumed_at = s.resumed_at - (s.started_at - t.created_at),
+         met_at = CASE
+           WHEN s.kind = 'first_response' AND t.first_response_at IS NOT NULL THEN t.first_response_at
+           WHEN s.kind = 'resolution' AND t.resolved_at IS NOT NULL THEN t.resolved_at
+           ELSE s.met_at END,
+         started_at = t.created_at
+       FROM tickets t WHERE s.ticket_id = t.id AND t.id = ANY($1)`,
+      [ids],
+    );
+    // Answered and resolved tickets settle their timers: met, or breached when late.
+    await client.query(
+      `UPDATE sla_timers s SET
+         state = CASE WHEN x.done_at > s.due_at THEN 'breached' ELSE 'met' END,
+         breached_at = CASE WHEN x.done_at > s.due_at THEN s.due_at ELSE NULL END,
+         met_at = x.done_at,
+         at_risk_notified = true
+       FROM (
+         SELECT s2.id, CASE WHEN s2.kind = 'first_response' THEN t.first_response_at ELSE t.resolved_at END AS done_at
+         FROM sla_timers s2 JOIN tickets t ON t.id = s2.ticket_id
+         WHERE t.id = ANY($1)
+       ) x
+       WHERE s.id = x.id AND x.done_at IS NOT NULL AND s.state IN ('running', 'met')`,
+      [ids],
+    );
+    await client.query(
+      `UPDATE tickets t SET sla_state = CASE
+         WHEN EXISTS (SELECT 1 FROM sla_timers s WHERE s.ticket_id = t.id AND s.state = 'breached' AND s.met_at IS NULL) THEN 'breached'
+         WHEN NOT EXISTS (SELECT 1 FROM sla_timers s WHERE s.ticket_id = t.id AND s.state IN ('running', 'paused')) THEN 'met'
+         ELSE t.sla_state END
+       WHERE t.id = ANY($1)`,
+      [ids],
+    );
+    await client.query(
+      `UPDATE tickets t SET sla_due_at = (
+         SELECT min(due_at) FROM sla_timers s WHERE s.ticket_id = t.id AND s.state = 'running')
+       WHERE t.id = ANY($1)`,
+      [ids],
+    );
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');

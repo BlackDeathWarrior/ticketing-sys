@@ -14,6 +14,6 @@ import { OutboundService } from './outbound.service';
   imports: [ConversationsModule, CustomersModule, TicketsModule, WorkflowModule, LlmModule],
   controllers: [ChannelsController],
   providers: [InboundService, OutboundService, AiPolicyService],
-  exports: [InboundService, OutboundService, ConversationsModule],
+  exports: [InboundService, OutboundService, AiPolicyService, ConversationsModule],
 })
 export class ChannelsModule {}

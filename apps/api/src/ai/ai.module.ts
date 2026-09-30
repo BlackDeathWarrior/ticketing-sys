@@ -5,10 +5,12 @@ import { KbModule } from '../kb/kb.module';
 import { LlmModule } from '../llm/llm.module';
 import { OrgModule } from '../org/org.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { HandoverModule } from '../handover/handover.module';
 import { ToolsModule } from '../tools/tools.module';
 import { AiAgentService } from './ai-agent.service';
 import { AiClassifierService } from './ai-classifier.service';
-import { AiRunsService } from './ai-runs.service';
+import { AiCopilotService } from './ai-copilot.service';
+import { AiRunsModule } from './ai-runs.module';
 import { AiController } from './ai.controller';
 import { LanguageService } from './language.service';
 
@@ -26,9 +28,11 @@ import { LanguageService } from './language.service';
     CustomersModule,
     OrgModule,
     ToolsModule,
+    AiRunsModule,
+    HandoverModule,
   ],
   controllers: [AiController],
-  providers: [AiAgentService, AiClassifierService, AiRunsService, LanguageService],
-  exports: [AiAgentService, AiClassifierService, AiRunsService],
+  providers: [AiAgentService, AiClassifierService, AiCopilotService, LanguageService],
+  exports: [AiAgentService, AiClassifierService, AiRunsModule],
 })
 export class AiModule {}

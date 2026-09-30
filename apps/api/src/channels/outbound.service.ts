@@ -235,6 +235,7 @@ export class OutboundService {
       if (conv.controller !== 'human') {
         await this.conversations.setController(tx, ctx, conv, 'human', ctx.user?.id ?? null);
       }
+      await this.tickets.setHandling(tx, ticket.id, 'human');
       for (const draftId of await this.conversations.pendingDraftIds(tx, conv.id)) {
         await this.conversations.reviewDraft(tx, draftId, {
           status: 'discarded',

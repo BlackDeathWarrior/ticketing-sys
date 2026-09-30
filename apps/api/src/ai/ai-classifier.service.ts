@@ -25,17 +25,9 @@ const outputSchema = z.object({
   confidence: z.coerce.number().min(0).max(1).catch(0.5).default(0.5),
 });
 
-/** Pulls the first JSON object out of a model reply (some models wrap it in prose or fences). */
-export function extractJson(text: string): unknown {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start < 0 || end <= start) return null;
-  try {
-    return JSON.parse(text.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-}
+import { extractJson } from './json';
+
+export { extractJson };
 
 /**
  * Classifies new customer tickets with the `classifier` role: category,
