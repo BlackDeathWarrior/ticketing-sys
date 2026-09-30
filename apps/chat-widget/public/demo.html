@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Demo store: chat with support</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 42rem;
+        margin: 3rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Demo store</h1>
+    <p>
+      This page stands in for a company website. The chat button in the corner is the TMS widget,
+      added with one script tag:
+    </p>
+    <pre><code>&lt;script src="https://tms.example.com/widget/tms-chat.js"&gt;&lt;/script&gt;
+&lt;script&gt;TMSChat.init({ server: 'https://tms.example.com' });&lt;/script&gt;</code></pre>
+    <p>
+      Messages you send here open a ticket in the TMS console (channel <code>webchat</code>).
+      Replies from agents appear here live.
+    </p>
+
+    <script src="./tms-chat.js"></script>
+    <script>
+      TMSChat.init({ title: 'Chat with Support' });
+    </script>
+  </body>
+</html>

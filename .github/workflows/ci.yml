@@ -12,25 +12,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: tms
-          POSTGRES_PASSWORD: tms
-          POSTGRES_DB: tms_test
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U tms -d tms_test"
-          --health-interval 5s --health-timeout 3s --health-retries 20
-      redis:
-        image: redis:7-alpine
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s --health-timeout 3s --health-retries 20
+    timeout-minutes: 25
 
     env:
       TEST_DATABASE_URL: postgres://tms:tms@localhost:5432/tms_test
@@ -49,4 +31,13 @@ jobs:
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test
+
+      # Integration tests use the same services as local development.
+      - name: Start test services
+        run: |
+          docker compose -f infra/docker-compose.yml up -d --wait postgres redis objectstore greenmail
+          docker compose -f infra/docker-compose.yml exec -T postgres createdb -U tms tms_test
       - run: pnpm test:int
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose -f infra/docker-compose.yml logs --tail 200

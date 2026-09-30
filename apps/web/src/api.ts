@@ -37,6 +37,25 @@ function saveTokens(t: AuthTokens | null) {
 
 export const hasSession = () => tokens !== null;
 
+/** Current access token, for the realtime socket handshake. */
+export const accessToken = () => tokens?.accessToken;
+
+/** Downloads an attachment with the auth header and opens it in a new tab. */
+export async function openAttachment(messageId: string, index: number): Promise<void> {
+  let res = await fetch(`${BASE}/messages/${messageId}/attachments/${index}`, {
+    headers: tokens ? { authorization: `Bearer ${tokens.accessToken}` } : {},
+  });
+  if (res.status === 401 && (await refresh())) {
+    res = await fetch(`${BASE}/messages/${messageId}/attachments/${index}`, {
+      headers: { authorization: `Bearer ${tokens!.accessToken}` },
+    });
+  }
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => ({})));
+  const url = URL.createObjectURL(await res.blob());
+  window.open(url, '_blank', 'noopener');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 async function raw(method: string, path: string, body?: unknown): Promise<Response> {
   return fetch(`${BASE}${path}`, {
     method,

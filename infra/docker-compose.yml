@@ -12,6 +12,24 @@ x-app-env: &app-env
   JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me-0123456789abcdef}
   CORS_ORIGINS: http://localhost:8080
   API_DOCS: ${API_DOCS:-true}
+  # Object storage (SeaweedFS S3 API)
+  S3_ENDPOINT: http://objectstore:8333
+  S3_ACCESS_KEY: tms
+  S3_SECRET_KEY: tms-dev-secret
+  S3_BUCKET: tms
+  # Email channel: reads the dev mailbox in GreenMail, sends replies through Mailpit.
+  EMAIL_ENABLED: ${EMAIL_ENABLED:-true}
+  EMAIL_ADDRESS: ${EMAIL_ADDRESS:-support@tms.local}
+  EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-TMS Support}
+  EMAIL_IMAP_HOST: ${EMAIL_IMAP_HOST:-greenmail}
+  EMAIL_IMAP_PORT: ${EMAIL_IMAP_PORT:-3143}
+  EMAIL_IMAP_SECURE: ${EMAIL_IMAP_SECURE:-false}
+  EMAIL_IMAP_USER: ${EMAIL_IMAP_USER:-support@tms.local}
+  EMAIL_IMAP_PASSWORD: ${EMAIL_IMAP_PASSWORD:-support}
+  EMAIL_POLL_SECONDS: ${EMAIL_POLL_SECONDS:-30}
+  EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-mailpit}
+  EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-1025}
+  EMAIL_SMTP_SECURE: ${EMAIL_SMTP_SECURE:-false}
 
 services:
   postgres:
@@ -57,7 +75,7 @@ services:
       - objectdata:/data
       - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
 
-  # Local SMTP + IMAP sink for the email channel. Web UI on :8025.
+  # Outgoing mail sink: TMS replies land here. Web UI on :8025.
   mailpit:
     image: axllent/mailpit:latest
     environment:
@@ -65,8 +83,25 @@ services:
       MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
     ports:
       - '1025:1025'
-      - '1143:1143'
       - '8025:8025'
+
+  # Dev support mailbox. Send customer mail to support@tms.local over SMTP
+  # :3025 (pnpm demo:email does this); TMS reads it over IMAP :3143. Any
+  # login works, so tests can also read other mailboxes.
+  greenmail:
+    image: greenmail/standalone:latest
+    environment:
+      GREENMAIL_OPTS: >-
+        -Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0
+        -Dgreenmail.auth.disabled -Dgreenmail.verbose=false
+    ports:
+      - '3025:3025'
+      - '3143:3143'
+    healthcheck:
+      test: ['CMD', 'bash', '-c', 'echo > /dev/tcp/127.0.0.1/3143']
+      interval: 5s
+      timeout: 3s
+      retries: 30
 
   # All LLM traffic goes through LiteLLM. Providers and models are added at
   # runtime from the TMS settings pages and stored (encrypted) in its own DB.
@@ -123,7 +158,10 @@ services:
     build: { <<: *build, target: worker }
     environment: *app-env
     restart: unless-stopped
-    depends_on: *app-deps
+    depends_on:
+      <<: *app-deps
+      greenmail:
+        condition: service_healthy
 
   web:
     profiles: ['app']

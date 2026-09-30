@@ -13,17 +13,25 @@ export interface TestClient {
   ): Promise<{ status: number; body: T }>;
   login(email: string, password: string): Promise<{ accessToken: string; refreshToken: string }>;
   adminToken(): Promise<string>;
+  /** Base URL when started with { listen: true } (needed for sockets). */
+  baseUrl?: string;
   close(): Promise<void>;
 }
 
-export async function startApp(): Promise<TestClient> {
+export async function startApp(opts: { listen?: boolean } = {}): Promise<TestClient> {
   // Imported lazily so the test env is in place before config is read.
   const { createApp } = await import('../src/bootstrap');
   const app = await createApp();
   let admin: string | undefined;
+  let baseUrl: string | undefined;
+  if (opts.listen) {
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    baseUrl = await app.getUrl();
+  }
 
   const client: TestClient = {
     app,
+    baseUrl,
     async call<T>(
       method: Parameters<TestClient['call']>[0],
       url: string,
@@ -59,3 +67,29 @@ export async function startApp(): Promise<TestClient> {
 let seq = 0;
 /** Unique suffix so tests don't collide on unique columns. */
 export const uniq = (prefix = 'x') => `${prefix}${Date.now().toString(36)}${(seq++).toString(36)}`;
+
+/** Starts the background worker (outbox relay, delivery, mailbox) in-process. */
+export async function startWorker() {
+  const { createWorker } = await import('../src/worker/bootstrap');
+  return createWorker();
+}
+
+/** Polls until the check returns a truthy value, or fails after the timeout. */
+export async function waitFor<T>(
+  check: () => Promise<T | undefined | null | false> | T | undefined | null | false,
+  what: string,
+  timeoutMs = 15_000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let last: unknown;
+  while (Date.now() < deadline) {
+    try {
+      const v = await check();
+      if (v) return v;
+    } catch (err) {
+      last = err;
+    }
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  throw new Error(`Timed out waiting for ${what}${last ? `: ${String(last)}` : ''}`);
+}

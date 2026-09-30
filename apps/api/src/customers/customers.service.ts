@@ -181,6 +181,26 @@ export class CustomersService {
     }
   }
 
+  /**
+   * Adds an identity to a customer inside the caller's transaction. Returns
+   * false (and changes nothing) when another customer already owns it.
+   */
+  async attachIdentity(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    customerId: string,
+    input: { type: IdentityType; value: string; verified: boolean },
+  ): Promise<boolean> {
+    const value = normalizeIdentity(input.type, input.value);
+    const [owner] = await tx
+      .select()
+      .from(customerIdentities)
+      .where(and(eq(customerIdentities.type, input.type), eq(customerIdentities.value, value)));
+    if (owner) return owner.customerId === customerId;
+    await this.insertIdentity(tx, ctx, customerId, input.type, value, input.verified);
+    return true;
+  }
+
   /** Moves identities, tickets and conversations from source to target, then retires source. */
   async merge(ctx: RequestCtx, sourceId: string, targetId: string) {
     if (sourceId === targetId) throw new BadRequestException('Cannot merge a customer into itself');

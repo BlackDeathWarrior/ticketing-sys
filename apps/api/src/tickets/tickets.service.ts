@@ -8,12 +8,10 @@ import {
 import {
   auditLog,
   categories,
-  conversations,
   customers,
   type Database,
   type DbOrTx,
   internalNotes,
-  messages,
   teams,
   tickets,
   users,
@@ -50,7 +48,7 @@ import { DB } from '../infra/tokens';
 import { WorkflowService } from '../workflow/workflow.service';
 import { lifecycleTimestamps } from '../workflow/workflow.rules';
 
-type Ticket = typeof tickets.$inferSelect;
+export type Ticket = typeof tickets.$inferSelect;
 
 const TRANSITION_ERRORS = {
   same_status: 'The ticket is already in that status',
@@ -116,49 +114,52 @@ export class TicketsService {
     return present(row);
   }
 
-  async create(ctx: RequestCtx, input: CreateTicketInput, tx?: DbOrTx) {
-    const run = async (t: DbOrTx) => {
-      const customer = await this.customers.findActive(t, input.customerId);
-      await this.assertCategories(t, input.categoryId, input.subcategoryId);
-      const initial = await this.workflow.initialStatus();
-      const [ticket] = await t
-        .insert(tickets)
-        .values({
-          customerId: customer.id,
-          channel: input.channel,
-          subject: input.subject,
-          description: input.description,
-          categoryId: input.categoryId,
-          subcategoryId: input.subcategoryId,
-          priority: input.priority,
-          teamId: input.teamId,
-          tags: [...new Set(input.tags)],
-          status: initial.key,
-        })
-        .returning();
-      const data = {
-        number: formatTicketNumber(ticket!.number),
+  async create(ctx: RequestCtx, input: CreateTicketInput) {
+    const ticket = await this.db.transaction((tx) => this.createInTx(tx, ctx, input));
+    return this.get(ticket.id);
+  }
+
+  /** Creates a ticket inside the caller's transaction (used by channel intake). */
+  async createInTx(tx: DbOrTx, ctx: RequestCtx, input: CreateTicketInput): Promise<Ticket> {
+    const t = tx;
+    const customer = await this.customers.findActive(t, input.customerId);
+    await this.assertCategories(t, input.categoryId, input.subcategoryId);
+    const initial = await this.workflow.initialStatus();
+    const [ticket] = await t
+      .insert(tickets)
+      .values({
         customerId: customer.id,
-        channel: ticket!.channel,
-        priority: ticket!.priority,
-        status: ticket!.status,
-      };
-      await this.audit.record(t, ctx, {
-        action: 'ticket.created',
-        targetType: 'ticket',
-        targetId: ticket!.id,
-        data,
-      });
-      await this.outbox.publish(t, ctx, {
-        type: 'ticket.created',
-        aggregateType: 'ticket',
-        aggregateId: ticket!.id,
-        payload: data,
-      });
-      return ticket!;
+        channel: input.channel,
+        subject: input.subject,
+        description: input.description,
+        categoryId: input.categoryId,
+        subcategoryId: input.subcategoryId,
+        priority: input.priority,
+        teamId: input.teamId,
+        tags: [...new Set(input.tags)],
+        status: initial.key,
+      })
+      .returning();
+    const data = {
+      number: formatTicketNumber(ticket!.number),
+      customerId: customer.id,
+      channel: ticket!.channel,
+      priority: ticket!.priority,
+      status: ticket!.status,
     };
-    const ticket = tx ? await run(tx) : await this.db.transaction(run);
-    return tx ? ticket : this.get(ticket.id);
+    await this.audit.record(t, ctx, {
+      action: 'ticket.created',
+      targetType: 'ticket',
+      targetId: ticket!.id,
+      data,
+    });
+    await this.outbox.publish(t, ctx, {
+      type: 'ticket.created',
+      aggregateType: 'ticket',
+      aggregateId: ticket!.id,
+      payload: data,
+    });
+    return ticket!;
   }
 
   async update(ctx: RequestCtx, id: string, input: UpdateTicketInput) {
@@ -300,26 +301,36 @@ export class TicketsService {
       .orderBy(asc(auditLog.id));
   }
 
-  /** Conversations with their messages, oldest first. Populated by channels from Phase 2. */
-  async conversations(id: string) {
-    const ticket = await this.get(id);
-    const convs = await this.db
-      .select()
-      .from(conversations)
-      .where(eq(conversations.ticketId, ticket.id))
-      .orderBy(asc(conversations.createdAt));
-    if (!convs.length) return [];
-    const msgs = await this.db
-      .select()
-      .from(messages)
-      .where(
-        inArray(
-          messages.conversationId,
-          convs.map((c) => c.id),
-        ),
-      )
-      .orderBy(asc(messages.createdAt));
-    return convs.map((c) => ({ ...c, messages: msgs.filter((m) => m.conversationId === c.id) }));
+  /**
+   * A customer wrote again. Resolved or pending tickets go back to In Progress
+   * when the workflow allows it; otherwise the status is left alone.
+   */
+  async reopenOnCustomerReply(tx: DbOrTx, ctx: RequestCtx, ticket: Ticket) {
+    const { category } = await this.workflow.status(ticket.status);
+    if (category !== 'resolved' && category !== 'pending') return;
+    if ((await this.workflow.check(ticket.status, 'in_progress')).ok) {
+      await this.applyTransition(tx, ctx, ticket, 'in_progress');
+    }
+  }
+
+  /** An agent replied: stamp first response and move New/Human Assigned to In Progress. */
+  async recordAgentReply(tx: DbOrTx, ctx: RequestCtx, ticket: Ticket) {
+    if (!ticket.firstResponseAt) {
+      await tx
+        .update(tickets)
+        .set({ firstResponseAt: new Date() })
+        .where(eq(tickets.id, ticket.id));
+    }
+    if (ticket.status === 'new' || ticket.status === 'human_assigned') {
+      if ((await this.workflow.check(ticket.status, 'in_progress')).ok) {
+        await this.applyTransition(tx, ctx, ticket, 'in_progress');
+      }
+    }
+  }
+
+  /** Locks and returns the ticket row, for callers composing their own transaction. */
+  lockRow(tx: DbOrTx, id: string): Promise<Ticket> {
+    return this.lock(tx, id);
   }
 
   private async applyTransition(

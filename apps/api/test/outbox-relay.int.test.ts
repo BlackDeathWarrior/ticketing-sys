@@ -3,7 +3,7 @@ import { Queue } from 'bullmq';
 import { eq, inArray } from 'drizzle-orm';
 import Redis from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { relayOutboxBatch } from '../src/outbox-relay';
+import { relayOutboxBatch } from '../src/worker/outbox-relay';
 
 const DB_URL = process.env.TEST_DATABASE_URL ?? 'postgres://tms:tms@localhost:5432/tms_test';
 const REDIS_URL = process.env.TEST_REDIS_URL ?? 'redis://localhost:6379/15';

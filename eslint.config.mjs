@@ -32,11 +32,11 @@ export default tseslint.config(
   {
     // NestJS resolves constructor parameters from emitted type metadata, so
     // injected classes must stay value imports.
-    files: ['apps/api/**/*.ts', 'apps/worker/**/*.ts'],
+    files: ['apps/api/**/*.ts'],
     rules: { '@typescript-eslint/consistent-type-imports': 'off' },
   },
   {
-    files: ['apps/web/**/*.{ts,tsx}'],
+    files: ['apps/web/**/*.{ts,tsx}', 'apps/chat-widget/**/*.ts'],
     languageOptions: { globals: { ...globals.browser } },
   },
 );

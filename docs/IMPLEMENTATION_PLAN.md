@@ -15,11 +15,12 @@ Work happens on branch `claude/pensive-planck-yp2tyi`; each phase ends with a co
 
 ## Progress
 
-| Phase         | State | Notes                                                                                                                                                                                                                                                                                      |
-| ------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 0 Foundations | Done  | Monorepo, compose infra, API/worker skeletons, health checks, CI, ADRs 0001–0003, session hook                                                                                                                                                                                             |
-| 1 Core domain | Done  | Auth (JWT + rotating refresh tokens), RBAC, users/teams/categories, customers with identity resolution and merge, tickets with configurable workflow, notes, history, append-only audit log, outbox → BullMQ relay, barebones UI. 4 unit + 23 API integration + 4 worker integration tests |
-| 2 Channels    | Next  |                                                                                                                                                                                                                                                                                            |
+| Phase          | State | Notes                                                                                                                                                                                                                                                                                                             |
+| -------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 Foundations  | Done  | Monorepo, compose infra, API/worker skeletons, health checks, CI, ADRs 0001–0003, session hook                                                                                                                                                                                                                    |
+| 1 Core domain  | Done  | Auth (JWT + rotating refresh tokens), RBAC, users/teams/categories, customers with identity resolution and merge, tickets with configurable workflow, notes, history, append-only audit log, outbox → BullMQ relay, barebones UI. 4 unit + 23 API integration + 4 worker integration tests                        |
+| 2 Channels     | Done  | Channel envelope + inbound orchestrator (dedupe, identity resolution, email threading, reopen), agent replies with async delivery and status, web chat widget (Socket.IO, resumable sessions, signed identity), email over IMAP/SMTP with attachments in S3, live console updates. 23 unit + 35 integration tests |
+| 3 LLM platform | Next  |                                                                                                                                                                                                                                                                                                                   |
 
 Also done: the whole stack runs in Docker (`pnpm docker:up`: root multi-stage `Dockerfile` with `api`, `worker`, `migrate`, `web` targets; compose profile `app`).
 
@@ -32,6 +33,7 @@ Deviations from the plan so far:
 - No `organizations` table yet: single-tenant MVP (see ADR 0002).
 - `skills` / `user_skills` move to Phase 7 with routing, where they are first used.
 - The barebones web app uses a small fetch hook instead of TanStack Query; revisit in the frontend phase.
+- Phase 2: the worker moved into the API codebase as a second entry point (ADR 0004). Dev mail uses GreenMail (support mailbox over IMAP) plus Mailpit (outgoing), because Mailpit has no IMAP. Chat sessions are created over the socket handshake rather than a REST call, so the widget needs no CORS setup on the REST API.
 
 ## Stack
 

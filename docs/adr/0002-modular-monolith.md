@@ -1,10 +1,10 @@
 # ADR 0002: Modular monolith with a separate worker
 
-Status: accepted (2026-09-30)
+Status: accepted (2026-09-30); worker placement amended by ADR 0004
 
 ## Decision
 
-One deployable API (`apps/api`) with internal NestJS modules per domain (auth, users, customers, tickets, workflow, audit, and later channels, ai, tools, routing), plus one worker process (`apps/worker`) for queue consumers, the outbox relay and timers.
+One deployable API (`apps/api`) with internal NestJS modules per domain (auth, users, customers, tickets, workflow, audit, and later channels, ai, tools, routing), plus one worker process for queue consumers, the outbox relay and timers. Since Phase 2 the worker is a second entry point of the same codebase (`apps/api/src/worker.ts`) rather than a separate package; see ADR 0004.
 
 ## Rules that keep a later split possible
 

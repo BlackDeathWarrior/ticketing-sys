@@ -2,6 +2,19 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 
+const bool = z.enum(['true', 'false']).transform((v) => v === 'true');
+const list = (fallback: string) =>
+  z
+    .string()
+    .default(fallback)
+    .transform((s) =>
+      s
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean),
+    );
+
+/** Shared by the API (main.ts) and the worker (worker.ts); each ignores what it doesn't use. */
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -9,15 +22,11 @@ const envSchema = z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
     API_PORT: z.coerce.number().int().default(3000),
-    CORS_ORIGINS: z
-      .string()
-      .default('http://localhost:5173')
-      .transform((s) =>
-        s
-          .split(',')
-          .map((o) => o.trim())
-          .filter(Boolean),
-      ),
+    CORS_ORIGINS: list('http://localhost:5173'),
+    /** Sites allowed to embed the chat widget. "*" allows any origin. */
+    CHAT_ORIGINS: list('*'),
+    /** Optional HS256 secret for identity tokens that websites pass to the chat widget. */
+    CHAT_IDENTITY_SECRET: z.string().min(32).optional(),
     DATABASE_URL: z.string().url(),
     REDIS_URL: z.string().url(),
     JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
@@ -26,10 +35,49 @@ const envSchema = z
     LITELLM_URL: z.string().url().default('http://localhost:4000'),
     LITELLM_MASTER_KEY: z.string().optional(),
     /** Serve Swagger UI at /docs. Defaults to on outside production. */
-    API_DOCS: z
-      .enum(['true', 'false'])
-      .transform((v) => v === 'true')
-      .optional(),
+    API_DOCS: bool.optional(),
+
+    // Worker
+    OUTBOX_POLL_MS: z.coerce.number().int().min(50).default(1000),
+    OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(100),
+    WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(10),
+
+    // Object storage (S3 API)
+    S3_ENDPOINT: z.string().url().optional(),
+    S3_REGION: z.string().default('us-east-1'),
+    S3_ACCESS_KEY: z.string().optional(),
+    S3_SECRET_KEY: z.string().optional(),
+    S3_BUCKET: z.string().default('tms'),
+    S3_FORCE_PATH_STYLE: bool.default('true'),
+
+    // Email channel: one support mailbox, read over IMAP and answered over SMTP.
+    EMAIL_ENABLED: bool.default('false'),
+    EMAIL_ADDRESS: z.string().email().optional(),
+    EMAIL_FROM_NAME: z.string().default('Support'),
+    EMAIL_IMAP_HOST: z.string().optional(),
+    EMAIL_IMAP_PORT: z.coerce.number().int().default(993),
+    EMAIL_IMAP_SECURE: bool.default('true'),
+    EMAIL_IMAP_USER: z.string().optional(),
+    EMAIL_IMAP_PASSWORD: z.string().optional(),
+    EMAIL_IMAP_MAILBOX: z.string().default('INBOX'),
+    EMAIL_POLL_SECONDS: z.coerce.number().int().min(5).default(60),
+    EMAIL_SMTP_HOST: z.string().optional(),
+    EMAIL_SMTP_PORT: z.coerce.number().int().default(587),
+    EMAIL_SMTP_SECURE: bool.default('false'),
+    EMAIL_SMTP_USER: z.string().optional(),
+    EMAIL_SMTP_PASSWORD: z.string().optional(),
+  })
+  .superRefine((e, ctx) => {
+    if (!e.EMAIL_ENABLED) return;
+    for (const key of [
+      'EMAIL_ADDRESS',
+      'EMAIL_IMAP_HOST',
+      'EMAIL_IMAP_USER',
+      'EMAIL_SMTP_HOST',
+    ] as const) {
+      if (!e[key])
+        ctx.addIssue({ code: 'custom', path: [key], message: 'Required when EMAIL_ENABLED=true' });
+    }
   })
   .transform((e) => ({ ...e, API_DOCS: e.API_DOCS ?? e.NODE_ENV !== 'production' }));
 

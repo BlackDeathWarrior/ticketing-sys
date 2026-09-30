@@ -9,6 +9,7 @@ export const PERMISSIONS = [
   'ticket:assign',
   'ticket:transition',
   'ticket:note',
+  'message:send',
   'customer:read',
   'customer:write',
   'customer:merge',
@@ -35,6 +36,7 @@ const AGENT: Permission[] = [
   'ticket:update',
   'ticket:transition',
   'ticket:note',
+  'message:send',
   'customer:read',
   'customer:write',
 ];
