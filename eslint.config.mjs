@@ -10,6 +10,8 @@ export default tseslint.config(
       '**/coverage/**',
       'packages/db/drizzle/**',
       'docs/**',
+      '**/playwright-report/**',
+      '**/test-results/**',
     ],
   },
   js.configs.recommended,

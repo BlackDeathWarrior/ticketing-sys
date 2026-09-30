@@ -1,0 +1,21 @@
+{
+  "name": "@tms/sample-data",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Loads fictional demo data into a running TMS through its public API.",
+  "type": "module",
+  "scripts": {
+    "load": "tsx load.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "@types/nodemailer": "^6.4.17",
+    "@types/pg": "^8.15.0",
+    "nodemailer": "^6.10.1",
+    "pg": "^8.16.0",
+    "socket.io-client": "^4.8.1",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.3"
+  }
+}

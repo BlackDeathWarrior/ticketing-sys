@@ -1,0 +1,20 @@
+{
+  "name": "@tms/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Playwright end-to-end tests against a running stack loaded with sample data.",
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@tms/shared": "workspace:*",
+    "@types/node": "^22.20.0",
+    "@types/nodemailer": "^6.4.17",
+    "nodemailer": "^6.10.1",
+    "socket.io-client": "^4.8.1",
+    "typescript": "~5.9.3"
+  }
+}
