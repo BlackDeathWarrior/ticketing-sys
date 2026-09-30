@@ -970,6 +970,32 @@ export const emails = [
 ];
 
 /**
+ * Requests from the help center's public form (channel `web_form`). Fixed
+ * submission ids make a second load return the same tickets, not new ones.
+ */
+export const webForms = [
+  {
+    submissionId: '6f1d2a4e-8c3b-4f0a-9e21-5b7c9d0e1a01',
+    name: 'Lena Fischer',
+    email: 'lena.fischer@example.org',
+    topic: 'Returns',
+    orderNumber: 'DS-48213',
+    subject: 'Wrong jacket size delivered',
+    description:
+      'I ordered the rain jacket in medium and received a small. Can I exchange it for the right size?',
+  },
+  {
+    submissionId: '6f1d2a4e-8c3b-4f0a-9e21-5b7c9d0e1a02',
+    name: 'Tomás Ribeiro',
+    email: 'tomas.ribeiro@example.net',
+    topic: 'Account',
+    subject: 'Cannot change my delivery address',
+    description:
+      'When I save a new delivery address in my account the page reloads and the old address is still there.',
+  },
+];
+
+/**
  * The scripted demo LLM (apps/fake-providers), so the AI features work with
  * no real keys. The "key" is a placeholder: the fake provider ignores it.
  * LiteLLM reaches the fake at FAKE_LLM_URL (a compose hostname).

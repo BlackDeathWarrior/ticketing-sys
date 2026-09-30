@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 import type { Database, DbOrTx } from '@tms/db';
-import type { Channel } from '@tms/shared';
+import { type Channel, formatTicketNumber } from '@tms/shared';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
-import type { RequestCtx } from '../common/request-context';
+import { type RequestCtx, SYSTEM_CTX } from '../common/request-context';
 import { type Conversation, ConversationsService } from '../conversations/conversations.service';
 import { CustomersService } from '../customers/customers.service';
 import { DB } from '../infra/tokens';
@@ -152,6 +152,34 @@ export class OutboundService {
     });
   }
 
+  /**
+   * The automatic "we've received your request" email for a web-form ticket.
+   * Its Message-ID is derived from the submission, so a retried event never
+   * sends it twice. Returns null when email is off (the ticket still exists).
+   */
+  async acknowledgeWebForm(conversationId: string, receivedMessageId: string) {
+    const config = await this.channels.email();
+    if (!config?.enabled) return null;
+    return this.db.transaction(async (tx) => {
+      const conv = await this.conversations.lock(tx, conversationId);
+      const messageId = `<ack-${receivedMessageId}@${config.address.split('@')[1]}>`;
+      if (await this.conversations.findMessageByChannelId(tx, 'web_form', messageId)) return null;
+      const ticket = await this.tickets.lockRow(tx, conv.ticketId);
+      const meta = conv.metadata as { name?: string; subject?: string };
+      const body = acknowledgement({
+        name: meta.name,
+        subject: meta.subject ?? ticket.subject,
+        reference: formatTicketNumber(ticket.number),
+        team: config.fromName,
+      });
+      return this.replyInTx(tx, SYSTEM_CTX, conv, body, {
+        author: 'system',
+        messageId,
+        metadata: { kind: 'acknowledgement' },
+      });
+    });
+  }
+
   private async draft(tx: DbOrTx, messageId: string) {
     const message = await this.conversations.lockMessage(tx, messageId);
     if (message.deliveryStatus !== 'draft') {
@@ -165,19 +193,28 @@ export class OutboundService {
     ctx: RequestCtx,
     conv: Conversation,
     body: string,
-    opts: { author?: 'agent' | 'ai'; draft?: boolean; metadata?: Record<string, unknown> } = {},
+    opts: {
+      author?: 'agent' | 'ai' | 'system';
+      draft?: boolean;
+      metadata?: Record<string, unknown>;
+      /** A fixed email Message-ID (acknowledgements); otherwise a random one. */
+      messageId?: string;
+    } = {},
   ) {
-    const byAi = opts.author === 'ai';
-    const ourAddress = conv.channel === 'email' ? await this.emailAddress() : null;
+    const author = opts.author ?? 'agent';
+    const byAi = author === 'ai';
+    const ourAddress = repliesByEmail(conv.channel) ? await this.emailAddress() : null;
     const ticket = await this.tickets.lockRow(tx, conv.ticketId);
-    const email = ourAddress ? await this.emailHeaders(tx, conv, ticket.number, ourAddress) : null;
+    const email = ourAddress
+      ? await this.emailHeaders(tx, conv, ticket.number, ourAddress, opts.messageId)
+      : null;
 
     const message = await this.conversations.addMessage(tx, {
       conversationId: conv.id,
       channel: conv.channel as Channel,
       direction: 'outbound',
-      authorType: byAi ? 'ai' : 'agent',
-      authorUserId: byAi ? null : (ctx.user?.id ?? null),
+      authorType: author,
+      authorUserId: author === 'agent' ? (ctx.user?.id ?? null) : null,
       body,
       channelMessageId: email?.messageId ?? null,
       deliveryStatus: opts.draft ? 'draft' : 'pending',
@@ -188,10 +225,13 @@ export class OutboundService {
       await this.conversations.setThreadKey(tx, conv.id, email.messageId);
     }
 
-    if (!opts.draft) await this.tickets.recordAgentReply(tx, ctx, ticket, { byAi });
+    // Automatic messages (acknowledgements) are not a first response.
+    if (!opts.draft && author !== 'system') {
+      await this.tickets.recordAgentReply(tx, ctx, ticket, { byAi });
+    }
     // A person replying takes the conversation over (from nobody, or from the AI),
     // and any AI draft still waiting is superseded by their reply.
-    if (!byAi) {
+    if (author === 'agent') {
       if (conv.controller !== 'human') {
         await this.conversations.setController(tx, ctx, conv, 'human', ctx.user?.id ?? null);
       }
@@ -243,6 +283,7 @@ export class OutboundService {
     conv: Conversation,
     ticketNumber: number,
     ourAddress: string,
+    messageId?: string,
   ) {
     const domain = ourAddress.split('@')[1];
     const previous = await this.conversations.emailMessageIds(tx, conv.id);
@@ -250,7 +291,7 @@ export class OutboundService {
     const meta = conv.metadata as { address?: string; subject?: string };
     if (!meta.address) throw new BadRequestException('This conversation has no email address');
     return {
-      messageId: `<${randomUUID()}@${domain}>`,
+      messageId: messageId ?? `<${randomUUID()}@${domain}>`,
       to: meta.address,
       subject: replySubject(meta.subject ?? '', ticketNumber),
       inReplyTo: lastInbound?.id ?? previous.at(-1)?.id ?? null,
@@ -264,4 +305,18 @@ export class OutboundService {
     if (!config?.enabled) throw new BadRequestException('The email channel is not configured');
     return config.address;
   }
+}
+
+/** Web-form tickets are answered by email, like email tickets. */
+const repliesByEmail = (channel: string) => channel === 'email' || channel === 'web_form';
+
+function acknowledgement(a: { name?: string; subject: string; reference: string; team: string }) {
+  const first = a.name?.trim().split(/\s+/)[0];
+  return [
+    `Hi ${first || 'there'},`,
+    '',
+    `Thanks for contacting ${a.team}. We've received your request "${a.subject}" and will reply to this email address.`,
+    '',
+    `Your reference is ${a.reference}. To add details or files, just reply to this email.`,
+  ].join('\n');
 }

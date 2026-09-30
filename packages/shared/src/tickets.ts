@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const CHANNELS = ['email', 'whatsapp', 'webchat', 'voice', 'agent'] as const;
+export const CHANNELS = ['email', 'whatsapp', 'webchat', 'voice', 'web_form', 'agent'] as const;
 export const channelSchema = z.enum(CHANNELS);
 export type Channel = z.infer<typeof channelSchema>;
 

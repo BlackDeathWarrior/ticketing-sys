@@ -17,11 +17,12 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 | 3     | LLM platform on LiteLLM, Settings for AI and channel keys, cheapest-first routing with per-provider caps (ADR 0008, 0009)  | Done    |
 | 4     | Knowledge base: uploads, URL and FAQ sources, review, pgvector hybrid search with citations (ADR 0010)                     | Done    |
 | 5     | AI agent: answers chat, drafts email, hands over; confidence policy, classifier, AI marks in Orbit Desk (ADR 0011)         | Done    |
+| 5b    | Help center: public request form (channel `web_form`) with attachments, email acknowledgement and replies (ADR 0012)       | Done    |
 | 6     | Tools/MCP and approvals                                                                                                    | Next    |
 | 7     | Handover, take-over, routing, SLA, notifications, AI-vs-human views                                                        | Planned |
 | 8     | WhatsApp (Meta Cloud API, ported from whatsapp-crm; see `docs/research/whatsapp-crm.md`)                                   | Planned |
 | 9     | Voice agent on Sarvam STT/TTS, in the browser (see `docs/research/voice-sarvam.md`)                                        | Planned |
-| 10    | Reporting (AI vs human, SLA, CSAT) and admin settings                                                                      | Planned |
+| 10    | Reporting (AI vs human, SLA, CSAT), admin settings, customer portal (sign-in link, my tickets, reply, rate)                | Planned |
 | 11    | Hardening for the demo                                                                                                     | Planned |
 | 12    | AWS live demo                                                                                                              | Planned |
 
@@ -61,6 +62,7 @@ This builds the images from the root `Dockerfile`, starts the infrastructure, ru
 | Web console                 | http://localhost:8080 (sign in as `admin@example.com` / `ChangeMe123!`)                         |
 | Orbit Desk dashboard        | http://localhost:8081 (same accounts)                                                           |
 | Chat widget demo page       | http://localhost:8080/widget/demo.html                                                          |
+| Help center (request form)  | http://localhost:8080/help/: customers submit a request with files; replies come by email       |
 | API                         | http://localhost:3000/api/v1 (health: `/api/v1/health/ready`)                                   |
 | API docs                    | http://localhost:3000/docs                                                                      |
 | Outgoing mail (Mailpit)     | http://localhost:8025: replies TMS sends to customers                                           |

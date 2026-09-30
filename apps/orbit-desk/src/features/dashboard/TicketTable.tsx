@@ -1,3 +1,4 @@
+import { CHANNELS, type Channel } from '@tms/shared';
 import { useMemo, useState } from 'react';
 import { channelLabels, minutesSince } from '../../data/adapters';
 import type { Ticket } from '../../data/types';
@@ -7,12 +8,18 @@ import {
   Button,
   Card,
   PriorityGlyph,
+  Select,
   StatusPill,
   Tabs,
   type TabItem,
 } from '../../components/ui';
 import { byUrgency, inTab, type StatusTab, statusTabs } from './logic';
 import styles from './TicketTable.module.css';
+
+const CHANNEL_OPTIONS = [
+  { value: '', label: 'All channels' },
+  ...CHANNELS.map((c) => ({ value: c, label: channelLabels[c] })),
+];
 
 interface TicketTableProps {
   title: string;
@@ -22,6 +29,8 @@ interface TicketTableProps {
   loading: boolean;
   error?: string;
   search: string;
+  channel: Channel | '';
+  onChannel: (channel: Channel | '') => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onClearFilters: () => void;
@@ -34,6 +43,8 @@ export function TicketTable({
   loading,
   error,
   search,
+  channel,
+  onChannel,
   selectedId,
   onSelect,
   onClearFilters,
@@ -65,10 +76,22 @@ export function TicketTable({
                 · matching “<span className={styles.query}>{q}</span>”
               </>
             )}
+            {channel && ` · ${channelLabels[channel]} only`}
             {total > tickets.length && ` · showing ${tickets.length} of ${total}`}
           </p>
         </div>
-        <Tabs label="Filter by status" items={tabs} value={tab} onChange={setTab} />
+        <div className={styles.controls}>
+          <Select
+            id="queue-channel"
+            label="Channel"
+            hideLabel
+            className={styles.channelSelect}
+            value={channel}
+            options={CHANNEL_OPTIONS}
+            onChange={(e) => onChannel(e.target.value as Channel | '')}
+          />
+          <Tabs label="Filter by status" items={tabs} value={tab} onChange={setTab} />
+        </div>
       </header>
 
       {error ? (

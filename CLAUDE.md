@@ -19,7 +19,7 @@ Guidance for working in this repo. Read `docs/IMPLEMENTATION_PLAN.md` for the ph
 - Routes are authenticated by default; add `@RequirePermission(...)` to every non-public route. New permissions go in `packages/shared/src/permissions.ts` and the role map there.
 - A module only touches its own tables; use the owning module's service otherwise. The read-only `reports` module is the exception.
 - In `apps/api` (API and worker entry points), injected classes must be value imports (Nest reads constructor metadata).
-- Orbit Desk (`apps/orbit-desk`) is the product console (ADR 0005); new user-facing features go there. `apps/web` stays a barebones test console (no styling libraries).
+- Orbit Desk (`apps/orbit-desk`) is the product console (ADR 0005); new user-facing features go there. `apps/web` stays a barebones test console (no styling libraries). Customer-facing pages go in `apps/help-center` (served at `/help/`; the request form now, the Phase 10 portal later). Its public API is `apps/api/src/web-form` under `@Public()` routes that only ever create, never read a ticket back (ADR 0012).
 - `apps/orbit-desk` follows `docs/DESIGN.md`; keep its rules:
   - Tokens from `apps/orbit-desk/src/styles/tokens.css` only; never hard-code colors, radii or shadows.
   - Font weights 400 and 500 only. Radii 5px (buttons/inputs), 16px (cards), 32px (badges), 999px (nav pill).

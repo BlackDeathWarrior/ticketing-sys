@@ -52,6 +52,8 @@ describe('TicketTable', () => {
     total: 3,
     loading: false,
     search: '',
+    channel: '' as const,
+    onChannel: vi.fn(),
     selectedId: null,
     onSelect: vi.fn(),
     onClearFilters: vi.fn(),
@@ -77,6 +79,14 @@ describe('TicketTable', () => {
     expect(screen.getByText('zzz')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
     expect(props.onClearFilters).toHaveBeenCalled();
+  });
+
+  it('filters by channel', () => {
+    const { rerender } = render(<TicketTable {...props} />);
+    fireEvent.change(screen.getByLabelText('Channel'), { target: { value: 'web_form' } });
+    expect(props.onChannel).toHaveBeenCalledWith('web_form');
+    rerender(<TicketTable {...props} channel="web_form" />);
+    expect(screen.getByText(/Web form only/)).toBeInTheDocument();
   });
 
   it('says when the list is capped', () => {

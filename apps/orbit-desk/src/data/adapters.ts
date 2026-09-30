@@ -41,6 +41,8 @@ export interface ApiTicket {
   };
   assignee: ApiRef | null;
   team: ApiRef | null;
+  category?: ApiRef | null;
+  subcategory?: ApiRef | null;
   aiClassification?: AiClassification | null;
 }
 
@@ -80,6 +82,7 @@ export interface ApiConversation {
     body: string;
     createdAt: string;
     deliveryStatus: string | null;
+    attachments?: Array<{ filename: string; size: number; contentType: string }>;
     metadata?: {
       ai?: { confidence?: number | null; rules?: string[]; sources?: Array<{ label: string }> };
     };
@@ -177,6 +180,9 @@ export function toTicket(t: ApiTicket, workflow: Workflow | undefined): Ticket {
     priority: t.priority as Priority,
     assignee: t.assignee ? person(t.assignee) : null,
     team: t.team,
+    categoryLabel: t.category?.name
+      ? [t.category.name, t.subcategory?.name].filter(Boolean).join(' › ')
+      : null,
     channel: t.channel as Channel,
     tags: t.tags,
     createdAt: new Date(t.createdAt),
@@ -208,6 +214,7 @@ export function toThread(
       delivery: null,
       channel: null,
       byAi: false,
+      attachments: [],
       ai: null,
     });
   }
@@ -240,6 +247,11 @@ export function toThread(
         delivery: fromCustomer ? null : m.deliveryStatus,
         channel: c.channel,
         byAi,
+        attachments: (m.attachments ?? []).map((a, i) => ({
+          filename: a.filename,
+          size: a.size,
+          path: `/messages/${m.id}/attachments/${i}`,
+        })),
         ai:
           byAi && meta
             ? {
@@ -265,6 +277,7 @@ export function toThread(
       delivery: null,
       channel: null,
       byAi,
+      attachments: [],
       ai: null,
     });
   }
@@ -293,6 +306,7 @@ export const channelLabels: Record<Channel, string> = {
   webchat: 'Web chat',
   whatsapp: 'WhatsApp',
   voice: 'Phone',
+  web_form: 'Web form',
   agent: 'Agent-created',
 };
 
@@ -301,6 +315,7 @@ export const channelIcons = {
   webchat: 'chat',
   whatsapp: 'chat',
   voice: 'phone',
+  web_form: 'list',
   agent: 'user',
 } as const satisfies Record<Channel, string>;
 

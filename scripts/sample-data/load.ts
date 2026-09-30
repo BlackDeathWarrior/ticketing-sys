@@ -33,6 +33,7 @@ import {
   teams,
   tickets,
   users,
+  webForms,
 } from './data';
 
 const { values: args } = parseArgs({
@@ -211,6 +212,8 @@ async function main() {
     log(`${chatRefs.length} web chat conversations (${chatRefs.join(', ')})`);
     const emailRefs = await sendEmails(admin);
     log(`${emailRefs.length} customer emails (${emailRefs.join(', ')})`);
+    const formRefs = await sendWebForms();
+    log(`${formRefs.length} help-center requests (${formRefs.join(', ')})`);
 
     // An agent picks up the first chat and the first email and answers them.
     const [chatTicket] = chatRefs;
@@ -415,6 +418,21 @@ async function sendChats(admin: string): Promise<string[]> {
       return page.items.find((t) => t.customer.displayName === c.name)?.reference;
     });
     refs.push(ref);
+  }
+  return refs;
+}
+
+/** Submits the help-center form as a customer would (no token). */
+async function sendWebForms(): Promise<string[]> {
+  const form = await call<{ categories: Ref[] }>(null, 'GET', '/public/request-form');
+  const refs: string[] = [];
+  for (const { topic, ...f } of webForms) {
+    const categoryId = form.categories.find((c) => c.name === topic)?.id;
+    const receipt = await call<{ reference: string }>(null, 'POST', '/public/requests', {
+      ...f,
+      ...(categoryId ? { categoryId } : {}),
+    });
+    refs.push(receipt.reference);
   }
   return refs;
 }

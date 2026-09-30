@@ -405,8 +405,8 @@ function ConversationView({
         ? (m.authorName ?? 'Agent')
         : m.authorType;
   const where =
-    c.channel === 'email'
-      ? `Email with ${c.metadata.address ?? 'customer'}${c.metadata.subject ? ` — "${c.metadata.subject}"` : ''}`
+    c.channel === 'email' || c.channel === 'web_form'
+      ? `${c.channel === 'web_form' ? 'Web form, replies by email to' : 'Email with'} ${c.metadata.address ?? 'customer'}${c.metadata.subject ? ` — "${c.metadata.subject}"` : ''}`
       : c.channel === 'webchat'
         ? 'Web chat'
         : c.channel;
@@ -451,7 +451,7 @@ function ConversationView({
       </ol>
       {canReply && (
         <ReplyForm
-          label={`Reply by ${c.channel === 'webchat' ? 'chat' : c.channel}`}
+          label={`Reply by ${c.channel === 'webchat' ? 'chat' : c.channel === 'web_form' ? 'email' : c.channel}`}
           submitText="Send reply"
           onSubmit={onReply}
         />

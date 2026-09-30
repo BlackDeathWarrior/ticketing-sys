@@ -111,6 +111,22 @@ export async function openFile(apiPath: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/** Downloads an authenticated file (e.g. a message attachment) under its own name. */
+export async function downloadFile(apiPath: string, filename: string): Promise<void> {
+  let res = await raw('GET', apiPath);
+  if (res.status === 401 && (await refresh())) res = await raw('GET', apiPath);
+  if (!res.ok)
+    throw new ApiError(res.status, { message: `Could not download the file (${res.status})` });
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export async function login(email: string, password: string): Promise<CurrentUser> {
   const res = await fetch(`${BASE}/auth/login`, {
     method: 'POST',
