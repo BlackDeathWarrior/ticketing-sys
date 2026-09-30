@@ -12,6 +12,7 @@ import type { Env } from '../config/env';
 export class RedisIoAdapter extends IoAdapter {
   private pub?: Redis;
   private sub?: Redis;
+  private quitting?: Promise<void>;
 
   constructor(
     app: INestApplicationContext,
@@ -32,14 +33,22 @@ export class RedisIoAdapter extends IoAdapter {
         credentials: false,
       },
     });
-    this.pub ??= new Redis(this.env.REDIS_URL);
-    this.sub ??= this.pub.duplicate();
+    if (!this.pub || !this.sub) {
+      this.pub = new Redis(this.env.REDIS_URL);
+      this.sub = this.pub.duplicate();
+      // Errors during shutdown (EPIPE, closed connection) are expected; don't crash on them.
+      for (const client of [this.pub, this.sub]) client.on('error', () => undefined);
+    }
     server.adapter(createAdapter(this.pub, this.sub));
     return server;
   }
 
+  /** Nest calls this once per gateway namespace; the Redis clients are shared, so quit them once. */
   override async close(server: Server): Promise<void> {
     await super.close(server);
-    await Promise.allSettled([this.pub?.quit(), this.sub?.quit()]);
+    this.quitting ??= Promise.allSettled(
+      [this.pub, this.sub].map((c) => (c && c.status !== 'end' ? c.quit() : undefined)),
+    ).then(() => undefined);
+    await this.quitting;
   }
 }

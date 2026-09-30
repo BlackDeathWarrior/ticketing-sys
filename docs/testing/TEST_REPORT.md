@@ -1,10 +1,72 @@
-# Test report: consolidated main, live run on sample data
+# Test report
+
+## Latest: Phase 3, LLM platform and Settings keys
+
+Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-3-llm-settings`.
+
+**Result: every step of the gate passed.**
+
+| Step                | Result                                                 |
+| ------------------- | ------------------------------------------------------ |
+| `pnpm format:check` | pass                                                   |
+| `pnpm lint`         | pass                                                   |
+| `pnpm build`        | pass                                                   |
+| `pnpm typecheck`    | pass                                                   |
+| `pnpm test`         | 79 passed                                              |
+| `pnpm test:int`     | 53 passed                                              |
+| `pnpm e2e`          | 28 passed; 4 screenshot-only specs skipped as designed |
+
+### How it was run
+
+- The check steps ran through `bash scripts/check-in-docker.sh`: a Node 22 Linux container on the compose network, the same as the CI `check` job.
+  - On this Windows host, `@swc/core` refuses to load because its cache folder under `AppData\Local` inherits permissions it treats as unsafe.
+- `pnpm e2e` ran natively against the Docker stack, with `CHROMIUM_PATH` pointing at an installed Chromium.
+- LiteLLM and `fake-providers` were part of the stack. The integration tests register real providers and models in LiteLLM, pointing at the scripted fake LLM.
+
+### New tests
+
+| Where                                                 | Tests | Covers                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------- | ----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/llm/llm-router.test.ts`                 |     9 | Cheapest-first ordering by blended price, unknown prices last, cap skipping (including a $0 cap), capability filtering, disabled providers and models, fixed order, allowlists, pinned embeddings, warnings                                                                                              |
+| `apps/api/src/settings/secret-crypto.test.ts`         |     7 | AES-GCM round trip, fresh IVs, tamper detection, key-name binding, wrong master key, masking                                                                                                                                                                                                             |
+| `apps/fake-providers/src/llm.test.ts`                 |     4 | Scripted replies and deterministic embeddings                                                                                                                                                                                                                                                            |
+| `apps/orbit-desk/src/features/settings/logic.test.ts` |     7 | Tabs by permission, money and price formatting, masking, budget parsing, reordering                                                                                                                                                                                                                      |
+| `apps/api/test/settings.int.test.ts`                  |    15 | 401/403 for agents and supervisors; secrets encrypted, never echoed or audited in clear, rotated and deleted with audit rows; channel validation and test results; providers through LiteLLM; routing, caps, fallback after a scripted failure, "over budget" error, fixed order, key rotation, deletion |
+| `e2e/tests/settings.spec.ts`                          |     5 | The demo provider is masked and tests "Connected"; add a provider and a model in the UI, and cheapest-first routing picks it; a channel secret is stored write-only; hidden from agents and team leads (403); no horizontal scroll at 390px                                                              |
+
+### Bugs found and fixed
+
+1. **Integration run failed on unhandled Redis errors.** All 38 tests passed on `main`, but vitest reported 24 unhandled rejections, so the run exited 1.
+   - **Cause:** `RedisIoAdapter.close()` runs once per Socket.IO namespace, and the second call quit connections that were already closed.
+   - **Fix:** the adapter quits its clients once, and ignores expected shutdown errors.
+2. **Orbit Desk Settings widened the page at 390px by 83px.**
+   - **Cause:** visually-hidden table header labels are absolutely positioned. Their containing block was the card, outside the table's scroll box, so they escaped its clipping. A grid item with `min-width: auto` made it worse.
+   - **Fix:** the scroll box is `position: relative`, and grid children get `min-width: 0`.
+   - **Guard:** the phone-width spec in `settings.spec.ts`.
+3. **The sample loader raced LiteLLM on a fresh stack.** LiteLLM runs its own migrations on first start and had no healthcheck.
+   - **Fix:** compose has a LiteLLM healthcheck, and the loader waits until `/health/ready` reports LiteLLM up.
+4. **Integration tests couldn't reach LiteLLM through Turbo.** Turbo strips undeclared environment variables.
+   - **Fix:** `TEST_LITELLM_URL`, `TEST_LITELLM_MASTER_KEY` and `TEST_FAKE_LLM_URL` are declared in `turbo.json`.
+
+### Screenshots
+
+Settings, AI providers:
+
+![Settings providers](screenshots/orbit-settings-providers.png)
+
+Settings, models and roles:
+
+![Settings models](screenshots/orbit-settings-models.png)
+
+---
+
+## Earlier: consolidated main
 
 Run on 30 September 2026, 11:46–11:48 UTC, against a freshly reset Docker stack.
 
 **Result: 113 of 113 tests passed.** That covers 52 unit and component tests, 38 API integration tests and 23 browser end-to-end tests. Three screenshot-only specs were skipped in the main run and run separately to capture the images below.
 
-## What was tested
+### What was tested
 
 `main` now combines both earlier Claude branches:
 
@@ -20,7 +82,7 @@ Changes made on top of the merge:
 - **Sample data loader.** `pnpm sample:load` fills the stack with fictional records.
 - **E2E suite and CI.** Added a Playwright suite in `e2e/` and an `e2e` job in CI.
 
-## Environment
+### Environment
 
 | Piece          | Detail                                                                                                        |
 | -------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -31,7 +93,7 @@ Changes made on top of the merge:
 | Runtime        | Node 22, pnpm 9.15                                                                                            |
 | Not started    | LiteLLM. Its phase (Phase 3) hasn't begun, so `/health/ready` reports it as `down` as expected                |
 
-## Sample data (fictional, written for this run)
+### Sample data (fictional, written for this run)
 
 The loader lives in `scripts/sample-data/`. Every person and company is invented, and all email domains use the reserved `example.*` TLDs.
 
@@ -55,9 +117,9 @@ Dashboard figures after the full test run, which adds its own tickets on top of 
 - **Open tickets by channel:** 18 email, 10 web chat, 3 WhatsApp, 3 phone, 2 agent.
 - **Mailpit:** 10 outgoing messages.
 
-## Results
+### Results
 
-### Unit and component tests (`pnpm test`): 52 passed
+#### Unit and component tests (`pnpm test`): 52 passed
 
 | Package           | Tests | Covers                                                                                                                                                                                  |
 | ----------------- | ----: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -65,7 +127,7 @@ Dashboard figures after the full test run, which adds its own tickets on top of 
 | `@tms/api`        |    14 | Email parsing and threading, workflow rules                                                                                                                                             |
 | `@tms/orbit-desk` |    27 | API adapters, status glyphs, allowed transitions, thread merging, queue ordering, triage, KPIs, activity text, chart scale, and components: queue table, new ticket form, ticket drawer |
 
-### API integration tests (`pnpm test:int`, real Postgres, Redis, S3 and GreenMail): 38 passed
+#### API integration tests (`pnpm test:int`, real Postgres, Redis, S3 and GreenMail): 38 passed
 
 | File                       | Tests | Covers                                                                                                                |
 | -------------------------- | ----: | --------------------------------------------------------------------------------------------------------------------- |
@@ -75,7 +137,7 @@ Dashboard figures after the full test run, which adds its own tickets on top of 
 | `outbox-relay.int.test.ts` |     4 | Outbox relay and delivery                                                                                             |
 | `reports.int.test.ts`      |     3 | New endpoint: permission gate (401/403/200), exact deltas after create/assign/resolve, customer fields on ticket rows |
 
-### End-to-end tests (`pnpm e2e`, Playwright against the Docker stack): 23 passed
+#### End-to-end tests (`pnpm e2e`, Playwright against the Docker stack): 23 passed
 
 Every test also fails if the browser logs an unexpected console error.
 
@@ -105,7 +167,7 @@ Every test also fails if the browser logs an unexpected console error.
 | 22  | RBAC                | API refuses assignment by an agent (403)                                                         | Pass   |
 | 23  | Phone width (390px) | No horizontal scroll on first paint or after load; menu drawer opens; drawer fits the screen     | Pass   |
 
-## Bugs found and fixed while testing live
+### Bugs found and fixed while testing live
 
 1. **Orbit Desk: horizontal scroll on phones while the dashboard loads.**
    - **Cause:** the volume chart rendered 640px wide until its ResizeObserver fired, adding 286px of horizontal scroll at 390px.
@@ -122,14 +184,14 @@ Every test also fails if the browser logs an unexpected console error.
 
 A few first-run failures came from the tests themselves: the wrong error wording, a duplicate text match and a float rounding. Those tests were corrected, and the app was not changed for them.
 
-## Known limits
+### Known limits
 
 - **No SLA or CSAT figures.** The backend has no data for them until the SLA phase, so Orbit Desk no longer shows invented numbers. The "SLA at risk" view is gone for the same reason.
 - **Day boundaries are UTC.** The volume chart groups days in UTC.
 - **Queue lists are capped.** A view shows at most 200 rows, the API page limit, and says so when capped.
 - **Tests leave data behind.** The E2E tests create their own tickets and can be re-run on the same data, but each run adds records. Reset with `docker compose -f infra/docker-compose.yml --profile app down -v`.
 
-## Reproduce
+### Reproduce
 
 ```bash
 pnpm install
@@ -143,7 +205,7 @@ pnpm e2e                           # E2E; HTML report in e2e/playwright-report
 SCREENSHOTS=1 pnpm --filter @tms/e2e e2e tests/screenshots.spec.ts   # refresh the images below
 ```
 
-## Screenshots
+### Screenshots
 
 Orbit Desk dashboard on sample data:
 

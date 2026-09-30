@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react';
 
-export type Route = 'dashboard' | 'elements';
+export type Route = 'dashboard' | 'elements' | 'settings';
 
 function parse(): Route {
-  return window.location.hash.replace(/^#\/?/, '') === 'elements' ? 'elements' : 'dashboard';
+  const [first] = window.location.hash.replace(/^#\/?/, '').split('/');
+  if (first === 'elements') return 'elements';
+  if (first === 'settings') return 'settings';
+  return 'dashboard';
 }
 
 export function useHashRoute(): Route {
   const [route, setRoute] = useState<Route>(parse);
   useEffect(() => {
     const onChange = () => {
-      setRoute(parse());
-      window.scrollTo({ top: 0 });
+      const next = parse();
+      setRoute((prev) => {
+        if (prev !== next) window.scrollTo({ top: 0 });
+        return next;
+      });
     };
     window.addEventListener('hashchange', onChange);
     return () => window.removeEventListener('hashchange', onChange);
@@ -19,4 +25,4 @@ export function useHashRoute(): Route {
   return route;
 }
 
-export const hrefFor = (route: Route) => (route === 'elements' ? '#/elements' : '#/');
+export const hrefFor = (route: Route) => (route === 'dashboard' ? '#/' : `#/${route}`);

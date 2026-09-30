@@ -110,6 +110,9 @@ importers:
       nodemailer:
         specifier: ^6.10.1
         version: 6.10.1
+      openai:
+        specifier: ^5.23.0
+        version: 5.23.2(ws@8.21.3)(zod@3.25.76)
       pg:
         specifier: ^8.23.0
         version: 8.23.0
@@ -175,6 +178,18 @@ importers:
       vite:
         specifier: ^6.3.0
         version: 6.4.3(@types/node@22.20.4)(terser@5.51.2)(tsx@4.23.15)
+
+  apps/fake-providers:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.4
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@22.20.4)(jsdom@26.1.0)(terser@5.51.2)(tsx@4.23.15)
 
   apps/orbit-desk:
     dependencies:
@@ -2904,6 +2919,18 @@ packages:
 
   once@1.4.0:
     resolution: {integrity: sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==}
+
+  openai@5.23.2:
+    resolution: {integrity: sha512-MQBzmTulj+MM5O8SKEk/gL8a7s5mktS9zUtAkU257WjvobGc9nKcBuVwjyEEcb9SI8a8Y2G/mzn3vm9n1Jlleg==}
+    hasBin: true
+    peerDependencies:
+      ws: ^8.18.0
+      zod: ^3.23.8
+    peerDependenciesMeta:
+      ws:
+        optional: true
+      zod:
+        optional: true
 
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
@@ -6216,6 +6243,11 @@ snapshots:
   once@1.4.0:
     dependencies:
       wrappy: 1.0.2
+
+  openai@5.23.2(ws@8.21.3)(zod@3.25.76):
+    optionalDependencies:
+      ws: 8.21.3
+      zod: 3.25.76
 
   optionator@0.9.4:
     dependencies:

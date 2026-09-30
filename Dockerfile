@@ -6,6 +6,7 @@
 #   migrate  one-shot: applies DB migrations, then the idempotent seed
 #   web      nginx serving the console and chat widget, proxying /api and /socket.io
 #   orbit-desk  nginx serving the Orbit Desk dashboard, proxying /api and /socket.io
+#   fake-providers  scripted stand-ins for LLM (and later WhatsApp/Sarvam) APIs, for offline demos
 #
 # Behind a TLS-intercepting proxy, pass its CA as a build secret:
 #   docker build --secret id=extra_ca,src=/path/to/ca.pem ...
@@ -33,6 +34,7 @@ COPY apps/api/package.json apps/api/
 COPY apps/chat-widget/package.json apps/chat-widget/
 COPY apps/web/package.json apps/web/
 COPY apps/orbit-desk/package.json apps/orbit-desk/
+COPY apps/fake-providers/package.json apps/fake-providers/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     --mount=type=secret,id=extra_ca,required=false \
     if [ -f /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; \
@@ -80,3 +82,9 @@ FROM ${NGINX_IMAGE} AS orbit-desk
 COPY apps/orbit-desk/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/orbit-desk/dist /usr/share/nginx/html
 EXPOSE 80
+
+# No runtime dependencies: plain node:http.
+FROM runtime AS fake-providers
+COPY --from=build --chown=node:node /repo/apps/fake-providers/dist ./dist
+EXPOSE 4010
+CMD ["node", "dist/main.js"]

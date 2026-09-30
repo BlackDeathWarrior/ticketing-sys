@@ -9,12 +9,12 @@ Guidance for working in this repo. Read `docs/IMPLEMENTATION_PLAN.md` for the ph
 - `pnpm demo:email` sends a customer email to the dev support mailbox.
 - `pnpm sample:load` loads the fictional sample data (`scripts/sample-data/data.ts`) through the API; `pnpm e2e` runs the Playwright suite in `e2e/` against the running stack.
 - `pnpm build` builds all packages (apps depend on `packages/*/dist`, so build after changing `shared` or `db`).
-- `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:int` (needs Postgres + Redis; see README).
+- `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:int` (needs Postgres, Redis, LiteLLM and `fake-providers`; see README). On Windows, where `@swc/core` rejects its cache folder, run them with `bash scripts/check-in-docker.sh [steps]` (a Linux container on the compose network). `pnpm e2e` accepts `CHROMIUM_PATH`.
 - `pnpm db:generate` after schema edits; commit the SQL in `packages/db/drizzle`. Hand-written SQL goes in `drizzle-kit generate --custom` migrations.
 
 ## Rules
 
-- Mutations: one DB transaction containing the change + `AuditService.record` + `OutboxService.publish`. Never skip either. (`OrgService` and `WorkflowService` still skip the outbox; add the events when you next touch them.)
+- Mutations: one DB transaction containing the change + `AuditService.record` + `OutboxService.publish`. Never skip either. (`llm_calls` is a metrics log and the only exception; see ADR 0008.)
 - Validate input with zod schemas from `packages/shared` via `ZodPipe`; add new contracts there.
 - Routes are authenticated by default; add `@RequirePermission(...)` to every non-public route. New permissions go in `packages/shared/src/permissions.ts` and the role map there.
 - A module only touches its own tables; use the owning module's service otherwise. The read-only `reports` module is the exception.
@@ -28,5 +28,7 @@ Guidance for working in this repo. Read `docs/IMPLEMENTATION_PLAN.md` for the ph
   - No red/green/yellow: status is glyph shape, label and opacity.
   - Check UI changes at ≈1440px and 390px with no horizontal scroll and no console errors.
 - Add integration tests in `apps/api/test/*.int.test.ts` for new endpoints, and an E2E spec in `e2e/tests` for new user-facing flows. Sample data stays fictional (`example.*` domains). Background behaviour: start the worker in-process with `startWorker()` from `test/helpers.ts`.
+- All LLM calls go through `LlmClientService` (`chat`/`embed` with a role), never a provider SDK directly. Credentials go through `SecretsService` (or LiteLLM for provider keys); no route may return a secret's value, and key fields need `settings:secrets` (ADR 0009). Channel settings come from `ChannelConfigService`, not `env` directly.
+- Demos and tests use `apps/fake-providers` (scripted LLM; later Meta Graph and Sarvam) instead of real keys.
 - Channels produce a `MessageEnvelope` and call `InboundService.handle()`; outbound messages are stored `pending` and sent by the worker's `DeliveryHandler`. Don't send to external services inside a request.
 - Worker services that hold resources stop in `beforeApplicationShutdown` (the DB pool and Redis close in `onApplicationShutdown`).

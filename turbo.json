@@ -20,7 +20,10 @@
         "TEST_S3_ENDPOINT",
         "TEST_MAIL_HOST",
         "TEST_SMTP_PORT",
-        "TEST_IMAP_PORT"
+        "TEST_IMAP_PORT",
+        "TEST_LITELLM_URL",
+        "TEST_LITELLM_MASTER_KEY",
+        "TEST_FAKE_LLM_URL"
       ]
     },
     "dev": {

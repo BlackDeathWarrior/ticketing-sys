@@ -20,11 +20,31 @@ export const DOMAIN_EVENT_TYPES = [
   'message.received',
   'message.outbound',
   'message.delivery_updated',
+  'team.created',
+  'category.created',
+  'workflow.status_upserted',
+  'workflow.status_deactivated',
+  'workflow.transitions_replaced',
+  /** A secret was created, rotated or deleted. The payload names the key, never the value. */
+  'settings.secret_changed',
+  /** Non-secret settings changed, such as a channel's host or an AI option. */
+  'settings.updated',
+  /** LLM providers, models or roles changed. */
+  'llm.config_changed',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
 
-export type AggregateType = 'ticket' | 'customer' | 'user' | 'conversation';
+export type AggregateType =
+  | 'ticket'
+  | 'customer'
+  | 'user'
+  | 'conversation'
+  | 'team'
+  | 'category'
+  | 'workflow'
+  | 'settings'
+  | 'llm';
 
 export interface DomainEvent<P = Record<string, unknown>> {
   id: string;

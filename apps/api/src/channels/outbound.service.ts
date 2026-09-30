@@ -5,10 +5,10 @@ import type { Channel } from '@tms/shared';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import type { RequestCtx } from '../common/request-context';
-import type { Env } from '../config/env';
 import { type Conversation, ConversationsService } from '../conversations/conversations.service';
 import { CustomersService } from '../customers/customers.service';
-import { DB, ENV } from '../infra/tokens';
+import { DB } from '../infra/tokens';
+import { ChannelConfigService } from '../settings/channel-config.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { replySubject } from './email/email.util';
 
@@ -21,12 +21,12 @@ import { replySubject } from './email/email.util';
 export class OutboundService {
   constructor(
     @Inject(DB) private readonly db: Database,
-    @Inject(ENV) private readonly env: Env,
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
     private readonly conversations: ConversationsService,
     private readonly tickets: TicketsService,
     private readonly customers: CustomersService,
+    private readonly channels: ChannelConfigService,
   ) {}
 
   async reply(ctx: RequestCtx, conversationId: string, body: string) {
@@ -38,7 +38,7 @@ export class OutboundService {
 
   /** Opens an email thread to the ticket's customer and sends the first message. */
   async startEmailConversation(ctx: RequestCtx, ticketId: string, body: string) {
-    this.assertEmailEnabled();
+    await this.emailAddress();
     const ticket = await this.tickets.get(ticketId);
     const customer = await this.customers.get(ticket.customerId);
     const address =
@@ -59,10 +59,9 @@ export class OutboundService {
   }
 
   private async replyInTx(tx: DbOrTx, ctx: RequestCtx, conv: Conversation, body: string) {
-    if (conv.channel === 'email') this.assertEmailEnabled();
+    const ourAddress = conv.channel === 'email' ? await this.emailAddress() : null;
     const ticket = await this.tickets.lockRow(tx, conv.ticketId);
-    const email =
-      conv.channel === 'email' ? await this.emailHeaders(tx, conv, ticket.number) : null;
+    const email = ourAddress ? await this.emailHeaders(tx, conv, ticket.number, ourAddress) : null;
 
     const message = await this.conversations.addMessage(tx, {
       conversationId: conv.id,
@@ -102,8 +101,13 @@ export class OutboundService {
   }
 
   /** Threading headers so the customer's mail client shows one conversation. */
-  private async emailHeaders(tx: DbOrTx, conv: Conversation, ticketNumber: number) {
-    const domain = this.env.EMAIL_ADDRESS!.split('@')[1];
+  private async emailHeaders(
+    tx: DbOrTx,
+    conv: Conversation,
+    ticketNumber: number,
+    ourAddress: string,
+  ) {
+    const domain = ourAddress.split('@')[1];
     const previous = await this.conversations.emailMessageIds(tx, conv.id);
     const lastInbound = [...previous].reverse().find((m) => m.direction === 'inbound');
     const meta = conv.metadata as { address?: string; subject?: string };
@@ -117,9 +121,10 @@ export class OutboundService {
     };
   }
 
-  private assertEmailEnabled() {
-    if (!this.env.EMAIL_ENABLED || !this.env.EMAIL_ADDRESS) {
-      throw new BadRequestException('The email channel is not configured');
-    }
+  /** The support address, or a 400 when the email channel is off. */
+  private async emailAddress(): Promise<string> {
+    const config = await this.channels.email();
+    if (!config?.enabled) throw new BadRequestException('The email channel is not configured');
+    return config.address;
   }
 }

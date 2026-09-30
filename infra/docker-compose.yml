@@ -8,6 +8,9 @@ x-app-env: &app-env
   REDIS_URL: redis://redis:6379
   LITELLM_URL: http://litellm:4000
   LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-tms-dev-master-key}
+  # Encrypts stored channel/tool secrets (ADR 0009). Dev default only; generate with
+  # `openssl rand -base64 32` for anything shared.
+  TMS_SECRETS_KEY: ${TMS_SECRETS_KEY:-ZGV2LW9ubHktdG1zLXNlY3JldHMta2V5LTMyYnl0ZXM=}
   # Dev default only. Set JWT_SECRET in the environment for anything shared.
   JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me-0123456789abcdef}
   CORS_ORIGINS: http://localhost:8080,http://localhost:8081
@@ -120,6 +123,40 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # First start runs LiteLLM's own migrations, which takes a minute or two.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
+
+  # Scripted stand-ins for external providers (an OpenAI-compatible LLM for
+  # now), so the demo and the tests work with no real API keys. LiteLLM
+  # reaches it at http://fake-providers:4010/v1.
+  fake-providers:
+    profiles: ['app', 'fake']
+    build: { context: .., dockerfile: Dockerfile, target: fake-providers }
+    ports:
+      - '4010:4010'
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4010/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   # ---- TMS application (profile "app": `pnpm docker:up`) ----
 

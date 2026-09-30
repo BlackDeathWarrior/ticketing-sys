@@ -240,7 +240,8 @@ footer{font-size:12.5px;color:var(--muted)}
         <tr><td>Reports</td><td><code>apps/api/src/reports</code></td><td><code>GET /reports/overview</code>: read-only aggregates across modules (ADR 0006)</td></tr>
         <tr><td>Sample data</td><td><code>scripts/sample-data</code></td><td><code>pnpm sample:load</code>: fictional teams, users, customers, 40 tickets, live chats and emails, loaded through the public API (ADR 0007)</td></tr>
         <tr><td>E2E suite</td><td><code>e2e/</code></td><td>23 Playwright tests against the Docker stack; a CI job runs them</td></tr>
-        <tr><td>Infrastructure</td><td><code>infra/docker-compose.yml</code>, <code>Dockerfile</code></td><td>Postgres 16 (pgvector image), Redis, SeaweedFS (S3), GreenMail + Mailpit, LiteLLM (running, not yet used)</td></tr>
+        <tr><td>Settings and LLM</td><td><code>apps/api/src/settings</code>, <code>apps/api/src/llm</code></td><td>Encrypted secrets, channel settings, providers/models/roles on LiteLLM with cheapest-first routing and caps (ADR 0008, 0009). Fake providers in <code>apps/fake-providers</code></td></tr>
+        <tr><td>Infrastructure</td><td><code>infra/docker-compose.yml</code>, <code>Dockerfile</code></td><td>Postgres 16 (pgvector image), Redis, SeaweedFS (S3), GreenMail + Mailpit, LiteLLM, fake providers (scripted LLM)</td></tr>
       </tbody>
     </table></div>
   </section>
@@ -345,7 +346,7 @@ const BUILT = {
  "ticket": "Built: tickets, configurable workflow, notes, history, lifecycle timestamps. The SLA clock is not built (sla_policy_id is unused).",
  "profile": "Built: customers, identities with normalisation and verification, resolve-or-create, merge.",
  "routing": "Not built. Manual assign and team only.",
- "ai": "Not built (Phases 3 and 5). LiteLLM runs in compose but no code calls it.",
+ "ai": "Partial: the LLM platform is built (Phase 3): LlmClientService routes each role to the cheapest capable model via LiteLLM, with per-provider caps and fallbacks (ADR 0008). The agent loop comes in Phase 5.",
  "handover": "Not built (Phase 7).",
  "kb": "Not built (Phase 4). The pgvector image is used but the extension is not enabled.",
  "tools": "Not built (Phase 6).",
@@ -358,7 +359,7 @@ const BUILT = {
  "reporting": "Partial: GET /reports/overview, computed live (ADR 0006). No AI vs human, SLA, CSAT or export.",
  "iam": "Built: local accounts, JWT, rotating refresh tokens, permission guard. No SSO or MFA.",
  "audit": "Built: append-only audit_log (a trigger blocks UPDATE and DELETE), written in the same transaction as each change.",
- "vault": "Not built. Secrets are environment variables; encrypted storage is planned for Phase 3/6.",
+ "vault": "Built (Phase 3): LLM keys in LiteLLM credentials; channel and tool secrets AES-256-GCM in the secrets table, write-only, admin-only, audited (ADR 0009). The master key comes from the environment or SSM.",
  "obs": "Partial: pino logs with request IDs, health checks, worker heartbeat, an optional OTel collector. No traces or metrics in code.",
  "events": "Built: transactional outbox → BullMQ domain-events queue, woken by Postgres NOTIFY. Not Kafka."
 };

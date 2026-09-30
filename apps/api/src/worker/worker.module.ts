@@ -12,6 +12,8 @@ import { InfraModule } from '../infra/infra.module';
 import { loggerModule } from '../logging';
 import { emitterProvider } from '../realtime/emitter.provider';
 import { RealtimeFanoutHandler } from '../realtime/realtime-fanout.handler';
+import { SettingsChangedHandler } from '../settings/settings-changed.handler';
+import { SettingsModule } from '../settings/settings.module';
 import { StorageModule } from '../storage/storage.module';
 import { TicketsModule } from '../tickets/tickets.module';
 import { DOMAIN_EVENT_HANDLERS } from './domain-events';
@@ -31,6 +33,7 @@ const env = loadEnv();
     loggerModule(env, 'worker'),
     InfraModule,
     AuditModule,
+    SettingsModule,
     StorageModule,
     TicketsModule,
     ConversationsModule,
@@ -49,9 +52,10 @@ const env = loadEnv();
     },
     DeliveryHandler,
     RealtimeFanoutHandler,
+    SettingsChangedHandler,
     {
       provide: DOMAIN_EVENT_HANDLERS,
-      inject: [RealtimeFanoutHandler, DeliveryHandler],
+      inject: [RealtimeFanoutHandler, DeliveryHandler, SettingsChangedHandler],
       useFactory: (...handlers: unknown[]) => handlers,
     },
     DomainEventsConsumer,

@@ -19,6 +19,9 @@ export const PERMISSIONS = [
   'settings:workflow',
   'settings:categories',
   'settings:llm',
+  /** Create, rotate or delete API keys and credentials (LLM, channels, tools). Admin only. */
+  'settings:secrets',
+  'settings:channels',
   'audit:read',
   'approval:approve',
   'report:read',

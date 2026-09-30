@@ -1,7 +1,6 @@
-import { Inject, Injectable, type OnApplicationShutdown } from '@nestjs/common';
+import { Injectable, type OnApplicationShutdown } from '@nestjs/common';
 import nodemailer, { type Transporter } from 'nodemailer';
-import type { Env } from '../config/env';
-import { ENV } from '../infra/tokens';
+import { ChannelConfigService, type ResolvedEmailConfig } from '../settings/channel-config.service';
 import type { ChannelSender, DeliveryItem } from './senders';
 
 interface EmailMeta {
@@ -12,19 +11,24 @@ interface EmailMeta {
   references: string[];
 }
 
-/** Sends agent replies over SMTP with the threading headers chosen at reply time. */
+/**
+ * Sends agent replies over SMTP with the threading headers chosen at reply
+ * time. The SMTP settings are read per send, so a Settings change applies to
+ * the next message; the pooled transport is rebuilt when they differ.
+ */
 @Injectable()
 export class EmailSender implements ChannelSender, OnApplicationShutdown {
   readonly channel = 'email';
-  private transport?: Transporter;
+  private transport?: { key: string; transporter: Transporter };
 
-  constructor(@Inject(ENV) private readonly env: Env) {}
+  constructor(private readonly channels: ChannelConfigService) {}
 
   async send({ message }: DeliveryItem): Promise<void> {
-    if (!this.env.EMAIL_ENABLED) throw new Error('The email channel is disabled');
+    const config = await this.channels.email();
+    if (!config?.enabled) throw new Error('The email channel is disabled');
     const meta = message.metadata as unknown as EmailMeta;
-    await this.getTransport().sendMail({
-      from: { name: this.env.EMAIL_FROM_NAME, address: this.env.EMAIL_ADDRESS! },
+    await this.getTransport(config).sendMail({
+      from: { name: config.fromName, address: config.address },
       to: meta.to,
       subject: meta.subject,
       text: message.body,
@@ -36,19 +40,24 @@ export class EmailSender implements ChannelSender, OnApplicationShutdown {
   }
 
   onApplicationShutdown() {
-    this.transport?.close();
+    this.transport?.transporter.close();
   }
 
-  private getTransport(): Transporter {
-    this.transport ??= nodemailer.createTransport({
-      host: this.env.EMAIL_SMTP_HOST,
-      port: this.env.EMAIL_SMTP_PORT,
-      secure: this.env.EMAIL_SMTP_SECURE,
-      auth: this.env.EMAIL_SMTP_USER
-        ? { user: this.env.EMAIL_SMTP_USER, pass: this.env.EMAIL_SMTP_PASSWORD }
-        : undefined,
-      pool: true,
-    });
-    return this.transport;
+  private getTransport(c: ResolvedEmailConfig): Transporter {
+    const key = JSON.stringify([c.smtpHost, c.smtpPort, c.smtpSecure, c.smtpUser, c.smtpPassword]);
+    if (this.transport?.key !== key) {
+      this.transport?.transporter.close();
+      this.transport = {
+        key,
+        transporter: nodemailer.createTransport({
+          host: c.smtpHost,
+          port: c.smtpPort,
+          secure: c.smtpSecure,
+          auth: c.smtpUser ? { user: c.smtpUser, pass: c.smtpPassword ?? '' } : undefined,
+          pool: true,
+        }),
+      };
+    }
+    return this.transport.transporter;
   }
 }

@@ -36,6 +36,13 @@
       "when": 1790755011828,
       "tag": "0004_outbox_notify",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790773271179,
+      "tag": "0005_settings_llm",
+      "breakpoints": true
     }
   ]
 }
