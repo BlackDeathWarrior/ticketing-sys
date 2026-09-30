@@ -5,6 +5,7 @@
 #   worker   background process (outbox relay, delivery, mailbox) from the API code
 #   migrate  one-shot: applies DB migrations, then the idempotent seed
 #   web      nginx serving the console and chat widget, proxying /api and /socket.io
+#   orbit-desk  nginx serving the Orbit Desk dashboard, proxying /api and /socket.io
 #
 # Behind a TLS-intercepting proxy, pass its CA as a build secret:
 #   docker build --secret id=extra_ca,src=/path/to/ca.pem ...
@@ -26,6 +27,7 @@ COPY packages/db/package.json packages/db/
 COPY apps/api/package.json apps/api/
 COPY apps/chat-widget/package.json apps/chat-widget/
 COPY apps/web/package.json apps/web/
+COPY apps/orbit-desk/package.json apps/orbit-desk/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     --mount=type=secret,id=extra_ca,required=false \
     if [ -f /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; \
@@ -67,4 +69,9 @@ FROM nginx:1.27-alpine AS web
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 COPY --from=build /repo/apps/chat-widget/dist /usr/share/nginx/html/widget
+EXPOSE 80
+
+FROM nginx:1.27-alpine AS orbit-desk
+COPY apps/orbit-desk/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /repo/apps/orbit-desk/dist /usr/share/nginx/html
 EXPOSE 80

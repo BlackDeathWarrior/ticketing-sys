@@ -10,7 +10,7 @@ x-app-env: &app-env
   LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-tms-dev-master-key}
   # Dev default only. Set JWT_SECRET in the environment for anything shared.
   JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me-0123456789abcdef}
-  CORS_ORIGINS: http://localhost:8080
+  CORS_ORIGINS: http://localhost:8080,http://localhost:8081
   API_DOCS: ${API_DOCS:-true}
   # Object storage (SeaweedFS S3 API)
   S3_ENDPOINT: http://objectstore:8333
@@ -168,6 +168,17 @@ services:
     build: { <<: *build, target: web }
     ports:
       - '8080:80'
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Orbit Desk: the styled dashboard, same API behind it.
+  orbit-desk:
+    profiles: ['app']
+    build: { <<: *build, target: orbit-desk }
+    ports:
+      - '8081:80'
     restart: unless-stopped
     depends_on:
       api:

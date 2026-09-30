@@ -1,0 +1,256 @@
+.card {
+  scroll-margin-top: 96px;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-16);
+  padding: var(--spacing-24) var(--spacing-24) var(--spacing-16);
+}
+
+.title {
+  font-size: var(--text-ui-lg);
+  line-height: 22px;
+}
+
+.subtitle {
+  margin-top: 2px;
+  font-size: var(--text-ui);
+  color: var(--color-fog);
+}
+
+.query {
+  color: var(--color-lilac-white);
+}
+
+.scroller {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-body-sm);
+}
+
+.table th {
+  padding: 10px var(--spacing-12);
+  text-align: left;
+  font-size: var(--text-caption);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fog);
+  white-space: nowrap;
+  border-top: 1px solid var(--line-subtle);
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.table td {
+  padding: 14px var(--spacing-12);
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.table tr > :first-child {
+  padding-left: var(--spacing-24);
+}
+
+.table tr > :last-child {
+  padding-right: var(--spacing-24);
+}
+
+.row {
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.row:hover {
+  background: var(--hover-wash);
+}
+
+.row:last-child td {
+  border-bottom: 0;
+}
+
+.selected,
+.selected:hover {
+  background: var(--accent-wash);
+}
+
+.selected td:first-child {
+  box-shadow: inset 2px 0 0 var(--color-lavender-accent);
+}
+
+.dim .subjectText,
+.dim .id {
+  color: var(--color-fog);
+}
+
+.colTicket {
+  width: 44%;
+  min-width: 300px;
+}
+
+.subject {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-8);
+  max-width: 100%;
+  text-align: left;
+  border-radius: var(--radius-buttons);
+}
+
+.id {
+  flex-shrink: 0;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+  font-variant-numeric: tabular-nums;
+}
+
+.subjectText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-lilac-white);
+  font-weight: var(--font-weight-medium);
+}
+
+.subject:hover .subjectText {
+  color: var(--color-pearl);
+}
+
+.customer {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assignee {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  color: var(--color-ash);
+  white-space: nowrap;
+}
+
+.unassigned {
+  font-size: var(--text-caption);
+  color: var(--color-dusk);
+  font-style: italic;
+}
+
+.updated {
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+  white-space: nowrap;
+}
+
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--spacing-8);
+  padding: var(--spacing-56) var(--spacing-24) var(--spacing-64);
+  text-align: center;
+  border-top: 1px solid var(--line-subtle);
+}
+
+.emptyArt {
+  margin-bottom: var(--spacing-8);
+  fill: var(--color-lilac-white);
+  stroke: var(--color-lavender-accent);
+  stroke-width: 1;
+  stroke-opacity: 0.6;
+}
+
+.emptyArt path {
+  fill: none;
+}
+
+.emptyTitle {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: var(--font-weight-medium);
+}
+
+.emptyText {
+  margin-bottom: var(--spacing-12);
+  font-size: var(--text-body-sm);
+  color: var(--color-fog);
+}
+
+@media (max-width: 1199px) {
+  .colUpdated {
+    display: none;
+  }
+}
+
+@media (max-width: 899px) {
+  .colAssignee {
+    display: none;
+  }
+}
+
+/* Phone: each row becomes a compact stacked card; no horizontal scroll. */
+@media (max-width: 640px) {
+  .header {
+    padding: var(--spacing-20) var(--spacing-16) var(--spacing-12);
+  }
+
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .table,
+  .table tbody {
+    display: block;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    align-items: center;
+    gap: var(--spacing-8) var(--spacing-12);
+    padding: 14px var(--spacing-16);
+    border-bottom: 1px solid var(--line-subtle);
+  }
+
+  .row td,
+  .table tr > :first-child,
+  .table tr > :last-child {
+    padding: 0;
+    border: 0;
+  }
+
+  .row .colTicket {
+    grid-column: 1 / -1;
+    min-width: 0;
+    width: auto;
+  }
+
+  .row .colSla {
+    justify-self: end;
+  }
+
+  .selected td:first-child {
+    box-shadow: none;
+  }
+
+  .selected {
+    box-shadow: inset 2px 0 0 var(--color-lavender-accent);
+  }
+
+  .subjectText {
+    white-space: normal;
+  }
+}

@@ -22,7 +22,7 @@
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "docker:up": "docker compose -f infra/docker-compose.yml --profile app up -d --build",
     "docker:down": "docker compose -f infra/docker-compose.yml --profile app down",
-    "docker:logs": "docker compose -f infra/docker-compose.yml --profile app logs -f api worker web",
+    "docker:logs": "docker compose -f infra/docker-compose.yml --profile app logs -f api worker web orbit-desk",
     "demo:email": "node apps/api/scripts/send-test-email.mjs"
   },
   "devDependencies": {

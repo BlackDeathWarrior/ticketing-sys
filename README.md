@@ -24,6 +24,7 @@ apps/
                   dist/main.js    HTTP API + Socket.IO  → http://localhost:3000/api/v1, docs at /docs
                   dist/worker.js  background worker: outbox relay, delivery, mailbox polling
   web/          Barebones React agent console         → http://localhost:5173
+  orbit-desk/   Orbit Desk: the styled agent dashboard → http://localhost:5175 (design: docs/DESIGN.md)
   chat-widget/  Embeddable web chat widget (one script tag)
 packages/
   shared/       Zod schemas, permissions, workflow defaults, channel envelope, event contracts
@@ -45,6 +46,7 @@ This builds the images from the root `Dockerfile`, starts the infrastructure, ru
 | What                        | URL                                                                                             |
 | --------------------------- | ----------------------------------------------------------------------------------------------- |
 | Web console                 | http://localhost:8080 (sign in as `admin@example.com` / `ChangeMe123!`)                         |
+| Orbit Desk dashboard        | http://localhost:8081 (same accounts)                                                           |
 | Chat widget demo page       | http://localhost:8080/widget/demo.html                                                          |
 | API                         | http://localhost:3000/api/v1 (health: `/api/v1/health/ready`)                                   |
 | API docs                    | http://localhost:3000/docs                                                                      |

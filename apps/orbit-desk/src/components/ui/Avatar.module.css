@@ -1,0 +1,51 @@
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.02em;
+  line-height: 1;
+  color: var(--color-lilac-white);
+  box-shadow:
+    var(--shadow-md),
+    inset 0 0 0 1px rgba(244, 240, 255, 0.08);
+  user-select: none;
+}
+
+/* Four quiet steps of the same indigo — identity without extra hues. */
+.tint0 {
+  background: var(--color-deep-indigo);
+}
+.tint1 {
+  background: #1a1250;
+}
+.tint2 {
+  background: #221a5c;
+}
+.tint3 {
+  background: #151032;
+}
+
+.highlight {
+  box-shadow:
+    0 0 0 2px var(--color-void-canvas),
+    0 0 0 3px var(--color-lavender-accent);
+}
+
+.more {
+  background: var(--color-midnight-surface);
+  color: var(--color-fog);
+}
+
+.group {
+  display: inline-flex;
+  align-items: center;
+  padding-left: 6px;
+}
+
+.stacked {
+  margin-left: -6px;
+  outline: 2px solid var(--color-midnight-surface);
+}
