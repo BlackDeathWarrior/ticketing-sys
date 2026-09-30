@@ -10,8 +10,10 @@
 model_list: []
 
 router_settings:
-  # Spread load across deployments in the same model group, respecting rpm/tpm.
-  routing_strategy: usage-based-routing-v2
+  # TMS decides the order (cheapest capable model first, providers over their
+  # cap skipped) and sends the rest as per-request fallbacks (ADR 0008). Each
+  # TMS alias maps to one deployment, so LiteLLM's own strategy barely matters.
+  routing_strategy: simple-shuffle
   num_retries: 2
   timeout: 60
   allowed_fails: 3

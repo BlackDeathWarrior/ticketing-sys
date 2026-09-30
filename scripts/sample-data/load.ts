@@ -24,6 +24,7 @@ import {
   customers,
   emails,
   type FinalStatus,
+  llm,
   MARKER_EMAIL,
   SAMPLE_PASSWORD,
   type SampleTicket,
@@ -46,6 +47,7 @@ const ADMIN_PASSWORD =
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://tms:tms@localhost:5432/tms';
 const SMTP_HOST = process.env.SMTP_HOST ?? 'localhost';
 const SMTP_PORT = Number(process.env.SMTP_PORT ?? 3025);
+const FAKE_LLM_URL = process.env.FAKE_LLM_URL ?? 'http://fake-providers:4010/v1';
 
 interface Ref {
   id: string;
@@ -124,6 +126,8 @@ async function main() {
     }
   }
   log(`${teams.length} teams`);
+
+  await loadLlm(admin);
 
   // ---- users ----
   const userIds = new Map<string, string>();
@@ -286,6 +290,47 @@ export function stepsTo(current: string, target: FinalStatus): string[] {
     case 'closed':
       return current === 'resolved' ? ['closed'] : ['resolved', 'closed'];
   }
+}
+
+/** Registers the scripted demo LLM so AI features run without real keys. */
+async function loadLlm(admin: string) {
+  await waitFor(
+    'LiteLLM to be up',
+    async () => {
+      const res = await fetch(`${API_URL}/api/v1/health/ready`).catch(() => null);
+      const body = (await res?.json().catch(() => null)) as {
+        checks?: { litellm?: { status?: string } };
+      } | null;
+      return body?.checks?.litellm?.status === 'up' || undefined;
+    },
+    240_000,
+  );
+  const provider = await call<{ id: string }>(admin, 'POST', '/settings/llm/providers', {
+    ...llm.provider,
+    baseUrl: FAKE_LLM_URL,
+  });
+  const ids: Record<string, string> = {};
+  for (const m of llm.models) {
+    const created = await call<{ id: string }>(admin, 'POST', '/settings/llm/models', {
+      providerId: provider.id,
+      ...m,
+    });
+    ids[m.model] = created.id;
+  }
+  await call(admin, 'PUT', '/settings/llm/roles/embedding', {
+    mode: 'ordered',
+    modelIds: [ids['scripted-embed']],
+  });
+  const test = await call<{ ok: boolean; error?: string }>(
+    admin,
+    'POST',
+    `/settings/llm/providers/${provider.id}/test`,
+  );
+  if (!test.ok) console.warn(`  (the demo LLM did not answer: ${test.error})`);
+  for (let i = 0; i < llm.warmUpCalls; i++) {
+    await call(admin, 'POST', '/settings/llm/roles/chat_agent/try', {});
+  }
+  log(`demo LLM provider with ${llm.models.length} models`);
 }
 
 async function sendChats(admin: string): Promise<string[]> {

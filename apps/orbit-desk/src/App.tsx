@@ -18,6 +18,7 @@ import { DashboardPage } from './features/dashboard/DashboardPage';
 import { NewTicketDialog } from './features/dashboard/NewTicketDialog';
 import { TicketDrawer } from './features/dashboard/TicketDrawer';
 import { ElementsPage } from './features/elements/ElementsPage';
+import { SettingsPage } from './features/settings/SettingsPage';
 import { type Session, SessionContext } from './lib/session';
 import { useGet } from './lib/useGet';
 import { useHashRoute } from './lib/useHashRoute';
@@ -176,7 +177,9 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
           <StarField className={styles.stars} />
           <TopBar
             ref={searchRef}
-            title={route === 'elements' ? 'Elements' : 'Overview'}
+            title={
+              route === 'elements' ? 'Elements' : route === 'settings' ? 'Settings' : 'Overview'
+            }
             search={search}
             onSearch={(value) => {
               setSearch(value);
@@ -188,6 +191,8 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
           <main id="main" className={styles.content} tabIndex={-1}>
             {route === 'elements' ? (
               <ElementsPage />
+            ) : route === 'settings' ? (
+              <SettingsPage />
             ) : (
               <DashboardPage
                 queue={{

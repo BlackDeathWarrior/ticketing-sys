@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 import { type Database, ticketStatuses, workflowTransitions } from '@tms/db';
 import { asc, eq } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
+import { OutboxService } from '../audit/outbox.service';
 import type { RequestCtx } from '../common/request-context';
 import { DB } from '../infra/tokens';
 import { checkTransition, type TransitionCheck } from './workflow.rules';
@@ -21,6 +22,7 @@ export class WorkflowService {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly audit: AuditService,
+    private readonly outbox: OutboxService,
   ) {}
 
   async load() {
@@ -74,6 +76,12 @@ export class WorkflowService {
         targetId: input.key,
         data: input,
       });
+      await this.outbox.publish(tx, ctx, {
+        type: 'workflow.status_upserted',
+        aggregateType: 'workflow',
+        aggregateId: input.key,
+        payload: input,
+      });
     });
     this.cache = null;
     return this.load();
@@ -98,6 +106,12 @@ export class WorkflowService {
         targetType: 'workflow',
         data: { count: transitions.length, transitions },
       });
+      await this.outbox.publish(tx, ctx, {
+        type: 'workflow.transitions_replaced',
+        aggregateType: 'workflow',
+        aggregateId: 'default',
+        payload: { count: transitions.length },
+      });
     });
     this.cache = null;
     return this.load();
@@ -112,6 +126,12 @@ export class WorkflowService {
         action: 'workflow.status_deactivated',
         targetType: 'ticket_status',
         targetId: key,
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'workflow.status_deactivated',
+        aggregateType: 'workflow',
+        aggregateId: key,
+        payload: { key },
       });
     });
     this.cache = null;

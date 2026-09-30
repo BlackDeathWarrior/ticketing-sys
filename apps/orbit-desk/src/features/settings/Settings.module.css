@@ -1,0 +1,338 @@
+.page {
+  display: grid;
+  gap: var(--spacing-24);
+}
+
+/* Grid children default to min-width: auto, which lets a wide table push the page sideways. */
+.page > *,
+.stack > *,
+.grid2 > * {
+  min-width: 0;
+}
+
+.hero {
+  padding: var(--spacing-48) 0 var(--spacing-8);
+}
+
+.eyebrow {
+  font-size: var(--text-ui);
+  color: var(--color-fog);
+}
+
+.heading {
+  margin-top: var(--spacing-8);
+  font-family: var(--font-display);
+  font-size: var(--text-heading-sm);
+  line-height: var(--leading-heading-sm);
+  letter-spacing: var(--tracking-heading-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.lede {
+  margin-top: var(--spacing-12);
+  max-width: 720px;
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  color: var(--color-ash);
+}
+
+.tabs {
+  overflow-x: auto;
+}
+
+.stack {
+  display: grid;
+  gap: var(--spacing-16);
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-16);
+}
+
+/* position: relative keeps absolutely positioned descendants (visually-hidden
+   header labels) inside the scroll box, so they can't widen the page. */
+.scroller {
+  position: relative;
+  overflow-x: auto;
+  margin: 0 calc(var(--spacing-24) * -1);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-body-sm);
+}
+
+.table th {
+  padding: 10px var(--spacing-12);
+  text-align: left;
+  font-size: var(--text-caption);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fog);
+  white-space: nowrap;
+  border-top: 1px solid var(--line-subtle);
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.table td {
+  padding: 12px var(--spacing-12);
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.table tr > :first-child {
+  padding-left: var(--spacing-24);
+}
+
+.table tr > :last-child {
+  padding-right: var(--spacing-24);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.muted {
+  color: var(--color-fog);
+}
+
+.dim {
+  opacity: 0.5;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-ui);
+  color: var(--color-ash);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--spacing-8);
+}
+
+.budget {
+  display: grid;
+  gap: 6px;
+  min-width: 140px;
+}
+
+.budgetText {
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+/* Test result: shape + label, never colour (DESIGN.md) */
+.result {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-ui);
+  color: var(--color-ash);
+}
+
+.resultFail {
+  color: var(--color-lilac-white);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.form {
+  display: grid;
+  gap: var(--spacing-16);
+}
+
+.formRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-12);
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-8);
+  padding-top: var(--spacing-8);
+}
+
+.dialogTitle {
+  font-family: var(--font-display);
+  font-size: var(--text-subheading);
+  line-height: var(--leading-subheading);
+  font-weight: var(--font-weight-medium);
+}
+
+.dialogLede {
+  margin-top: 4px;
+  font-size: var(--text-ui);
+  color: var(--color-fog);
+}
+
+.error {
+  font-size: var(--text-ui);
+  color: var(--color-lilac-white);
+  padding: 10px 12px;
+  border-radius: var(--radius-inputs);
+  background: var(--accent-wash);
+}
+
+.note {
+  font-size: var(--text-ui);
+  color: var(--color-fog);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-body-sm);
+  color: var(--color-ash);
+}
+
+.check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-lavender-accent);
+}
+
+/* Roles */
+.role {
+  display: grid;
+  gap: var(--spacing-12);
+  padding: var(--spacing-16) 0;
+  border-top: 1px solid var(--line-subtle);
+}
+
+.role:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.roleHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-12);
+}
+
+.roleName {
+  font-size: var(--text-ui-lg);
+  font-weight: var(--font-weight-medium);
+}
+
+.roleKey {
+  margin-left: 8px;
+}
+
+.candidates {
+  display: grid;
+  gap: 4px;
+  counter-reset: cand;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.candidate {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-12);
+  padding: 8px 12px;
+  border-radius: var(--radius-inputs);
+  background: rgba(3, 0, 20, 0.6);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+  font-size: var(--text-body-sm);
+}
+
+.candidate::before {
+  counter-increment: cand;
+  content: counter(cand);
+  min-width: 16px;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.skipped {
+  opacity: 0.45;
+}
+
+.candLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-ui);
+  color: var(--color-lilac-white);
+}
+
+.tryOut {
+  font-size: var(--text-ui);
+  color: var(--color-ash);
+}
+
+/* Channels */
+.secretRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--spacing-8);
+  align-items: end;
+}
+
+.keyState {
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-16);
+}
+
+.kpiValue {
+  font-family: var(--font-display);
+  font-size: var(--text-subheading);
+  font-weight: var(--font-weight-medium);
+}
+
+.kpiLabel {
+  font-size: var(--text-ui);
+  color: var(--color-fog);
+}
+
+@media (max-width: 900px) {
+  .grid2,
+  .kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .formRow,
+  .secretRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .scroller {
+    margin: 0 calc(var(--spacing-20) * -1);
+  }
+}

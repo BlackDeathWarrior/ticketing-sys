@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { categories, type Database, teamMembers, teams, users } from '@tms/db';
 import { asc, eq } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
+import { OutboxService } from '../audit/outbox.service';
 import type { RequestCtx } from '../common/request-context';
 import { DB } from '../infra/tokens';
 
@@ -11,6 +12,7 @@ export class OrgService {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly audit: AuditService,
+    private readonly outbox: OutboxService,
   ) {}
 
   async listTeams() {
@@ -35,6 +37,12 @@ export class OrgService {
         targetType: 'team',
         targetId: t!.id,
         data: input,
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'team.created',
+        aggregateType: 'team',
+        aggregateId: t!.id,
+        payload: input,
       });
       return t!;
     });
@@ -64,6 +72,12 @@ export class OrgService {
         targetType: 'category',
         targetId: c!.id,
         data: input,
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'category.created',
+        aggregateType: 'category',
+        aggregateId: c!.id,
+        payload: input,
       });
       return c!;
     });

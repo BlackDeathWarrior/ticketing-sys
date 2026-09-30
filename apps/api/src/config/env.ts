@@ -34,6 +34,15 @@ const envSchema = z
     JWT_REFRESH_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(14),
     LITELLM_URL: z.string().url().default('http://localhost:4000'),
     LITELLM_MASTER_KEY: z.string().optional(),
+    /** Master key for stored secrets: 32 bytes, base64. Required in production (ADR 0009). */
+    TMS_SECRETS_KEY: z
+      .string()
+      .refine((v) => Buffer.from(v, 'base64').length === 32, 'Must be 32 bytes, base64-encoded')
+      .optional(),
+    /** Sarvam API base URL; tests point it at the fake provider. */
+    SARVAM_API_URL: z.string().url().default('https://api.sarvam.ai'),
+    /** Meta Graph API base URL; tests point it at the fake provider. */
+    WHATSAPP_GRAPH_URL: z.string().url().default('https://graph.facebook.com'),
     /** Serve Swagger UI at /docs. Defaults to on outside production. */
     API_DOCS: bool.optional(),
 
@@ -49,6 +58,8 @@ const envSchema = z
     S3_SECRET_KEY: z.string().optional(),
     S3_BUCKET: z.string().default('tms'),
     S3_FORCE_PATH_STYLE: bool.default('true'),
+    /** `static`: S3_ACCESS_KEY/S3_SECRET_KEY. `iam`: the AWS default chain (an instance role). */
+    S3_AUTH: z.enum(['static', 'iam']).default('static'),
 
     // Email channel: one support mailbox, read over IMAP and answered over SMTP.
     EMAIL_ENABLED: bool.default('false'),
@@ -68,6 +79,13 @@ const envSchema = z
     EMAIL_SMTP_PASSWORD: z.string().optional(),
   })
   .superRefine((e, ctx) => {
+    if (e.NODE_ENV === 'production' && !e.TMS_SECRETS_KEY) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['TMS_SECRETS_KEY'],
+        message: 'Required in production (generate with: openssl rand -base64 32)',
+      });
+    }
     if (!e.EMAIL_ENABLED) return;
     for (const key of [
       'EMAIL_ADDRESS',

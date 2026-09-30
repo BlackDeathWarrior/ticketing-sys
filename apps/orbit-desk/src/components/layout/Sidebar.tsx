@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { initials } from '../../data/adapters';
+import { canOpenSettings } from '../../features/settings/logic';
 import { views, type ViewId } from '../../data/views';
 import { useSession } from '../../lib/session';
 import { cx } from '../../lib/format';
@@ -27,7 +28,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export function Sidebar({ route, view, onSelectView, open, onClose, counts, teams }: SidebarProps) {
-  const { user, signOut } = useSession();
+  const { user, signOut, can } = useSession();
   const role = ROLE_LABELS[user.roles[0] ?? ''] ?? user.roles[0] ?? 'Agent';
 
   useEffect(() => {
@@ -111,6 +112,13 @@ export function Sidebar({ route, view, onSelectView, open, onClose, counts, team
               </span>
             ))}
           </div>
+
+          {canOpenSettings(can) && (
+            <div className={styles.group}>
+              <p className={styles.groupLabel}>Admin</p>
+              {link('settings', 'settings', 'Settings')}
+            </div>
+          )}
 
           <div className={styles.group}>
             <p className={styles.groupLabel}>Design system</p>

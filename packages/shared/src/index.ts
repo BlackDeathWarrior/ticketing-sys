@@ -6,3 +6,5 @@ export * from './events';
 export * from './admin';
 export * from './channels';
 export * from './reports';
+export * from './llm';
+export * from './settings';

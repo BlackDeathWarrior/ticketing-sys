@@ -39,6 +39,18 @@ test.describe('report screenshots', () => {
     await page.screenshot({ path: shot('orbit-new-ticket') });
   });
 
+  test('Orbit Desk settings', async ({ page }) => {
+    await signInOrbit(page);
+    await page.goto(`${env.orbit}/#/settings/providers`);
+    await expect(page.getByRole('row', { name: /Demo model \(scripted\)/ })).toBeVisible();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: shot('orbit-settings-providers') });
+    await page.getByRole('tab', { name: 'Models & roles' }).click();
+    await expect(page.getByRole('region', { name: 'AI agent (chat and email)' })).toBeVisible();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: shot('orbit-settings-models'), fullPage: true });
+  });
+
   test('Orbit Desk on a phone', async ({ browser }) => {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await signInOrbit(page);

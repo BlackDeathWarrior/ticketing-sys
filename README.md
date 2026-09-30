@@ -14,18 +14,18 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 | 1     | Auth + RBAC, customers, tickets + workflow, audit log, outbox events, barebones UI                                         | Done    |
 | 2     | Channel gateway + orchestrator, web chat widget, email (IMAP/SMTP), agent replies, live updates                            | Done    |
 | —     | Orbit Desk console wired to the API (ADR 0005), reports overview (ADR 0006), sample data + Playwright E2E suite (ADR 0007) | Done    |
-| 3     | LiteLLM platform and provider/model settings                                                                               | Next    |
-| 4     | Knowledge base (RAG)                                                                                                       | Planned |
-| 5     | AI agent (first-level support, classification)                                                                             | Planned |
+| 3     | LLM platform on LiteLLM, Settings for AI and channel keys, cheapest-first routing with per-provider caps (ADR 0008, 0009)  | Done    |
+| 4     | Knowledge base (RAG)                                                                                                       | Next    |
+| 5     | AI agent on chat and email, AI badges                                                                                      | Planned |
 | 6     | Tools/MCP and approvals                                                                                                    | Planned |
-| 7     | Handover, routing, SLA, notifications                                                                                      | Planned |
+| 7     | Handover, take-over, routing, SLA, notifications, AI-vs-human views                                                        | Planned |
 | 8     | WhatsApp (Meta Cloud API, ported from whatsapp-crm; see `docs/research/whatsapp-crm.md`)                                   | Planned |
-| 9     | Reporting (AI vs human, SLA, CSAT) and admin settings                                                                      | Planned |
-| 10    | Hardening (SSO, rate limits, tracing, IaC)                                                                                 | Planned |
-| 11    | Finish Orbit Desk: workspace, settings, reports, approvals                                                                 | Planned |
-| —     | Voice agent on Sarvam STT/TTS (see `docs/research/voice-sarvam.md`)                                                        | Planned |
+| 9     | Voice agent on Sarvam STT/TTS, in the browser (see `docs/research/voice-sarvam.md`)                                        | Planned |
+| 10    | Reporting (AI vs human, SLA, CSAT) and admin settings                                                                      | Planned |
+| 11    | Hardening for the demo                                                                                                     | Planned |
+| 12    | AWS live demo                                                                                                              | Planned |
 
-Not built yet, although the UI or schema hints at them: SLA and CSAT (Orbit Desk hides them until Phase 7), AI replies (`controller=ai` and AI-authored messages are never produced), approvals, and any settings pages. The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
+Not built yet, although the UI or schema hints at them: SLA and CSAT (Orbit Desk hides them until Phase 7), AI replies (`controller=ai` and AI-authored messages are never produced) and approvals. The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
 
 ## Layout
 
@@ -67,6 +67,7 @@ This builds the images from the root `Dockerfile`, starts the infrastructure, ru
 | Support mailbox (GreenMail) | SMTP `localhost:3025`, IMAP `localhost:3143`, address `support@tms.local`                       |
 | S3 object storage           | http://localhost:9000 (SeaweedFS; key `tms` / `tms-dev-secret`), filer UI http://localhost:8888 |
 | LiteLLM proxy               | http://localhost:4000                                                                           |
+| Fake providers              | http://localhost:4010: a scripted LLM so AI features work with no real keys (never real data)   |
 
 Override defaults with environment variables or a `.env` next to the compose file: `JWT_SECRET` (set this for anything shared), `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_DEMO_DATA`, `API_DOCS`, `LOG_LEVEL`, and the `EMAIL_*` settings to point at a real mailbox.
 
@@ -94,6 +95,21 @@ Sign in as the admin, or as any sample user with the password `Sample-Passw0rd!`
 | `leo.martin@tms.example`      | Agent      | Platform |
 
 The loader skips if the data is already there; to start over, `docker compose -f infra/docker-compose.yml --profile app down -v` and bring the stack up again. The data lives in `scripts/sample-data/data.ts`.
+
+## AI providers and keys
+
+Admins manage AI providers, models and channel credentials in Orbit Desk under **Settings** (`#/settings`):
+
+- **AI providers:** add a key for Anthropic, OpenAI, Gemini, Mistral, Groq, NVIDIA NIM, OpenRouter, Sarvam, a local Ollama or any OpenAI-compatible endpoint.
+  - Keys go to LiteLLM and are never shown again; only the last four characters appear.
+  - Each provider can have a spending cap per day, week or month.
+- **Models & roles:** register models (capabilities and prices come from LiteLLM) and decide what each AI feature uses.
+  - By default a role uses the cheapest capable model and falls back to the next one.
+  - Providers over their cap are skipped.
+- **Channels:** IMAP/SMTP, WhatsApp and Sarvam settings, with write-only secrets and "Test connection".
+- **Usage:** spend by provider and role, and the recent calls.
+
+Keys are admin-only (`settings:secrets`), encrypted, and every change is audited. See ADR 0008 and ADR 0009. The sample data registers the scripted **Demo model** provider, so everything works offline. Walkthrough: [`docs/runbooks/phase-3-demo.md`](docs/runbooks/phase-3-demo.md).
 
 ## Try the channels
 
@@ -133,7 +149,7 @@ pnpm test                # unit tests
 pnpm test:int            # integration tests against real Postgres, Redis, S3 and GreenMail
 ```
 
-Integration tests need `pnpm infra:up` (or at least `postgres redis objectstore greenmail`). They wipe and migrate the database at `TEST_DATABASE_URL` (default `postgres://tms:tms@localhost:5432/tms_test`) and use Redis db 15. Create the database once with `docker compose -f infra/docker-compose.yml exec postgres createdb -U tms tms_test`.
+Integration tests need `pnpm infra:up` plus the fake LLM (`docker compose -f infra/docker-compose.yml --profile fake up -d fake-providers`), or at least `postgres redis objectstore greenmail litellm fake-providers`. They wipe and migrate the database at `TEST_DATABASE_URL` (default `postgres://tms:tms@localhost:5432/tms_test`) and use Redis db 15. Create the database once with `docker compose -f infra/docker-compose.yml exec postgres createdb -U tms tms_test`.
 
 End-to-end tests (`e2e/`, Playwright) drive both consoles, the chat widget and the mailbox against a running stack loaded with sample data:
 
@@ -142,6 +158,8 @@ pnpm docker:up && pnpm sample:load
 pnpm --filter @tms/e2e exec playwright install chromium   # once
 pnpm e2e                                                  # report: e2e/playwright-report
 ```
+
+On Windows hosts where `@swc/core` refuses its cache folder, run the CI check job in a Linux container instead: `bash scripts/check-in-docker.sh` (all steps) or `bash scripts/check-in-docker.sh test:int`. To use a Chromium that is already installed, set `CHROMIUM_PATH` for `pnpm e2e`.
 
 They default to the Docker ports; point them elsewhere with `API_URL`, `ORBIT_URL`, `WEB_URL`, `WIDGET_URL`, `MAILPIT_URL` and `SMTP_HOST`/`SMTP_PORT`. The latest run is written up in [`docs/testing/TEST_REPORT.md`](docs/testing/TEST_REPORT.md).
 

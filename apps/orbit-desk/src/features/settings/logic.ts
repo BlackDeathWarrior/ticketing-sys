@@ -1,0 +1,78 @@
+import type { LlmRoleCandidate, Permission } from '@tms/shared';
+
+export type SettingsTab = 'providers' | 'models' | 'channels' | 'tools' | 'usage';
+
+export const SETTINGS_TABS: Array<{ value: SettingsTab; label: string; needs: Permission[] }> = [
+  { value: 'providers', label: 'AI providers', needs: ['settings:llm'] },
+  { value: 'models', label: 'Models & roles', needs: ['settings:llm'] },
+  { value: 'channels', label: 'Channels', needs: ['settings:channels'] },
+  { value: 'tools', label: 'Tools & MCP', needs: ['settings:secrets'] },
+  { value: 'usage', label: 'Usage', needs: ['settings:llm'] },
+];
+
+/** Tabs the user may open, in display order. */
+export function visibleTabs(can: (p: Permission) => boolean) {
+  return SETTINGS_TABS.filter((t) => t.needs.every(can));
+}
+
+/** Whether the Settings link should show at all. */
+export const canOpenSettings = (can: (p: Permission) => boolean) => visibleTabs(can).length > 0;
+
+export function formatUsd(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—';
+  if (value === 0) return '$0';
+  if (value < 0.0001) return '<$0.0001';
+  if (value < 0.01) return `$${value.toFixed(4)}`;
+  if (value < 100) return `$${value.toFixed(2)}`;
+  return `$${Math.round(value).toLocaleString('en-US')}`;
+}
+
+/** Per-million-token price as providers publish it. */
+export function formatPerMTok(value: number | null): string {
+  if (value === null) return 'unknown';
+  return `$${value < 1 ? value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '') : value.toFixed(2)}`;
+}
+
+export function maskedKey(last4: string | null, set = true): string {
+  if (!set) return 'Not set';
+  return last4 ? `••••${last4}` : '••••';
+}
+
+const SKIP_LABELS: Record<NonNullable<LlmRoleCandidate['skipped']>, string> = {
+  provider_disabled: 'provider off',
+  model_disabled: 'model off',
+  over_budget: 'over budget',
+  missing_capability: 'lacks a needed capability',
+};
+
+export const skipLabel = (reason: LlmRoleCandidate['skipped']) =>
+  reason ? SKIP_LABELS[reason] : '';
+
+export const PERIOD_LABELS = { day: 'per day', week: 'per week', month: 'per month' } as const;
+
+/** Parses a dollar amount typed in a form; empty means "no cap". */
+export function parseBudget(text: string): number | null | 'invalid' {
+  const t = text.trim().replace(/^\$/, '');
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 ? n : 'invalid';
+}
+
+export function relativeFromIso(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) return 'never';
+  const minutes = Math.round((now - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+/** Moves `ids[index]` one step up (-1) or down (+1). */
+export function move<T>(list: T[], index: number, dir: -1 | 1): T[] {
+  const target = index + dir;
+  if (target < 0 || target >= list.length) return list;
+  const next = [...list];
+  [next[index], next[target]] = [next[target]!, next[index]!];
+  return next;
+}

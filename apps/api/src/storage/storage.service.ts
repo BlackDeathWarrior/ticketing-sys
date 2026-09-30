@@ -20,7 +20,14 @@ export class StorageService {
   private bucketReady?: Promise<void>;
 
   constructor(@Inject(ENV) private readonly env: Env) {
-    if (env.S3_ENDPOINT && env.S3_ACCESS_KEY && env.S3_SECRET_KEY) {
+    if (env.S3_AUTH === 'iam') {
+      // AWS: credentials from the default chain (the EC2 instance role), no endpoint override.
+      this.client = new S3Client({
+        region: env.S3_REGION,
+        ...(env.S3_ENDPOINT ? { endpoint: env.S3_ENDPOINT } : {}),
+        forcePathStyle: env.S3_FORCE_PATH_STYLE,
+      });
+    } else if (env.S3_ENDPOINT && env.S3_ACCESS_KEY && env.S3_SECRET_KEY) {
       this.client = new S3Client({
         endpoint: env.S3_ENDPOINT,
         region: env.S3_REGION,

@@ -9,10 +9,12 @@ import { loadEnv } from './config/env';
 import { CustomersModule } from './customers/customers.module';
 import { HealthController } from './health/health.controller';
 import { InfraModule } from './infra/infra.module';
+import { LlmModule } from './llm/llm.module';
 import { loggerModule } from './logging';
 import { OrgModule } from './org/org.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { ReportsModule } from './reports/reports.module';
+import { SettingsModule } from './settings/settings.module';
 import { StorageModule } from './storage/storage.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { UsersModule } from './users/users.module';
@@ -25,6 +27,7 @@ const env = loadEnv();
     loggerModule(env, 'api'),
     InfraModule,
     AuditModule,
+    SettingsModule,
     StorageModule,
     UsersModule,
     AuthModule,
@@ -36,6 +39,7 @@ const env = loadEnv();
     RealtimeModule,
     ChatModule,
     ReportsModule,
+    LlmModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],

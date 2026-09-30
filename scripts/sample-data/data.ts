@@ -952,3 +952,45 @@ export const emails = [
     text: 'I returned order 77421 two weeks ago and I have not received the refund yet.',
   },
 ];
+
+/**
+ * The scripted demo LLM (apps/fake-providers), so the AI features work with
+ * no real keys. The "key" is a placeholder: the fake provider ignores it.
+ * LiteLLM reaches the fake at FAKE_LLM_URL (a compose hostname).
+ */
+export const llm = {
+  provider: {
+    provider: 'openai_compatible',
+    label: 'Demo model (scripted)',
+    apiKey: 'not-a-real-key-scripted-demo',
+    budgetUsd: 5,
+    budgetPeriod: 'month',
+  },
+  models: [
+    {
+      model: 'scripted-cheap',
+      label: 'Scripted (fast)',
+      inputCostPerMTok: 0.1,
+      outputCostPerMTok: 0.4,
+      supportsTools: true,
+      supportsJson: true,
+    },
+    {
+      model: 'scripted-premium',
+      label: 'Scripted (premium)',
+      inputCostPerMTok: 3,
+      outputCostPerMTok: 15,
+      supportsTools: true,
+      supportsJson: true,
+    },
+    {
+      model: 'scripted-embed',
+      label: 'Scripted embeddings',
+      mode: 'embedding',
+      inputCostPerMTok: 0.02,
+      outputCostPerMTok: 0,
+    },
+  ],
+  /** A few calls so the Usage tab has something to show. */
+  warmUpCalls: 3,
+} as const;
