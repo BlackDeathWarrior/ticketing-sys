@@ -1,0 +1,27 @@
+name: orbit-desk
+
+services:
+  # Production build served by nginx → http://localhost:8080
+  web:
+    build:
+      context: ./frontend
+      target: prod
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  # Hot-reloading dev server → http://localhost:5173
+  # Start with: docker compose --profile dev up dev
+  dev:
+    profiles: ["dev"]
+    build:
+      context: ./frontend
+      target: dev
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_USE_POLLING: "true"
+    volumes:
+      - ./frontend:/app
+      # Keep the container's Linux node_modules; never mount the host's over it.
+      - /app/node_modules
