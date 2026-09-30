@@ -25,6 +25,10 @@ export const PERMISSIONS = [
   'audit:read',
   'approval:approve',
   'report:read',
+  /** Search the knowledge base and read documents. */
+  'kb:read',
+  /** Add, edit, approve, archive and delete knowledge base documents. */
+  'kb:manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -34,6 +38,7 @@ export function isPermission(value: string): value is Permission {
 }
 
 const AGENT: Permission[] = [
+  'kb:read',
   'ticket:read',
   'ticket:create',
   'ticket:update',
@@ -46,7 +51,13 @@ const AGENT: Permission[] = [
 
 const TEAM_LEAD: Permission[] = [...AGENT, 'ticket:assign', 'user:read', 'report:read'];
 
-const SUPERVISOR: Permission[] = [...TEAM_LEAD, 'customer:merge', 'approval:approve', 'audit:read'];
+const SUPERVISOR: Permission[] = [
+  ...TEAM_LEAD,
+  'customer:merge',
+  'approval:approve',
+  'audit:read',
+  'kb:manage',
+];
 
 export const SYSTEM_ROLES = {
   agent: {

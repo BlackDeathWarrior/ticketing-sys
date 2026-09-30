@@ -8,6 +8,7 @@ export interface AgentEvent {
   ticketId?: string;
   conversationId?: string;
   messageId?: string;
+  documentId?: string;
 }
 
 let socket: Socket | null = null;

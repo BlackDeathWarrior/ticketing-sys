@@ -31,6 +31,13 @@ export const DOMAIN_EVENT_TYPES = [
   'settings.updated',
   /** LLM providers, models or roles changed. */
   'llm.config_changed',
+  /** A KB document was created or its content, visibility or status changed; indexing follows. */
+  'kb.document_changed',
+  'kb.document_deleted',
+  /** Indexing finished (or failed). */
+  'kb.document_indexed',
+  /** Re-embed everything, e.g. after the embedding model changed. */
+  'kb.reindex_requested',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
@@ -44,7 +51,8 @@ export type AggregateType =
   | 'category'
   | 'workflow'
   | 'settings'
-  | 'llm';
+  | 'llm'
+  | 'kb';
 
 export interface DomainEvent<P = Record<string, unknown>> {
   id: string;

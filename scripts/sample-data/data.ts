@@ -994,3 +994,35 @@ export const llm = {
   /** A few calls so the Usage tab has something to show. */
   warmUpCalls: 3,
 } as const;
+
+/**
+ * Knowledge base: files in ./kb (fictional Demo Store policies), uploaded and
+ * approved by the loader. `faqs` come from kb/faq-hi.json; `internal` stays
+ * agent-only; `draft` is left unapproved to show the review step.
+ */
+export const kb = {
+  files: [
+    { file: 'returns-policy.md', contentType: 'text/markdown', visibility: 'public' },
+    { file: 'shipping-faq.md', contentType: 'text/markdown', visibility: 'public' },
+    { file: 'billing-faq.md', contentType: 'text/markdown', visibility: 'public' },
+    { file: 'account-help.html', contentType: 'text/html', visibility: 'public' },
+  ],
+  faqFile: 'faq-hi.json',
+  internal: {
+    title: 'Escalation playbook',
+    content: [
+      '# Escalation playbook',
+      '',
+      '## Refunds above 10,000 rupees',
+      'Refunds above 10,000 rupees need a supervisor to approve them. Add an internal note with the order number and the reason, then assign the ticket to the Billing team.',
+      '',
+      '## Angry or VIP customers',
+      'VIP customers get a call back within 2 hours. Never promise a delivery date the courier has not confirmed.',
+    ].join('\n'),
+  },
+  draft: {
+    title: 'Monsoon delivery delays (draft)',
+    content:
+      'During heavy rain, deliveries in coastal cities may take 2 extra days. Not yet approved.',
+  },
+} as const;

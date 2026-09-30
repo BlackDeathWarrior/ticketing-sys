@@ -46,6 +46,11 @@ const envSchema = z
     /** Serve Swagger UI at /docs. Defaults to on outside production. */
     API_DOCS: bool.optional(),
 
+    /** Let KB URL sources point at private addresses (local demos and tests only). */
+    KB_ALLOW_PRIVATE_URLS: bool.default('false'),
+    /** Concurrent KB ingestion jobs per worker. */
+    KB_INGEST_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(2),
+
     // Worker
     OUTBOX_POLL_MS: z.coerce.number().int().min(50).default(1000),
     OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(100),

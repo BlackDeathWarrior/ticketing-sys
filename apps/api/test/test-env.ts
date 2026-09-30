@@ -13,7 +13,7 @@ export const FAKE_LLM_BASE_URL = `${process.env.TEST_FAKE_LLM_URL ?? 'http://fak
 export function applyTestEnv() {
   Object.assign(process.env, {
     NODE_ENV: 'test',
-    LOG_LEVEL: 'silent',
+    LOG_LEVEL: process.env.TEST_LOG_LEVEL || 'silent',
     DATABASE_URL: testDatabaseUrl(),
     REDIS_URL: testRedisUrl(),
     JWT_SECRET: 'test-secret-that-is-definitely-long-enough-123',

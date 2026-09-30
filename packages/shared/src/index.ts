@@ -8,3 +8,4 @@ export * from './channels';
 export * from './reports';
 export * from './llm';
 export * from './settings';
+export * from './kb';

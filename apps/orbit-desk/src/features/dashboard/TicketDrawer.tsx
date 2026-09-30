@@ -16,6 +16,8 @@ import {
 import type { Priority, Ticket } from '../../data/types';
 import { cx, relativeTime } from '../../lib/format';
 import { useSession } from '../../lib/session';
+import { KbSearch } from '../kb/KbSearch';
+import kbStyles from '../kb/Kb.module.css';
 import { useGet } from '../../lib/useGet';
 import {
   Avatar,
@@ -338,6 +340,25 @@ function DrawerContent({
             </ol>
           )}
         </section>
+
+        {can('kb:read') && (
+          <section className={kbStyles.panel} aria-label="Knowledge base">
+            <h3 className={kbStyles.panelTitle}>Knowledge base</h3>
+            <KbSearch
+              id={`kb-drawer-${ticket.id}`}
+              initialQuery={ticket.subject}
+              limit={3}
+              onInsert={
+                canReply
+                  ? (text) => {
+                      setMode('reply');
+                      setDraft((d) => (d.trim() ? `${d.trimEnd()}\n\n${text}` : text));
+                    }
+                  : undefined
+              }
+            />
+          </section>
+        )}
       </div>
 
       <form className={styles.composer} onSubmit={send}>

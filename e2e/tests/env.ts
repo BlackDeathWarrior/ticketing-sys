@@ -22,4 +22,5 @@ export const AGENTS = {
   jonah: { email: 'jonah.reyes@tms.example', name: 'Jonah Reyes' },
   leo: { email: 'leo.martin@tms.example', name: 'Leo Martin' },
   sam: { email: 'sam.okafor@tms.example', name: 'Sam Okafor' },
+  priya: { email: 'priya.natarajan@tms.example', name: 'Priya Natarajan' },
 };

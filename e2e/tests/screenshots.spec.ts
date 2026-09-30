@@ -39,6 +39,16 @@ test.describe('report screenshots', () => {
     await page.screenshot({ path: shot('orbit-new-ticket') });
   });
 
+  test('Orbit Desk knowledge base', async ({ page }) => {
+    await signInOrbit(page);
+    await page.goto(`${env.orbit}/#/kb`);
+    await page.getByLabel('Search the knowledge base').fill('when will my refund reach my card');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await expect(page.getByRole('list', { name: 'Knowledge base results' })).toBeVisible();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: shot('orbit-kb'), fullPage: true });
+  });
+
   test('Orbit Desk settings', async ({ page }) => {
     await signInOrbit(page);
     await page.goto(`${env.orbit}/#/settings/providers`);

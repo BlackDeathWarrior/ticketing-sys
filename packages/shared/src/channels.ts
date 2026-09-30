@@ -78,6 +78,8 @@ export interface AgentEvent {
   ticketId?: string;
   conversationId?: string;
   messageId?: string;
+  /** Knowledge-base events. */
+  documentId?: string;
 }
 
 /** Handshake auth the chat widget sends. */

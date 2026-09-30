@@ -18,11 +18,19 @@ import { DashboardPage } from './features/dashboard/DashboardPage';
 import { NewTicketDialog } from './features/dashboard/NewTicketDialog';
 import { TicketDrawer } from './features/dashboard/TicketDrawer';
 import { ElementsPage } from './features/elements/ElementsPage';
+import { KbPage } from './features/kb/KbPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { type Session, SessionContext } from './lib/session';
 import { useGet } from './lib/useGet';
 import { useHashRoute } from './lib/useHashRoute';
 import styles from './App.module.css';
+
+const ROUTE_TITLES = {
+  dashboard: 'Overview',
+  elements: 'Elements',
+  settings: 'Settings',
+  kb: 'Knowledge base',
+} as const;
 
 /** Most tickets a list view loads at once (the API's page limit). */
 const PAGE = 200;
@@ -120,7 +128,9 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
   const refreshers = [queue, open, overview, countAll, countMine, countUnassigned, countUrgent];
   const refresh = () => refreshers.forEach((r) => void r.reload());
 
-  useAgentEvents(() => {
+  useAgentEvents((e) => {
+    // Knowledge-base events concern the KB page, not the queue.
+    if (e.type.startsWith('kb.')) return;
     refresh();
     setLiveTick((n) => n + 1);
   });
@@ -177,9 +187,7 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
           <StarField className={styles.stars} />
           <TopBar
             ref={searchRef}
-            title={
-              route === 'elements' ? 'Elements' : route === 'settings' ? 'Settings' : 'Overview'
-            }
+            title={ROUTE_TITLES[route]}
             search={search}
             onSearch={(value) => {
               setSearch(value);
@@ -193,6 +201,8 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
               <ElementsPage />
             ) : route === 'settings' ? (
               <SettingsPage />
+            ) : route === 'kb' ? (
+              <KbPage />
             ) : (
               <DashboardPage
                 queue={{

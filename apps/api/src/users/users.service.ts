@@ -149,6 +149,15 @@ export class UsersService {
     return this.get(id);
   }
 
+  /** Ids of the teams a user belongs to. */
+  async teamIds(userId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .where(eq(teamMembers.userId, userId));
+    return rows.map((r) => r.teamId);
+  }
+
   async touchLogin(id: string): Promise<void> {
     await this.db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, id));
   }
