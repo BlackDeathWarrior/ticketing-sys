@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for working in this repo. Read `docs/IMPLEMENTATION_PLAN.md` for the phase plan and `docs/adr/` for decisions.
+Guidance for working in this repo. Read `docs/IMPLEMENTATION_PLAN.md` for the phase plan, its reality check (what exists and what is missing), and `docs/adr/` for decisions. Channel research is in `docs/research/`.
 
 ## Commands
 
@@ -14,12 +14,12 @@ Guidance for working in this repo. Read `docs/IMPLEMENTATION_PLAN.md` for the ph
 
 ## Rules
 
-- Mutations: one DB transaction containing the change + `AuditService.record` + `OutboxService.publish`. Never skip either.
+- Mutations: one DB transaction containing the change + `AuditService.record` + `OutboxService.publish`. Never skip either. (`OrgService` and `WorkflowService` still skip the outbox; add the events when you next touch them.)
 - Validate input with zod schemas from `packages/shared` via `ZodPipe`; add new contracts there.
 - Routes are authenticated by default; add `@RequirePermission(...)` to every non-public route. New permissions go in `packages/shared/src/permissions.ts` and the role map there.
 - A module only touches its own tables; use the owning module's service otherwise. The read-only `reports` module is the exception.
-- In `apps/api` and `apps/worker`, injected classes must be value imports (Nest reads constructor metadata).
-- `apps/web` stays barebones (no styling libraries) until the frontend phase.
+- In `apps/api` (API and worker entry points), injected classes must be value imports (Nest reads constructor metadata).
+- Orbit Desk (`apps/orbit-desk`) is the product console (ADR 0005); new user-facing features go there. `apps/web` stays a barebones test console (no styling libraries).
 - `apps/orbit-desk` follows `docs/DESIGN.md`; keep its rules:
   - Tokens from `apps/orbit-desk/src/styles/tokens.css` only; never hard-code colors, radii or shadows.
   - Font weights 400 and 500 only. Radii 5px (buttons/inputs), 16px (cards), 32px (badges), 999px (nav pill).
