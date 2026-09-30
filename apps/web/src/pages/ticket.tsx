@@ -1,7 +1,8 @@
 import { type CurrentUser, PRIORITIES } from '@tms/shared';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useId, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { api } from '../api';
+import { api, openAttachment } from '../api';
+import { useAgentEvents } from '../realtime';
 import { useGet } from '../hooks';
 import type { CategoryTree, Ref, TicketView, Workflow } from '../types';
 
@@ -21,17 +22,25 @@ interface Note {
   author: Ref | null;
 }
 
+interface ConversationMessage {
+  id: string;
+  direction: 'inbound' | 'outbound';
+  authorType: string;
+  authorName: string | null;
+  body: string;
+  createdAt: string;
+  deliveryStatus: string | null;
+  deliveryError: string | null;
+  attachments: Array<{ filename: string; contentType: string; size: number }>;
+  metadata: { subject?: string; to?: string };
+}
+
 interface Conversation {
   id: string;
   channel: string;
   controller: string;
-  messages: Array<{
-    id: string;
-    direction: string;
-    authorType: string;
-    body: string;
-    createdAt: string;
-  }>;
+  metadata: { address?: string; subject?: string; visitorName?: string; sessionId?: string };
+  messages: ConversationMessage[];
 }
 
 export function TicketPage({ user }: { user: CurrentUser }) {
@@ -49,11 +58,19 @@ export function TicketPage({ user }: { user: CurrentUser }) {
   const categories = useGet<CategoryTree[]>('/categories');
   const [error, setError] = useState<string>();
 
+  const refreshAll = () =>
+    Promise.all([ticket.reload(), history.reload(), notes.reload(), convs.reload()]);
+  // Live updates: new customer messages, delivery results, changes by other agents.
+  useAgentEvents(
+    () => void refreshAll(),
+    (e) => !!id && e.ticketId === id,
+  );
+
   async function run(fn: () => Promise<unknown>) {
     setError(undefined);
     try {
       await fn();
-      await Promise.all([ticket.reload(), history.reload(), notes.reload()]);
+      await refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -241,24 +258,26 @@ export function TicketPage({ user }: { user: CurrentUser }) {
       <h2>Conversations</h2>
       {convs.data?.length ? (
         convs.data.map((c) => (
-          <div key={c.id}>
-            <h3>
-              {c.channel} (controller: {c.controller})
-            </h3>
-            <ul>
-              {c.messages.map((m) => (
-                <li key={m.id}>
-                  [{new Date(m.createdAt).toLocaleString()}] {m.authorType} ({m.direction}):{' '}
-                  {m.body}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <ConversationView
+            key={c.id}
+            conversation={c}
+            customerName={t.customer.displayName}
+            canReply={can('message:send')}
+            onReply={(body) => run(() => api('POST', `/conversations/${c.id}/messages`, { body }))}
+            onError={setError}
+          />
         ))
       ) : (
-        <p>
-          No channel conversations yet. Messages arrive here once channels are connected (Phase 2).
-        </p>
+        <p>No conversations yet.</p>
+      )}
+      {can('message:send') && !convs.data?.some((c) => c.channel === 'email') && (
+        <ReplyForm
+          label="Email the customer (starts an email conversation)"
+          submitText="Send email"
+          onSubmit={(body) =>
+            run(() => api('POST', `/tickets/${t.id}/conversations`, { channel: 'email', body }))
+          }
+        />
       )}
 
       <h2>Internal notes</h2>
@@ -362,6 +381,118 @@ function NoteForm({ onSubmit }: { onSubmit: (body: string) => Promise<void> }) {
       />
       <br />
       <button type="submit">Add note</button>
+    </form>
+  );
+}
+
+function ConversationView({
+  conversation: c,
+  customerName,
+  canReply,
+  onReply,
+  onError,
+}: {
+  conversation: Conversation;
+  customerName: string;
+  canReply: boolean;
+  onReply: (body: string) => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const who = (m: ConversationMessage) =>
+    m.authorType === 'customer'
+      ? (c.metadata.visitorName ?? customerName)
+      : m.authorType === 'agent'
+        ? (m.authorName ?? 'Agent')
+        : m.authorType;
+  const where =
+    c.channel === 'email'
+      ? `Email with ${c.metadata.address ?? 'customer'}${c.metadata.subject ? ` — "${c.metadata.subject}"` : ''}`
+      : c.channel === 'webchat'
+        ? 'Web chat'
+        : c.channel;
+
+  return (
+    <div>
+      <h3>
+        {where} <small>(replying: {c.controller})</small>
+      </h3>
+      <ol>
+        {c.messages.map((m) => (
+          <li key={m.id}>
+            <strong>{who(m)}</strong> <small>{new Date(m.createdAt).toLocaleString()}</small>
+            {m.direction === 'outbound' && (
+              <small>
+                {' '}
+                · {m.deliveryStatus === 'sent' ? 'delivered' : m.deliveryStatus}
+                {m.deliveryError ? ` (${m.deliveryError})` : ''}
+              </small>
+            )}
+            <pre style={{ whiteSpace: 'pre-wrap', margin: '4px 0 8px' }}>{m.body}</pre>
+            {m.attachments.length > 0 && (
+              <p>
+                Attachments:{' '}
+                {m.attachments.map((a, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() =>
+                      openAttachment(m.id, i).catch((err) =>
+                        onError(err instanceof Error ? err.message : String(err)),
+                      )
+                    }
+                  >
+                    {a.filename} ({Math.ceil(a.size / 1024)} KB)
+                  </button>
+                ))}
+              </p>
+            )}
+          </li>
+        ))}
+      </ol>
+      {canReply && (
+        <ReplyForm
+          label={`Reply by ${c.channel === 'webchat' ? 'chat' : c.channel}`}
+          submitText="Send reply"
+          onSubmit={onReply}
+        />
+      )}
+    </div>
+  );
+}
+
+function ReplyForm({
+  label,
+  submitText,
+  onSubmit,
+}: {
+  label: string;
+  submitText: string;
+  onSubmit: (body: string) => Promise<void>;
+}) {
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+  const id = useId();
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!body.trim()) return;
+        setBusy(true);
+        try {
+          await onSubmit(body);
+          setBody('');
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <label htmlFor={id}>{label}</label>
+      <br />
+      <textarea id={id} rows={4} cols={80} value={body} onChange={(e) => setBody(e.target.value)} />
+      <br />
+      <button type="submit" disabled={busy || !body.trim()}>
+        {busy ? 'Sending…' : submitText}
+      </button>
     </form>
   );
 }

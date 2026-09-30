@@ -2,9 +2,9 @@
 #
 # One multi-stage build for every TMS image. Pick one with --target:
 #   api      NestJS HTTP API
-#   worker   BullMQ worker (outbox relay, queues, timers)
+#   worker   background process (outbox relay, delivery, mailbox) from the API code
 #   migrate  one-shot: applies DB migrations, then the idempotent seed
-#   web      nginx serving the React console and proxying /api to the API
+#   web      nginx serving the console and chat widget, proxying /api and /socket.io
 #
 # Behind a TLS-intercepting proxy, pass its CA as a build secret:
 #   docker build --secret id=extra_ca,src=/path/to/ca.pem ...
@@ -24,7 +24,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/db/package.json packages/db/
 COPY apps/api/package.json apps/api/
-COPY apps/worker/package.json apps/worker/
+COPY apps/chat-widget/package.json apps/chat-widget/
 COPY apps/web/package.json apps/web/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     --mount=type=secret,id=extra_ca,required=false \
@@ -39,7 +39,6 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     --mount=type=secret,id=extra_ca,required=false \
     if [ -f /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; \
     pnpm --filter @tms/api deploy --prod /out/api && \
-    pnpm --filter @tms/worker deploy --prod /out/worker && \
     pnpm --filter @tms/db deploy --prod /out/db
 
 # ---- runtime images ----
@@ -55,9 +54,10 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=5 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.API_PORT||3000)+'/api/v1/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "dist/main.js"]
 
+# Same code as the API, different entry point (no HTTP server).
 FROM runtime AS worker
-COPY --from=build --chown=node:node /out/worker ./
-CMD ["node", "dist/main.js"]
+COPY --from=build --chown=node:node /out/api ./
+CMD ["node", "dist/worker.js"]
 
 FROM runtime AS migrate
 COPY --from=build --chown=node:node /out/db ./
@@ -66,4 +66,5 @@ CMD ["sh", "-c", "node dist/scripts/migrate.js && node dist/scripts/seed.js"]
 FROM nginx:1.27-alpine AS web
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
+COPY --from=build /repo/apps/chat-widget/dist /usr/share/nginx/html/widget
 EXPOSE 80

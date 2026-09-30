@@ -22,6 +22,20 @@
       "when": 1790750529362,
       "tag": "0002_audit_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790755010831,
+      "tag": "0003_conversation_channels",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790755011828,
+      "tag": "0004_outbox_notify",
+      "breakpoints": true
     }
   ]
 }

@@ -93,10 +93,4 @@ export class TicketsController {
   history(@Param('id', ParseUUIDPipe) id: string) {
     return this.tickets.history(id);
   }
-
-  @Get(':id/conversations')
-  @RequirePermission('ticket:read')
-  conversations(@Param('id', ParseUUIDPipe) id: string) {
-    return this.tickets.conversations(id);
-  }
 }

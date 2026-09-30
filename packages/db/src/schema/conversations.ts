@@ -25,6 +25,8 @@ export const conversations = pgTable(
       onDelete: 'set null',
     }),
     state: text('state').notNull().default('open'),
+    /** Channel details: email {address, subject}, webchat {sessionId}. */
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
     ...timestamps,
   },
@@ -57,7 +59,10 @@ export const messages = pgTable(
     attachments: jsonb('attachments').$type<MessageAttachment[]>().notNull().default([]),
     /** Provider message id; unique per channel so webhook retries are idempotent. */
     channelMessageId: text('channel_message_id'),
+    /** Outbound only: pending | sent | failed. */
     deliveryStatus: text('delivery_status'),
+    deliveryError: text('delivery_error'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

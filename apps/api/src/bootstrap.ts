@@ -9,6 +9,7 @@ import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import type { Env } from './config/env';
 import { ENV } from './infra/tokens';
+import { RedisIoAdapter } from './realtime/redis-io.adapter';
 
 export const API_PREFIX = 'api/v1';
 
@@ -28,6 +29,7 @@ export async function createApp(): Promise<NestFastifyApplication> {
   const env = app.get<Env>(ENV);
 
   app.useLogger(app.get(Logger));
+  app.useWebSocketAdapter(new RedisIoAdapter(app, env));
   app.enableShutdownHooks();
   app.setGlobalPrefix(API_PREFIX);
   app.enableCors({ origin: env.CORS_ORIGINS, credentials: true });

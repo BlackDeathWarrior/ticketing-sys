@@ -2,6 +2,7 @@ import { PRIORITIES } from '@tms/shared';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { qs } from '../api';
+import { useAgentEvents } from '../realtime';
 import { useGet } from '../hooks';
 import type { Page, TicketView, Workflow } from '../types';
 
@@ -16,6 +17,8 @@ export function TicketsPage() {
   const workflow = useGet<Workflow>('/workflow');
   const path = `/tickets${qs({ status, priority, assigneeId: assignee, q, limit: String(limit), offset: String(offset) })}`;
   const { data, error, loading, reload } = useGet<Page<TicketView>>(path);
+  // New tickets and status changes show up without a manual refresh.
+  useAgentEvents(() => void reload());
 
   return (
     <section>

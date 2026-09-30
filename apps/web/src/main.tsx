@@ -3,6 +3,7 @@ import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router';
 import { api, hasSession, logout } from './api';
+import { closeAgentSocket } from './realtime';
 import { CustomerPage, CustomersPage } from './pages/customers';
 import { LoginPage } from './pages/login';
 import { NewTicketPage } from './pages/new-ticket';
@@ -35,6 +36,7 @@ function App() {
           <button
             onClick={async () => {
               await logout();
+              closeAgentSocket();
               setUser(null);
               navigate('/');
             }}

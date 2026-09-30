@@ -14,10 +14,25 @@
     "test:int": {
       "dependsOn": ["^build"],
       "cache": false,
-      "env": ["TEST_DATABASE_URL", "TEST_REDIS_URL"]
+      "env": [
+        "TEST_DATABASE_URL",
+        "TEST_REDIS_URL",
+        "TEST_S3_ENDPOINT",
+        "TEST_MAIL_HOST",
+        "TEST_SMTP_PORT",
+        "TEST_IMAP_PORT"
+      ]
     },
     "dev": {
       "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "dev:api": {
+      "cache": false,
+      "persistent": true
+    },
+    "dev:worker": {
       "cache": false,
       "persistent": true
     }

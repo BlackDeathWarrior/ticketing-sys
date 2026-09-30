@@ -15,6 +15,11 @@ export const DOMAIN_EVENT_TYPES = [
   'customer.merged',
   'user.created',
   'user.updated',
+  'conversation.created',
+  'conversation.controller_changed',
+  'message.received',
+  'message.outbound',
+  'message.delivery_updated',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
