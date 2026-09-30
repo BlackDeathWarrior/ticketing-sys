@@ -36,7 +36,7 @@ export const TopBar = forwardRef<HTMLInputElement, TopBarProps>(function TopBar(
             <SearchField
               id="global-search"
               ref={searchRef}
-              placeholder="Search tickets, customers, tags…"
+              placeholder="Search subject or TMS number…"
               shortcut="/"
               value={search}
               onChange={(e) => onSearch(e.target.value)}
@@ -50,10 +50,6 @@ export const TopBar = forwardRef<HTMLInputElement, TopBarProps>(function TopBar(
           </div>
         )}
         <div className={styles.actions}>
-          <button type="button" className={styles.iconButton} aria-label="Notifications, 3 unread">
-            <Icon name="bell" size={18} />
-            <span className={styles.dot} aria-hidden="true" />
-          </button>
           <Button variant="primary" icon="plus" onClick={onNewTicket} className={styles.cta}>
             New ticket
           </Button>

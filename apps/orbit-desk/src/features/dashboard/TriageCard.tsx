@@ -1,4 +1,6 @@
+import { minutesSince } from '../../data/adapters';
 import type { Ticket } from '../../data/types';
+import { relativeTime } from '../../lib/format';
 import {
   AuroraDivider,
   Badge,
@@ -6,44 +8,51 @@ import {
   Card,
   GradientText,
   PriorityGlyph,
-  SlaIndicator,
 } from '../../components/ui';
+import { triageSummary } from './logic';
 import styles from './TriageCard.module.css';
 
 interface TriageCardProps {
-  tickets: Ticket[];
+  /** Already picked and ordered (see `triage()`). */
+  focus: Ticket[];
+  urgent: number;
+  high: number;
+  unassigned: number;
   onOpen: (id: string) => void;
   onShowUrgent: () => void;
 }
 
-/** AI triage summary — the one place the cosmic gradient appears on the dashboard. */
-export function TriageCard({ tickets, onOpen, onShowUrgent }: TriageCardProps) {
-  const focus = tickets
-    .filter(
-      (t) =>
-        t.status !== 'resolved' && ((t.slaMinutes ?? Infinity) <= 60 || t.priority === 'urgent'),
-    )
-    .sort((a, b) => (a.slaMinutes ?? Infinity) - (b.slaMinutes ?? Infinity))
-    .slice(0, 3);
-
+/** What to pick up first — the one place the cosmic gradient appears on the dashboard. */
+export function TriageCard({
+  focus,
+  urgent,
+  high,
+  unassigned,
+  onOpen,
+  onShowUrgent,
+}: TriageCardProps) {
+  const total = urgent + high;
   return (
     <Card tone="raised" padding="lg" className={styles.card} aria-labelledby="triage-title">
       <div className={styles.intro}>
-        <Badge tone="ai" icon="sparkle">
-          Triage assistant
+        <Badge tone="ai" icon="bolt">
+          Triage
         </Badge>
         <h2 id="triage-title" className={styles.headline}>
           <GradientText>
-            {focus.length === 1 ? '1 ticket needs' : `${focus.length} tickets need`} you first.
+            {total === 0
+              ? 'Nothing needs you first.'
+              : total === 1
+                ? '1 ticket needs you first.'
+                : `${total} tickets need you first.`}
           </GradientText>
         </h2>
-        <p className={styles.summary}>
-          An SSO outage at Northwind is blocking 400+ users and EU webhook delays have breached SLA
-          with nobody assigned. Everything else is on track.
-        </p>
-        <Button variant="link" onClick={onShowUrgent}>
-          Review urgent queue
-        </Button>
+        <p className={styles.summary}>{triageSummary(urgent, high, unassigned)}</p>
+        {urgent > 0 && (
+          <Button variant="link" onClick={onShowUrgent}>
+            Review urgent queue
+          </Button>
+        )}
       </div>
 
       <AuroraDivider vertical className={styles.divider} />
@@ -53,14 +62,15 @@ export function TriageCard({ tickets, onOpen, onShowUrgent }: TriageCardProps) {
           <li key={t.id}>
             <button type="button" className={styles.item} onClick={() => onOpen(t.id)}>
               <span className={styles.itemTop}>
-                <span className={styles.id}>{t.id}</span>
+                <span className={styles.id}>{t.reference}</span>
                 <PriorityGlyph priority={t.priority} />
-                <span className={styles.sla}>
-                  <SlaIndicator minutes={t.slaMinutes} />
-                </span>
+                <span className={styles.age}>opened {relativeTime(minutesSince(t.createdAt))}</span>
               </span>
               <span className={styles.subject}>{t.subject}</span>
-              <span className={styles.company}>{t.customer.company}</span>
+              <span className={styles.company}>
+                {t.customer.company ?? t.customer.name}
+                {t.assignee ? ` · ${t.assignee.name}` : ' · Unassigned'}
+              </span>
             </button>
           </li>
         ))}

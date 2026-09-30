@@ -1,18 +1,24 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { volume } from '../../data/mock';
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import type { DailyVolume } from '@tms/shared';
 import { Button, Card, CardHeader } from '../../components/ui';
+import { chartScale, shortDate } from './logic';
 import styles from './VolumeChart.module.css';
 
 const MIN_HEIGHT = 232;
 const M = { top: 12, right: 44, bottom: 28, left: 36 };
 
-/** Tracks the plot box; the SVG is absolutely positioned so it never feeds back into this size. */
+/**
+ * Tracks the plot box; the SVG is absolutely positioned so it never feeds back into this size.
+ * Measured before first paint, so a narrow screen never briefly gets a too-wide chart.
+ */
 function useSize<T extends HTMLElement>(active: boolean) {
   const ref = useRef<T>(null);
-  const [size, setSize] = useState({ width: 640, height: MIN_HEIGHT });
-  useEffect(() => {
+  const [size, setSize] = useState({ width: 0, height: MIN_HEIGHT });
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
+    const box = el.getBoundingClientRect();
+    setSize({ width: Math.round(box.width), height: Math.max(MIN_HEIGHT, Math.round(box.height)) });
     const ro = new ResizeObserver(([entry]) =>
       setSize({
         width: Math.round(entry.contentRect.width),
@@ -25,16 +31,20 @@ function useSize<T extends HTMLElement>(active: boolean) {
   return [ref, size] as const;
 }
 
-const series = [
-  { key: 'created', label: 'Created', values: volume.created, className: styles.created },
-  { key: 'resolved', label: 'Resolved', values: volume.resolved, className: styles.resolved },
-] as const;
-
 /**
  * Created vs. resolved, 14 days. Two series on one axis: identity is carried by
  * line style (solid accent vs. dashed neutral) + legend + direct end labels.
  */
-export function VolumeChart() {
+export function VolumeChart({ volume: daily }: { volume: DailyVolume[] }) {
+  const volume = {
+    days: daily.map((d) => shortDate(d.date)),
+    created: daily.map((d) => d.created),
+    resolved: daily.map((d) => d.resolved),
+  };
+  const series = [
+    { key: 'created', label: 'Created', values: volume.created, className: styles.created },
+    { key: 'resolved', label: 'Resolved', values: volume.resolved, className: styles.resolved },
+  ] as const;
   const [active, setActive] = useState<number | null>(null);
   const [asTable, setAsTable] = useState(false);
   const [wrapRef, { width, height: HEIGHT }] = useSize<HTMLDivElement>(!asTable);
@@ -42,9 +52,8 @@ export function VolumeChart() {
   const n = volume.days.length;
   const innerW = Math.max(width - M.left - M.right, 10);
   const innerH = HEIGHT - M.top - M.bottom;
-  const max = 140;
-  const ticks = [0, 35, 70, 105, 140];
-  const x = (i: number) => M.left + (i / (n - 1)) * innerW;
+  const { max, ticks } = chartScale([...volume.created, ...volume.resolved]);
+  const x = (i: number) => M.left + (i / Math.max(n - 1, 1)) * innerW;
   const y = (v: number) => M.top + (1 - v / max) * innerH;
   const path = (values: readonly number[]) =>
     values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');

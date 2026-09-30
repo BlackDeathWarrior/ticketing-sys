@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import type { Priority, TicketStatus } from '../../data/types';
+import type { Priority, StatusGlyphKind } from '../../data/types';
 import {
   AuroraDivider,
   Avatar,
@@ -50,8 +50,8 @@ const typeScale = [
   { token: 'caption', size: 12, family: 'body', sample: 'Updated 4m ago' },
 ];
 
-const statuses: TicketStatus[] = ['open', 'in_progress', 'waiting', 'resolved'];
-const priorities: Priority[] = ['urgent', 'high', 'medium', 'low'];
+const statuses: StatusGlyphKind[] = ['open', 'in_progress', 'waiting', 'resolved'];
+const priorities: Priority[] = ['urgent', 'high', 'normal', 'low'];
 
 function Section({
   id,

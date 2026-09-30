@@ -93,6 +93,11 @@
   min-width: 300px;
 }
 
+/* Let long subjects ellipsize instead of widening the table. */
+td.colTicket {
+  max-width: 0;
+}
+
 .subject {
   display: flex;
   align-items: baseline;
@@ -235,6 +240,7 @@
   .row .colTicket {
     grid-column: 1 / -1;
     min-width: 0;
+    max-width: none;
     width: auto;
   }
 

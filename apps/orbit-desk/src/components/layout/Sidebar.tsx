@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
-import { agents, currentAgentId, tickets } from '../../data/mock';
+import { initials } from '../../data/adapters';
 import { views, type ViewId } from '../../data/views';
+import { useSession } from '../../lib/session';
 import { cx } from '../../lib/format';
 import { hrefFor, type Route } from '../../lib/useHashRoute';
 import { Avatar, Icon, type IconName } from '../ui';
@@ -13,12 +14,21 @@ interface SidebarProps {
   onSelectView: (view: ViewId) => void;
   open: boolean;
   onClose: () => void;
+  /** Ticket totals per view; undefined while loading. */
+  counts: Partial<Record<ViewId, number>>;
+  teams: Array<{ id: string; name: string; members: Array<{ id: string }> }>;
 }
 
-const teams = ['Tier 1', 'Tier 2', 'Billing', 'Platform'];
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Administrator',
+  supervisor: 'Supervisor',
+  team_lead: 'Team lead',
+  agent: 'Agent',
+};
 
-export function Sidebar({ route, view, onSelectView, open, onClose }: SidebarProps) {
-  const me = agents.find((a) => a.id === currentAgentId)!;
+export function Sidebar({ route, view, onSelectView, open, onClose, counts, teams }: SidebarProps) {
+  const { user, signOut } = useSession();
+  const role = ROLE_LABELS[user.roles[0] ?? ''] ?? user.roles[0] ?? 'Agent';
 
   useEffect(() => {
     if (!open) return;
@@ -66,7 +76,7 @@ export function Sidebar({ route, view, onSelectView, open, onClose }: SidebarPro
           <div className={styles.group}>
             <p className={styles.groupLabel}>Views</p>
             {views.map((v) => {
-              const count = tickets.filter(v.match).length;
+              const count = counts[v.id];
               const active = route === 'dashboard' && view === v.id;
               return (
                 <a
@@ -81,7 +91,7 @@ export function Sidebar({ route, view, onSelectView, open, onClose }: SidebarPro
                 >
                   <Icon name={v.icon} size={16} />
                   <span className={styles.itemLabel}>{v.label}</span>
-                  <span className={cx(styles.count, 'tabular')}>{count}</span>
+                  <span className={cx(styles.count, 'tabular')}>{count ?? '·'}</span>
                 </a>
               );
             })}
@@ -90,12 +100,14 @@ export function Sidebar({ route, view, onSelectView, open, onClose }: SidebarPro
           <div className={styles.group}>
             <p className={styles.groupLabel}>Teams</p>
             {teams.map((team) => (
-              <span key={team} className={cx(styles.item, styles.static)}>
+              <span
+                key={team.id}
+                className={cx(styles.item, styles.static)}
+                title={`${team.members.length} members`}
+              >
                 <span className={styles.teamDot} aria-hidden="true" />
-                <span className={styles.itemLabel}>{team}</span>
-                <span className={cx(styles.count, 'tabular')}>
-                  {agents.filter((a) => a.team === team).length}
-                </span>
+                <span className={styles.itemLabel}>{team.name}</span>
+                <span className={cx(styles.count, 'tabular')}>{team.members.length}</span>
               </span>
             ))}
           </div>
@@ -107,15 +119,20 @@ export function Sidebar({ route, view, onSelectView, open, onClose }: SidebarPro
         </nav>
 
         <div className={styles.profile}>
-          <Avatar initials={me.initials} name={me.name} size={32} highlight />
+          <Avatar initials={initials(user.name)} name={user.name} size={32} highlight />
           <div className={styles.profileText}>
-            <span className={styles.profileName}>{me.name}</span>
+            <span className={styles.profileName}>{user.name}</span>
             <span className={styles.profileMeta}>
-              <span className={styles.online} aria-hidden="true" /> Available · {me.team}
+              <span className={styles.online} aria-hidden="true" /> {role}
             </span>
           </div>
-          <button type="button" className={styles.iconButton} aria-label="Settings">
-            <Icon name="settings" size={16} />
+          <button
+            type="button"
+            className={styles.iconButton}
+            aria-label="Sign out"
+            onClick={signOut}
+          >
+            <Icon name="logout" size={16} />
           </button>
         </div>
       </aside>

@@ -67,8 +67,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-.sla {
+.age {
   margin-left: auto;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
 }
 
 .subject {

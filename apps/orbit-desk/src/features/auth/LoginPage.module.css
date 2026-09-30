@@ -1,0 +1,42 @@
+.page {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: var(--spacing-24) var(--gutter);
+  isolation: isolate;
+}
+
+.stars {
+  z-index: -1;
+}
+
+.card {
+  width: min(400px, 100%);
+}
+
+.form {
+  display: grid;
+  gap: var(--spacing-16);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  color: var(--color-lilac-white);
+  font-weight: var(--font-weight-medium);
+}
+
+.title {
+  margin: 0 0 var(--spacing-8);
+  font-family: var(--font-display);
+  font-size: var(--text-subheading);
+  font-weight: var(--font-weight-medium);
+}
+
+.error {
+  margin: 0;
+  color: var(--color-lavender-accent);
+  font-size: var(--text-caption);
+}

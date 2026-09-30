@@ -1,52 +1,74 @@
-export type TicketStatus = 'open' | 'in_progress' | 'waiting' | 'resolved';
-export type Priority = 'urgent' | 'high' | 'medium' | 'low';
-export type Channel = 'email' | 'chat' | 'phone' | 'web';
+import type { Channel, Priority, StatusCategory } from '@tms/shared';
 
-export interface Agent {
+export type { Channel, Priority, StatusCategory };
+
+/** The four glyph shapes status is drawn with (DESIGN.md: no status colors). */
+export type StatusGlyphKind = 'open' | 'in_progress' | 'waiting' | 'resolved';
+
+export interface StatusInfo {
+  key: string;
+  name: string;
+  category: StatusCategory;
+  glyph: StatusGlyphKind;
+}
+
+export interface Person {
   id: string;
   name: string;
   initials: string;
-  team: string;
-  capacity: number;
 }
 
-export interface Customer {
-  name: string;
-  company: string;
-  email: string;
-  initials: string;
-  plan: 'Starter' | 'Growth' | 'Enterprise';
-}
-
-export interface Message {
-  id: string;
-  kind: 'customer' | 'agent' | 'note';
-  author: string;
-  initials: string;
-  body: string;
-  minutesAgo: number;
+export interface Customer extends Person {
+  email: string | null;
+  company: string | null;
+  /** Customer type label: Standard, VIP, Business or Internal. */
+  plan: string;
 }
 
 export interface Ticket {
   id: string;
+  number: number;
+  reference: string;
   subject: string;
+  description: string | null;
   customer: Customer;
-  status: TicketStatus;
+  status: StatusInfo;
   priority: Priority;
-  assigneeId: string | null;
+  assignee: Person | null;
+  team: { id: string; name: string } | null;
   channel: Channel;
   tags: string[];
-  updatedMinutesAgo: number;
-  /** Minutes until the SLA target; negative means breached. Null once resolved. */
-  slaMinutes: number | null;
-  messages: Message[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-export interface Activity {
+export type MessageKind = 'customer' | 'agent' | 'note' | 'system';
+
+export interface Message {
   id: string;
-  actor: string;
+  kind: MessageKind;
+  author: string;
   initials: string;
-  action: string;
-  target: string;
-  minutesAgo: number;
+  authorId: string | null;
+  body: string;
+  at: Date;
+  /** Outbound delivery state for agent replies: pending, sent or failed. */
+  delivery: string | null;
+  channel: string | null;
+}
+
+export interface Conversation {
+  id: string;
+  channel: string;
+  lastMessageAt: Date | null;
+}
+
+export interface Thread {
+  messages: Message[];
+  conversations: Conversation[];
+}
+
+export interface Workflow {
+  statuses: StatusInfo[];
+  transitions: Array<{ from: string; to: string }>;
 }

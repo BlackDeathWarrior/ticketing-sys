@@ -1,26 +1,50 @@
-import { activity } from '../../data/mock';
+import type { ActivityEvent } from '@tms/shared';
+import { initials, minutesSince } from '../../data/adapters';
 import { relativeTime } from '../../lib/format';
 import { Avatar, Card, CardHeader } from '../../components/ui';
+import { describeActivity } from './logic';
 import styles from './ActivityFeed.module.css';
 
-export function ActivityFeed({ onOpen }: { onOpen: (id: string) => void }) {
+export function ActivityFeed({
+  events,
+  onOpen,
+}: {
+  events: ActivityEvent[];
+  onOpen: (ticketId: string) => void;
+}) {
   return (
     <Card aria-labelledby="activity-title">
-      <CardHeader id="activity-title" title="Activity" subtitle="Across all teams, live" />
-      <ol className={styles.feed}>
-        {activity.map((e) => (
-          <li key={e.id} className={styles.event}>
-            <Avatar initials={e.initials} size={28} highlight={e.initials === 'AI'} />
-            <p className={styles.text}>
-              <span className={styles.actor}>{e.actor}</span> {e.action}{' '}
-              <button type="button" className={styles.target} onClick={() => onOpen(e.target)}>
-                {e.target}
-              </button>
-            </p>
-            <time className={styles.time}>{relativeTime(e.minutesAgo)}</time>
-          </li>
-        ))}
-      </ol>
+      <CardHeader id="activity-title" title="Activity" subtitle="Latest ticket changes, live" />
+      {events.length === 0 ? (
+        <p className={styles.text}>No ticket activity yet.</p>
+      ) : (
+        <ol className={styles.feed}>
+          {events.map((e) => {
+            const { actor, action } = describeActivity(e);
+            return (
+              <li key={e.id} className={styles.event}>
+                <Avatar initials={initials(actor)} size={28} highlight={e.actor.type === 'ai'} />
+                <p className={styles.text}>
+                  <span className={styles.actor}>{actor}</span> {action}{' '}
+                  {e.ticket && (
+                    <button
+                      type="button"
+                      className={styles.target}
+                      onClick={() => onOpen(e.ticket!.id)}
+                      title={e.ticket.subject}
+                    >
+                      {e.ticket.reference}
+                    </button>
+                  )}
+                </p>
+                <time className={styles.time} dateTime={e.occurredAt}>
+                  {relativeTime(minutesSince(new Date(e.occurredAt)))}
+                </time>
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </Card>
   );
 }
