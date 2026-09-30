@@ -1,0 +1,55 @@
+.feed {
+  position: relative;
+  display: grid;
+  gap: var(--spacing-16);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Constellation thread connecting the avatars. */
+.feed::before {
+  content: '';
+  position: absolute;
+  left: 13.5px;
+  top: 14px;
+  bottom: 14px;
+  width: 1px;
+  background: var(--gradient-aurora);
+  opacity: 0.35;
+}
+
+.event {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: var(--spacing-12);
+}
+
+.text {
+  min-width: 0;
+  font-size: var(--text-body-sm);
+  color: var(--color-fog);
+}
+
+.actor {
+  color: var(--color-lilac-white);
+  font-weight: var(--font-weight-medium);
+}
+
+.target {
+  color: var(--color-lavender-accent);
+  font-variant-numeric: tabular-nums;
+  border-radius: var(--radius-buttons);
+}
+
+.target:hover {
+  color: var(--color-lilac-white);
+}
+
+.time {
+  font-size: var(--text-caption);
+  color: var(--color-dusk);
+  white-space: nowrap;
+}

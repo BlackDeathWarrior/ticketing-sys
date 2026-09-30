@@ -1,0 +1,176 @@
+.card {
+  display: flex;
+  flex-direction: column;
+}
+
+.legend {
+  display: flex;
+  gap: var(--spacing-20);
+  margin: calc(var(--spacing-8) * -1) 0 var(--spacing-12);
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-caption);
+  color: var(--color-ash);
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
+.plot {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 232px;
+}
+
+.svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: visible;
+  border-radius: var(--radius-buttons);
+}
+
+.svg:focus-visible {
+  outline-offset: 4px;
+}
+
+.grid {
+  stroke: var(--line-subtle);
+  stroke-width: 1;
+}
+
+.baseline {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.axis {
+  font-size: 11px;
+  fill: var(--color-fog);
+  font-variant-numeric: tabular-nums;
+}
+
+.created,
+.resolved {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.created {
+  stroke: var(--color-lavender-accent);
+}
+
+.resolved {
+  stroke: var(--color-mercury);
+  stroke-opacity: 0.7;
+  stroke-dasharray: 5 4;
+}
+
+.marker {
+  stroke-dasharray: none;
+  fill: var(--color-midnight-surface);
+  stroke-width: 2;
+}
+
+.marker.created {
+  fill: var(--color-lavender-accent);
+  stroke: var(--color-midnight-surface);
+}
+
+.marker.resolved {
+  fill: var(--color-mercury);
+  fill-opacity: 1;
+  stroke: var(--color-midnight-surface);
+  stroke-opacity: 1;
+}
+
+.endLabel {
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  fill: var(--color-lilac-white);
+  font-variant-numeric: tabular-nums;
+}
+
+.crosshair {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.hit {
+  fill: transparent;
+  cursor: crosshair;
+}
+
+.tooltip {
+  position: absolute;
+  top: 4px;
+  min-width: 148px;
+  padding: var(--spacing-8) var(--spacing-12);
+  border-radius: var(--radius-buttons);
+  background: var(--color-deep-indigo);
+  box-shadow:
+    var(--shadow-lg-2),
+    inset 0 0 0 1px var(--line);
+  pointer-events: none;
+  font-size: var(--text-caption);
+}
+
+.tipDay {
+  margin-bottom: 4px;
+  color: var(--color-fog);
+}
+
+.tipRow {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: var(--spacing-8);
+  color: var(--color-ash);
+}
+
+.tipRow span:last-child {
+  color: var(--color-lilac-white);
+  font-weight: var(--font-weight-medium);
+}
+
+.tableWrap {
+  max-height: 232px;
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-ui);
+}
+
+.table th,
+.table td {
+  padding: 6px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.table th:first-child {
+  text-align: left;
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-midnight-surface);
+  color: var(--color-fog);
+  font-weight: var(--font-weight-medium);
+}
+
+.table tbody th {
+  color: var(--color-ash);
+  font-weight: var(--font-weight-regular);
+}

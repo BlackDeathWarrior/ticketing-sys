@@ -36,7 +36,7 @@ export default tseslint.config(
     rules: { '@typescript-eslint/consistent-type-imports': 'off' },
   },
   {
-    files: ['apps/web/**/*.{ts,tsx}', 'apps/chat-widget/**/*.ts'],
+    files: ['apps/web/**/*.{ts,tsx}', 'apps/orbit-desk/**/*.{ts,tsx}', 'apps/chat-widget/**/*.ts'],
     languageOptions: { globals: { ...globals.browser } },
   },
 );
