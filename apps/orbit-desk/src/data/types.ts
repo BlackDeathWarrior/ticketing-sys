@@ -1,4 +1,11 @@
-import type { AiClassification, Channel, Priority, StatusCategory } from '@tms/shared';
+import type {
+  AiClassification,
+  Channel,
+  Priority,
+  StatusCategory,
+  TicketHandling,
+} from '@tms/shared';
+import type { SlaState } from '../lib/format';
 
 export type { Channel, Priority, StatusCategory };
 
@@ -44,6 +51,10 @@ export interface Ticket {
   updatedAt: Date;
   /** What the AI classifier suggested, if it ran. */
   aiClassification: AiClassification | null;
+  /** Who is answering: none | ai | human | handed_over. */
+  handling: TicketHandling;
+  /** The most urgent SLA timer; null when no policy applies. */
+  sla: { state: SlaState; minutes: number | null; label?: string; raw: string } | null;
 }
 
 export type MessageKind = 'customer' | 'agent' | 'ai' | 'note' | 'system';
@@ -77,6 +88,10 @@ export interface Conversation {
   id: string;
   channel: string;
   lastMessageAt: Date | null;
+  /** ai | human | none, and who when a person. */
+  controller: string;
+  controllerUserId: string | null;
+  controllerName: string | null;
 }
 
 export interface Thread {

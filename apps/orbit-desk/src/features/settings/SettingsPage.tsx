@@ -7,6 +7,8 @@ import { type SettingsTab, visibleTabs } from './logic';
 import { ModelsPanel } from './ModelsPanel';
 import { ToolsPanel } from '../tools/ToolsPanel';
 import { ProvidersPanel } from './ProvidersPanel';
+import { RoutingPanel } from './RoutingPanel';
+import { SlaSettingsPanel } from './SlaSettingsPanel';
 import styles from './Settings.module.css';
 import { UsagePanel } from './UsagePanel';
 
@@ -14,7 +16,7 @@ function tabFromHash(): string | undefined {
   return window.location.hash.replace(/^#\/?/, '').split('/')[1];
 }
 
-/** Settings → AI and channel keys (#/settings/<tab>). Tabs are limited to what the user may manage. */
+/** Settings (#/settings/<tab>): AI, channels, tools, routing and SLA. Tabs are limited to what the user may manage. */
 export function SettingsPage() {
   const { can } = useSession();
   const tabs = visibleTabs(can);
@@ -43,10 +45,10 @@ export function SettingsPage() {
     <div className={styles.page}>
       <header className={styles.hero}>
         <p className={styles.eyebrow}>Settings</p>
-        <h1 className={styles.heading}>AI and channel keys</h1>
+        <h1 className={styles.heading}>Workspace settings</h1>
         <p className={styles.lede}>
-          Providers and models for the AI agent, the credentials each channel uses, and what the AI
-          spends. Keys are write-only: after saving, only their last four characters are shown.
+          The AI agent and its models, channel and tool credentials, routing and SLA. Keys are
+          write-only: after saving, only their last four characters are shown.
         </p>
       </header>
       <Tabs
@@ -65,6 +67,8 @@ export function SettingsPage() {
         {tab === 'ai' && <AiPanel />}
         {tab === 'channels' && <ChannelsPanel />}
         {tab === 'tools' && <ToolsPanel />}
+        {tab === 'routing' && <RoutingPanel />}
+        {tab === 'sla' && <SlaSettingsPanel />}
         {tab === 'usage' && <UsagePanel />}
       </div>
     </div>

@@ -1,11 +1,17 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { type SimulateAiInput, simulateAiSchema } from '@tms/shared';
+import {
+  type CopilotInput,
+  copilotSchema,
+  type SimulateAiInput,
+  simulateAiSchema,
+} from '@tms/shared';
 import { Ctx, type RequestCtx, RequirePermission } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
 import { AiBehaviourService } from '../settings/ai-behaviour.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { AiAgentService } from './ai-agent.service';
+import { AiCopilotService } from './ai-copilot.service';
 import { AiRunsService } from './ai-runs.service';
 
 @ApiTags('ai')
@@ -17,7 +23,16 @@ export class AiController {
     private readonly agent: AiAgentService,
     private readonly runs: AiRunsService,
     private readonly tickets: TicketsService,
+    private readonly copilot: AiCopilotService,
   ) {}
+
+  /** A suggested reply for the agent to edit and send; nothing is stored. */
+  @Post('tickets/:id/copilot')
+  @HttpCode(200)
+  @RequirePermission('message:send')
+  suggest(@Param('id') id: string, @Body(new ZodPipe(copilotSchema)) body: CopilotInput) {
+    return this.copilot.suggest(id, body.instruction ?? null);
+  }
 
   /** Autonomy per channel and the confidence thresholds. */
   @Get('settings/ai')

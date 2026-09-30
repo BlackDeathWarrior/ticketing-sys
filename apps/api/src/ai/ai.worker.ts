@@ -18,7 +18,7 @@ import { AiClassifierService } from './ai-classifier.service';
 export const AI_QUEUE = 'ai-turns';
 
 type AiJob =
-  | { kind: 'turn'; conversationId: string; messageId: string }
+  | { kind: 'turn'; conversationId: string; messageId: string; handBack?: string }
   | { kind: 'classify'; ticketId: string }
   | { kind: 'followup'; approvalId: string };
 
@@ -64,7 +64,7 @@ export class AiWorker implements OnApplicationBootstrap, BeforeApplicationShutdo
   async enqueue(job: AiJob) {
     const jobId =
       job.kind === 'turn'
-        ? `turn--${job.messageId}`
+        ? `turn--${job.messageId}${job.handBack ? `--handback--${job.handBack}` : ''}`
         : job.kind === 'classify'
           ? `classify--${job.ticketId}`
           : `followup--${job.approvalId}`;
@@ -103,13 +103,29 @@ export class AiDispatchHandler implements DomainEventHandler {
       type === 'message.received' ||
       type === 'ticket.created' ||
       type === 'approval.decided' ||
-      type === 'approval.expired'
+      type === 'approval.expired' ||
+      type === 'conversation.controller_changed'
     );
   }
 
   async handle(event: DomainEvent): Promise<void> {
     if (event.type === 'approval.decided' || event.type === 'approval.expired') {
       await this.ai.enqueue({ kind: 'followup', approvalId: event.aggregateId });
+      return;
+    }
+    if (event.type === 'conversation.controller_changed') {
+      // Handed back to the AI: answer the customer's last message if nobody has.
+      const c = event.payload as { conversationId: string; to: string };
+      if (c.to !== 'ai') return;
+      const last = (await this.conversations.transcript(c.conversationId, 1))[0];
+      if (last?.authorType === 'customer') {
+        await this.ai.enqueue({
+          kind: 'turn',
+          conversationId: c.conversationId,
+          messageId: last.id,
+          handBack: event.id,
+        });
+      }
       return;
     }
     if (event.type === 'ticket.created') {

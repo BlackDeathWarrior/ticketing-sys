@@ -1,5 +1,6 @@
 import { forwardRef } from 'react';
 import { Button, Icon, SearchField } from '../ui';
+import { NotificationBell, PresenceSwitch } from './Notifications';
 import styles from './TopBar.module.css';
 
 interface TopBarProps {
@@ -8,12 +9,14 @@ interface TopBarProps {
   onSearch: (value: string) => void;
   onOpenMenu: () => void;
   onNewTicket: () => void;
+  /** Opens a ticket from a notification. */
+  onOpenTicket: (ticketId: string) => void;
   showSearch?: boolean;
 }
 
 /** Floating nav pill (DESIGN.md › Navigation Pill), sticky at the top of the content column. */
 export const TopBar = forwardRef<HTMLInputElement, TopBarProps>(function TopBar(
-  { title, search, onSearch, onOpenMenu, onNewTicket, showSearch = true },
+  { title, search, onSearch, onOpenMenu, onNewTicket, onOpenTicket, showSearch = true },
   searchRef,
 ) {
   return (
@@ -50,6 +53,8 @@ export const TopBar = forwardRef<HTMLInputElement, TopBarProps>(function TopBar(
           </div>
         )}
         <div className={styles.actions}>
+          <PresenceSwitch />
+          <NotificationBell onOpenTicket={onOpenTicket} />
           <Button variant="primary" icon="plus" onClick={onNewTicket} className={styles.cta}>
             New ticket
           </Button>

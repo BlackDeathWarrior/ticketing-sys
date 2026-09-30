@@ -20,6 +20,8 @@ describe('settings tabs', () => {
       'settings:secrets',
       'settings:ai',
       'tool:manage',
+      'settings:routing',
+      'settings:sla',
     ]);
     expect(visibleTabs(admin).map((t) => t.value)).toEqual([
       'providers',
@@ -27,6 +29,8 @@ describe('settings tabs', () => {
       'ai',
       'channels',
       'tools',
+      'routing',
+      'sla',
       'usage',
     ]);
     expect(canOpenSettings(can(['ticket:read']))).toBe(false);

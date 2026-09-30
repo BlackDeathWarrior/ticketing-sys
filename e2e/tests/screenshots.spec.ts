@@ -177,6 +177,50 @@ test.describe('report screenshots', () => {
     await page.screenshot({ path: shot('orbit-drawer-lookup') });
   });
 
+  test('handover, routing and SLA', async ({ page }) => {
+    const admin = (await login()).accessToken;
+    // Sample: Nina Petrova asked for a person; routing gave it to an online agent.
+    const handed = await findTicket(
+      admin,
+      'Chat: I would like to talk to a real person about my damaged cargo bike, please.',
+    );
+    await signInOrbit(page);
+    await expect(page.locator('tr[data-ticket]').first()).toBeVisible();
+    await page.getByRole('link', { name: /SLA at risk/ }).click();
+    await expect(page.locator('[data-sla]').first()).toBeVisible();
+    await page.locator('#queue').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: shot('orbit-sla-queue') });
+
+    await page.getByRole('link', { name: /All tickets/ }).click();
+    const drawer = await openTicket(page, handed.reference);
+    await expect(drawer.getByRole('region', { name: 'Handover context' })).toContainText(
+      'Next step',
+    );
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: shot('orbit-handover') });
+    await drawer.getByRole('region', { name: 'Handover context' }).scrollIntoViewIfNeeded();
+    await drawer.getByRole('tab', { name: 'AI | People' }).click();
+    await drawer.getByRole('region', { name: 'Conversation' }).scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: shot('orbit-lanes') });
+    await page.keyboard.press('Escape');
+
+    await page.getByRole('button', { name: /^Notifications/ }).click();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: shot('orbit-notifications') });
+    await page.keyboard.press('Escape');
+
+    for (const tab of ['routing', 'sla']) {
+      await page.goto(`${env.orbit}/#/settings/${tab}`);
+      await page.reload();
+      await expect(page.getByRole('tabpanel')).toBeVisible();
+      await page.waitForTimeout(400);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: shot(`orbit-settings-${tab}`), fullPage: true });
+    }
+  });
+
   test('basic console, widget and Mailpit', async ({ page, browser }) => {
     await signInConsole(page);
     const admin = (await login()).accessToken;

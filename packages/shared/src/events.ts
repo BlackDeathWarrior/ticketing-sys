@@ -58,6 +58,25 @@ export const DOMAIN_EVENT_TYPES = [
   'approval.decided',
   /** Nobody decided in time. */
   'approval.expired',
+  /** A person or the AI asked for a person; the context pack and routing follow. */
+  'handover.requested',
+  /** The context pack for a handover is written. */
+  'handover.context_ready',
+  /** Routing picked a team and possibly an agent. */
+  'ticket.routed',
+  /** A ticket's SLA timers started, paused, resumed or were met. */
+  'sla.updated',
+  /** 80% of an SLA target is used up. */
+  'sla.at_risk',
+  'sla.breached',
+  /** Routing rules, skills or SLA settings changed. */
+  'routing.config_changed',
+  'sla.config_changed',
+  /** An agent went online, away or offline, or changed capacity. */
+  'presence.changed',
+  'notification.created',
+  /** A team lead escalated a ticket. */
+  'ticket.escalated',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
@@ -74,7 +93,11 @@ export type AggregateType =
   | 'llm'
   | 'kb'
   | 'tool'
-  | 'approval';
+  | 'approval'
+  | 'routing'
+  | 'sla'
+  | 'user_presence'
+  | 'notification';
 
 export interface DomainEvent<P = Record<string, unknown>> {
   id: string;

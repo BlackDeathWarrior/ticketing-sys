@@ -33,6 +33,8 @@ export const auditQuerySchema = z.object({
   targetType: z.string().optional(),
   targetId: z.string().optional(),
   actorId: z.string().uuid().optional(),
+  /** user | ai | system | customer: separate what the AI did from what people did. */
+  actorType: z.enum(['user', 'ai', 'system', 'customer']).optional(),
   action: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
   before: z.coerce.number().int().positive().optional(),

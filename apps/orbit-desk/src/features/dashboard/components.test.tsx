@@ -54,6 +54,8 @@ describe('TicketTable', () => {
     search: '',
     channel: '' as const,
     onChannel: vi.fn(),
+    handling: '' as const,
+    onHandling: vi.fn(),
     selectedId: null,
     onSelect: vi.fn(),
     onClearFilters: vi.fn(),
@@ -87,6 +89,22 @@ describe('TicketTable', () => {
     expect(props.onChannel).toHaveBeenCalledWith('web_form');
     rerender(<TicketTable {...props} channel="web_form" />);
     expect(screen.getByText(/Web form only/)).toBeInTheDocument();
+  });
+
+  it('filters by who is handling and shows SLA and handling in rows', () => {
+    const { rerender } = render(<TicketTable {...props} />);
+    fireEvent.change(screen.getByLabelText('Handled by'), { target: { value: 'handed_over' } });
+    expect(props.onHandling).toHaveBeenCalledWith('handed_over');
+    const late = {
+      ...tickets[0]!,
+      handling: 'handed_over' as const,
+      sla: { state: 'breached' as const, minutes: -30, raw: 'breached' },
+    };
+    rerender(<TicketTable {...props} tickets={[late]} handling="handed_over" />);
+    expect(document.querySelector('[data-handling="handed_over"]')).toHaveTextContent(
+      'Handed over',
+    );
+    expect(document.querySelector('[data-sla="breached"]')).toHaveTextContent('30m over');
   });
 
   it('says when the list is capped', () => {

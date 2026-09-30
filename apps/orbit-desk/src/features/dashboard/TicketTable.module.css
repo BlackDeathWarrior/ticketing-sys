@@ -272,3 +272,20 @@ td.colTicket {
 .channelSelect {
   min-width: 160px;
 }
+
+.sla {
+  display: block;
+  margin-top: 4px;
+}
+
+.handling {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+/* Waiting for a person: needs attention. */
+.handedOver {
+  color: var(--color-lavender-accent);
+}

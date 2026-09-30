@@ -69,6 +69,8 @@ const envSchema = z
       ),
     /** How long a transactional tool call waits for a supervisor before it expires. */
     APPROVAL_TTL_MINUTES: z.coerce.number().int().min(1).max(10_080).default(1440),
+    /** How often the worker checks SLA timers for at-risk and breached tickets. */
+    SLA_SWEEP_SECONDS: z.coerce.number().int().min(5).max(3600).default(30),
 
     // Worker
     OUTBOX_POLL_MS: z.coerce.number().int().min(50).default(1000),

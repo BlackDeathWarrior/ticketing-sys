@@ -7,3 +7,4 @@ export * from './settings';
 export * from './kb';
 export * from './ai';
 export * from './tools';
+export * from './operations';

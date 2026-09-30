@@ -336,3 +336,52 @@
     margin: 0 calc(var(--spacing-20) * -1);
   }
 }
+
+/* Routing and SLA lists */
+.ruleList {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ruleRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--spacing-12);
+  align-items: center;
+  padding: var(--spacing-12) 0;
+  border-top: 1px solid var(--line-subtle);
+}
+
+.ruleName {
+  margin: 0;
+  font-size: var(--text-body-sm);
+  color: var(--color-lilac-white);
+}
+
+.agentRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(2, minmax(0, 110px)) minmax(0, 1fr);
+  gap: var(--spacing-12);
+  align-items: end;
+  padding: var(--spacing-12) 0;
+  border-top: 1px solid var(--line-subtle);
+}
+
+.days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-12);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+@media (max-width: 720px) {
+  .ruleRow,
+  .agentRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

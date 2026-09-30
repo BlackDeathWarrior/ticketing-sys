@@ -1,9 +1,9 @@
-export type ViewId = 'all' | 'mine' | 'unassigned' | 'urgent';
+export type ViewId = 'all' | 'mine' | 'unassigned' | 'urgent' | 'sla';
 
 export interface ViewDef {
   id: ViewId;
   label: string;
-  icon: 'layers' | 'user' | 'inbox' | 'bolt';
+  icon: 'layers' | 'user' | 'inbox' | 'bolt' | 'clock';
   /** Query parameters for GET /tickets, before status and search filters. */
   query: (openStatuses: string[]) => Record<string, string | undefined>;
 }
@@ -22,6 +22,12 @@ export const views: ViewDef[] = [
     label: 'Urgent',
     icon: 'bolt',
     query: (open) => ({ priority: 'urgent', status: open.join(',') }),
+  },
+  {
+    id: 'sla',
+    label: 'SLA at risk',
+    icon: 'clock',
+    query: (open) => ({ sla: 'at_risk', status: open.join(',') }),
   },
 ];
 

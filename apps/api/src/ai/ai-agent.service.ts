@@ -24,6 +24,7 @@ import { KbSearchService } from '../kb/kb-search.service';
 import { LlmClientService, LlmUnavailableError } from '../llm/llm-client.service';
 import { OrgService } from '../org/org.service';
 import { AiBehaviourService } from '../settings/ai-behaviour.service';
+import { HandoverService } from '../handover/handover.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { ApprovalsService } from '../tools/approvals.service';
 import { forModel, type InvokeResult, ToolGatewayService } from '../tools/tool-gateway.service';
@@ -136,6 +137,7 @@ export class AiAgentService {
     private readonly tools: ToolsService,
     private readonly gateway: ToolGatewayService,
     private readonly approvals: ApprovalsService,
+    private readonly handover: HandoverService,
   ) {}
 
   /** Answers the conversation's unanswered customer message(s), if the AI still owns it. */
@@ -402,7 +404,28 @@ export class AiAgentService {
     }
 
     const replyLanguage = r.language ?? language;
-    await this.db.transaction(async (tx) => {
+    const decision = await this.db.transaction(async (tx): Promise<AiDecision> => {
+      // A person may have taken over while the model was thinking: then the AI stays quiet.
+      const current = await this.conversations.lock(tx, conv.id);
+      if (current.controller !== 'ai') {
+        await this.runs.record(tx, {
+          kind: p.kind,
+          ticketId: ticket.id,
+          conversationId: conv.id,
+          triggerMessageId,
+          decision: 'skipped',
+          confidence: r.confidence,
+          rules: [],
+          model: r.model,
+          promptVersion: AGENT_PROMPT_VERSION,
+          tools: r.tools,
+          sources: r.sources,
+          costUsd: r.costUsd,
+          latencyMs: r.latencyMs,
+          error: 'A person took the conversation over before the AI answered',
+        });
+        return 'skipped';
+      }
       let replyMessageId: string | null = null;
       if ((r.decision === 'sent' || r.decision === 'drafted') && r.reply) {
         const message = await this.outbound.aiReply(
@@ -423,6 +446,7 @@ export class AiAgentService {
       if (r.decision === 'handover' || r.decision === 'error') {
         const locked = await this.conversations.lock(tx, conv.id);
         await this.conversations.setController(tx, AI_CTX, locked, 'none', null);
+        await this.tickets.setHandling(tx, ticket.id, 'handed_over');
         await this.tickets.moveIfAllowed(tx, AI_CTX, ticket.id, 'human_assigned');
         const reasons = r.rules.length
           ? r.rules.map((rule) => AI_RULE_LABELS[rule])
@@ -463,6 +487,14 @@ export class AiAgentService {
           aggregateId: ticket.id,
           payload: data,
         });
+        // Routing and the context pack follow in the worker.
+        await this.handover.createInTx(tx, AI_CTX, {
+          ticketId: ticket.id,
+          conversationId: conv.id,
+          source: r.rules.includes('asked_for_human') ? 'customer' : 'ai',
+          reason: reasons.join('; '),
+          rules: r.rules,
+        });
       }
       await this.conversations.updateAiState(tx, conv.id, {
         language: replyLanguage,
@@ -490,9 +522,10 @@ export class AiAgentService {
         latencyMs: r.latencyMs,
         error: r.error,
       });
+      return r.decision;
     });
-    this.logger.log(`AI ${r.decision} on ${ticket.reference} (confidence ${r.confidence ?? '–'})`);
-    return r.decision;
+    this.logger.log(`AI ${decision} on ${ticket.reference} (confidence ${r.confidence ?? '–'})`);
+    return decision;
   }
 
   /** The model loop, shared by live turns and dry runs. No side effects beyond LLM calls and searches. */

@@ -1008,6 +1008,79 @@ export const webForms = [
 ];
 
 /**
+ * SLA, routing, skills and presence (Phase 7, ADR 0014). Support hours are
+ * Monday to Saturday, 08:00–20:00 India time; urgent and high tickets are
+ * timed around the clock. The loader backdates timers with their tickets, so
+ * older open tickets show as at risk or breached.
+ */
+export const operations = {
+  hours: {
+    name: 'Support hours (India)',
+    timezone: 'Asia/Kolkata',
+    schedule: [1, 2, 3, 4, 5, 6].map((day) => ({ day, start: '08:00', end: '20:00' })),
+    holidays: [
+      { date: '2026-10-02', name: 'Gandhi Jayanti' },
+      { date: '2026-10-20', name: 'Diwali' },
+    ],
+  },
+  policies: [
+    { name: 'Urgent', priority: 'urgent', firstResponseMinutes: 30, resolutionMinutes: 240 },
+    { name: 'High', priority: 'high', firstResponseMinutes: 60, resolutionMinutes: 480 },
+    {
+      name: 'VIP',
+      customerType: 'vip',
+      firstResponseMinutes: 120,
+      resolutionMinutes: 1440,
+      supportHours: true,
+    },
+    { name: 'Standard', firstResponseMinutes: 240, resolutionMinutes: 2880, supportHours: true },
+  ],
+  /** First match wins. `team` is a team name; conditions use channel, priority, language. */
+  rules: [
+    {
+      name: 'Hindi conversations',
+      conditions: { language: 'hi' },
+      team: 'Orders',
+      strategy: 'least_loaded',
+      requiredSkill: 'hindi',
+    },
+    {
+      name: 'Urgent tickets',
+      conditions: { priority: 'urgent' },
+      team: 'Orders',
+      strategy: 'least_loaded',
+    },
+    {
+      name: 'Web chat',
+      conditions: { channel: 'webchat' },
+      team: 'Orders',
+      strategy: 'round_robin',
+    },
+    {
+      name: 'Email and web forms',
+      conditions: { channel: 'email' },
+      team: 'Returns',
+      strategy: 'least_loaded',
+    },
+    {
+      name: 'Help-center requests',
+      conditions: { channel: 'web_form' },
+      team: 'Returns',
+      strategy: 'least_loaded',
+    },
+  ],
+  skills: { jonah: ['hindi', 'orders'], aiko: ['billing'], nora: ['billing'], sam: ['returns'] },
+  presence: {
+    jonah: { status: 'online', capacity: 6 },
+    maya: { status: 'online', capacity: 4 },
+    aiko: { status: 'online', capacity: 5 },
+    sam: { status: 'online', capacity: 5 },
+    nora: { status: 'away', capacity: 5 },
+    leo: { status: 'offline', capacity: 5 },
+  } as Record<string, { status: 'online' | 'away' | 'offline'; capacity: number }>,
+};
+
+/**
  * "Demo Store systems": the sample MCP server in apps/fake-providers with
  * fictional orders and payments (ADR 0013). The token is a public
  * placeholder the fake server checks, not a credential. The URL is how the

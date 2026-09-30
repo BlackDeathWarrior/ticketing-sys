@@ -128,6 +128,10 @@ export const listTicketsQuerySchema = z.object({
   categoryId: z.string().uuid().optional(),
   tag: z.string().optional(),
   q: z.string().trim().max(200).optional(),
+  /** Who is answering: none | ai | human | handed_over (comma-separated for several). */
+  handling: z.string().max(60).optional(),
+  /** `at_risk` also includes breached tickets; `breached` only breached ones. */
+  sla: z.enum(['at_risk', 'breached']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });

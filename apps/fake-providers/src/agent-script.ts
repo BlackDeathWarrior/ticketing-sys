@@ -269,3 +269,52 @@ export function summaryReply(req: ChatRequest): ScriptedReply {
     .slice(0, 5);
   return { content: `The customer wrote about: ${lines.join(' ')}` };
 }
+
+export function isHandoverRequest(req: ChatRequest): boolean {
+  return textOf(req.messages.find((m) => m.role === 'system')).startsWith(
+    'You write handover notes',
+  );
+}
+
+/** The context pack: what the customer asked, and a next step from the handover reason. */
+export function handoverReply(req: ChatRequest): ScriptedReply {
+  const user = textOf(req.messages.find((m) => m.role === 'user'));
+  const reason = /^Handover reason: (.*)$/m.exec(user)?.[1] ?? '';
+  const asks = user
+    .split('\n')
+    .filter((l) => l.startsWith('<customer>'))
+    .map((l) => firstSentences(stripTags(l), 1))
+    .slice(-2);
+  const summary = asks.length
+    ? `The customer wrote: ${asks.join(' ')}`
+    : 'No customer messages yet.';
+  const next = /person/i.test(reason)
+    ? 'Reply personally and confirm you are looking into it.'
+    : /approval|expired/i.test(reason)
+      ? 'Decide on the pending request, then tell the customer.'
+      : 'Answer the open question; the AI was not sure.';
+  return {
+    content: JSON.stringify({
+      summary,
+      intent: words(asks.join(' ')).slice(0, 3).join('_') || 'general_question',
+      next_step: next,
+    }),
+  };
+}
+
+export function isCopilotRequest(req: ChatRequest): boolean {
+  return textOf(req.messages.find((m) => m.role === 'system')).startsWith(
+    'You draft a reply for a support agent',
+  );
+}
+
+/** A reply draft from the top knowledge passage, addressed to the customer. */
+export function copilotReply(req: ChatRequest): ScriptedReply {
+  const system = textOf(req.messages.find((m) => m.role === 'system'));
+  const name = /^Customer: (.+)\.$/m.exec(system)?.[1]?.split(' ')[0] ?? 'there';
+  const top = /<knowledge [^>]*>\n([\s\S]*?)\n<\/knowledge>/.exec(system)?.[1];
+  const body = top
+    ? firstSentences(top, 2)
+    : "Thanks for your patience. I'm looking into this and will get back to you shortly.";
+  return { content: `Hi ${name},\n\n${body}\n\nKind regards, Support` };
+}
