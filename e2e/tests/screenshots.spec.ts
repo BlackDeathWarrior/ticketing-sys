@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findTicket, login } from './api';
-import { env } from './env';
+import { AGENTS, env, SAMPLE_PASSWORD } from './env';
 import { expect, openTicket, signInConsole, signInOrbit, test } from './fixtures';
 
 /**
@@ -141,6 +141,40 @@ test.describe('report screenshots', () => {
     await openTicket(page, reference);
     await page.waitForTimeout(300);
     await page.screenshot({ path: shot('orbit-web-form') });
+  });
+
+  test('tools and approvals', async ({ page, browser }) => {
+    const admin = (await login()).accessToken;
+    // Sample data: Kenji Watanabe's refund waits for approval; María López's order was looked up.
+    const refund = await findTicket(
+      admin,
+      'Chat: I was charged twice for order DS-20533. Can you refund the extra charge?',
+    );
+    const lookup = await findTicket(admin, 'Chat: Hi, where is my order DS-20517?');
+
+    const supervisor = await browser.newPage();
+    await signInOrbit(supervisor, AGENTS.priya.email, SAMPLE_PASSWORD);
+    await supervisor.goto(`${env.orbit}/#/approvals`);
+    await expect(supervisor.locator('[data-approval]', { hasText: 'DS-20533' })).toBeVisible();
+    await supervisor.waitForTimeout(300);
+    await supervisor.screenshot({ path: shot('orbit-approvals'), fullPage: true });
+    await openTicket(supervisor, refund.reference);
+    await supervisor.getByRole('region', { name: 'Company actions' }).scrollIntoViewIfNeeded();
+    await supervisor.waitForTimeout(300);
+    await supervisor.screenshot({ path: shot('orbit-drawer-approval') });
+    await supervisor.close();
+
+    await signInOrbit(page);
+    await page.goto(`${env.orbit}/#/settings/tools`);
+    await page.reload();
+    await expect(page.getByRole('region', { name: 'Demo Store systems' })).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: shot('orbit-tools-settings'), fullPage: true });
+    await page.goto(env.orbit);
+    await openTicket(page, lookup.reference);
+    await page.getByRole('region', { name: 'Company actions' }).scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: shot('orbit-drawer-lookup') });
   });
 
   test('basic console, widget and Mailpit', async ({ page, browser }) => {

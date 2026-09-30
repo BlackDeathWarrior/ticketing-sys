@@ -1,6 +1,85 @@
 # Test report
 
-## Latest: Phase 5b, help-center request form and channel audit
+## Latest: Phase 6, company tools and approvals
+
+Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-6-tools`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                          |
+| ------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                            |
+| `pnpm test`                                       | 138 passed (api 60, Orbit Desk 47, fake providers 15, shared 11, help center 5) |
+| `pnpm test:int`                                   | 99 passed (10 files)                                                            |
+| `pnpm e2e`                                        | 45 passed; 8 screenshot-only specs skipped as designed                          |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                      |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed (6 agent, 3 new tool goldens)                |
+
+### What the sample data shows
+
+- **TMS-47:** María López asks "where is my order DS-20517?". The AI calls `order_status` and answers with the carrier and tracking number. The source is shown as Demo Store systems · Order status.
+- **TMS-48:** Kenji Watanabe was charged twice. The AI calls `issue_refund`, which waits in **Approvals**, and tells him the request is with the team.
+
+### New tests
+
+`tools.int.test.ts` has 15 tests:
+
+- Access: only admins manage tools, and only supervisors see approvals.
+- Addresses: a metadata address is refused.
+- Registration: the token is write-only; sync fails without the token and records why, then succeeds with it; new tools are off, tiers are guessed, and the customer argument is bound.
+- Tests: read tools can be tested; bad arguments are refused; transactional tools can't be tested.
+- Settings validation.
+- AI lookups: the AI answers from the customer's own order, the email is injected by TMS, and the source is recorded. Another customer's order is not found, so the AI hands over.
+- Dry runs run read tools only and store nothing.
+- Refund approved: it waits, agents get 403, a supervisor approves, the worker refunds, the AI tells the customer, a second decision gets 409, and the audit trail is complete.
+- Refund rejected: the customer gets a polite no, and the internal note is not leaked.
+- Refund expired: the AI hands over, and a late decision gets 409.
+- Person in charge: the AI leaves a note instead of replying.
+- Three tool goldens.
+
+Other new tests:
+
+| Where                                              | Tests | Covers                                                                                                                                                                                                                                               |
+| -------------------------------------------------- | ----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/fake-providers/src/demo-store.test.ts`       |     6 | Orders are visible only to their owner; sandbox shoppers; duplicate charges refunded once, with a refund cap; scripted agent: order lookup, refund request then outcome, knowledge questions untouched                                               |
+| `apps/api/src/ai/ai.test.ts`                       |    +1 | The prompt explains company tools and approval updates only when they apply; web-form replies use the email style                                                                                                                                    |
+| `apps/orbit-desk/src/features/tools/logic.test.ts` |     4 | Argument rows without the customer binding, schema argument names, time left, test-argument parsing                                                                                                                                                  |
+| `e2e/tests/approvals.spec.ts`                      |     4 | A widget order question answered from the order system, with Company actions in the drawer; a refund approved by a supervisor in `#/approvals` and the customer told in the widget; admins test a tool in Settings while agents get 403; phone width |
+
+### Bugs found and fixed
+
+1. **Web-form replies were written in the chat style.** The Phase 5b channel had no prompt style of its own, so replies meant for email came out as chat. Web forms now use the email style (prompt `agent-v2`).
+2. **The fake-providers image had no dependencies.** Found when the MCP SDK failed to load in the container. The image now installs production dependencies with `pnpm deploy`, like the API.
+3. **Order numbers downgraded tool-backed replies to drafts.** The "facts need a source" rule counted only knowledge-base citations. Successful tool results, and requests accepted for approval, now count as sources.
+4. **Refunds could run out between test runs.** The sample store keeps refunds in memory, so repeated runs would have exhausted the demo orders. There is now a reset endpoint, and sandbox shoppers for fresh orders.
+5. **The drawer's Company actions section had no panel padding** (seen in the screenshots). It now matches the other drawer panels.
+
+### Known limits
+
+- Chat visitors' emails are unverified. If an address already belongs to another customer, it does not attach to the new chat customer. Customer-bound tools then refuse, and the AI hands over. This is the right behaviour, but a returning chat customer who isn't signed in on the host site can't use order tools.
+- In dry runs, a refund request becomes a draft rather than sent (confidence 0.79), because nothing was actually submitted.
+
+### Screenshots
+
+The approvals inbox (supervisor):
+
+![Approvals](screenshots/orbit-approvals.png)
+
+A refund waiting in the drawer, with inline approve:
+
+![Drawer approval](screenshots/orbit-drawer-approval.png)
+
+An order lookup, with the reply's source and the call:
+
+![Drawer lookup](screenshots/orbit-drawer-lookup.png)
+
+Settings → Tools & MCP:
+
+![Tools settings](screenshots/orbit-tools-settings.png)
+
+---
+
+## Phase 5b: help-center request form and channel audit
 
 Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-5b-contact-form`.
 

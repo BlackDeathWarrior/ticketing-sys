@@ -22,7 +22,7 @@ import { DB, ENV } from '../infra/tokens';
 import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
 import { detectKind } from './extract';
-import { assertPublicUrl, UnsafeUrlError } from './url-fetch';
+import { assertPublicUrl, UnsafeUrlError } from '../common/url-fetch';
 
 type DocRow = typeof kbDocuments.$inferSelect;
 

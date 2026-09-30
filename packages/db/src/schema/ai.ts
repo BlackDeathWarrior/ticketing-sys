@@ -21,7 +21,7 @@ export const aiRuns = pgTable(
   'ai_runs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    /** turn | classify */
+    /** turn | classify | followup (telling the customer an approval's outcome) */
     kind: text('kind').notNull(),
     ticketId: uuid('ticket_id').references(() => tickets.id, { onDelete: 'cascade' }),
     conversationId: uuid('conversation_id').references(() => conversations.id, {

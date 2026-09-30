@@ -33,6 +33,7 @@ import {
   teams,
   tickets,
   users,
+  tools,
   webForms,
 } from './data';
 
@@ -51,6 +52,9 @@ const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://tms:tms@localhost:5
 const SMTP_HOST = process.env.SMTP_HOST ?? 'localhost';
 const SMTP_PORT = Number(process.env.SMTP_PORT ?? 3025);
 const FAKE_LLM_URL = process.env.FAKE_LLM_URL ?? 'http://fake-providers:4010/v1';
+/** The sample MCP server as the API container reaches it, and as this script does. */
+const FAKE_MCP_URL = process.env.FAKE_MCP_URL ?? 'http://fake-providers:4010/mcp';
+const FAKE_PROVIDERS_HOST_URL = process.env.FAKE_PROVIDERS_HOST_URL ?? 'http://localhost:4010';
 
 interface Ref {
   id: string;
@@ -132,6 +136,7 @@ async function main() {
 
   await loadLlm(admin);
   await loadKb(admin);
+  await loadTools(admin);
 
   // ---- users ----
   const userIds = new Map<string, string>();
@@ -337,6 +342,39 @@ async function loadLlm(admin: string) {
     await call(admin, 'POST', '/settings/llm/roles/chat_agent/try', {});
   }
   log(`demo LLM provider with ${llm.models.length} models`);
+}
+
+/** Registers the Demo Store MCP server, stores its placeholder token and turns its tools on. */
+async function loadTools(admin: string) {
+  await fetch(`${FAKE_PROVIDERS_HOST_URL}/demo-store/reset`, { method: 'POST' }).catch(() => {
+    console.warn('  (could not reset the Demo Store sample server)');
+  });
+  const existing = await call<Array<{ id: string; name: string; slug: string }>>(
+    admin,
+    'GET',
+    '/tools/servers',
+  );
+  const server =
+    existing.find((s) => s.name === tools.server.name) ??
+    (await call<{ id: string; slug: string }>(admin, 'POST', '/tools/servers', {
+      ...tools.server,
+      url: FAKE_MCP_URL,
+    }));
+  await call(admin, 'PUT', `/settings/secrets/tool.${server.slug}.token`, { value: tools.token });
+  const listed = await call<Array<{ id: string; name: string; tier: string }>>(
+    admin,
+    'POST',
+    `/tools/servers/${server.id}/sync`,
+  );
+  for (const t of listed.filter((x) => tools.enable.includes(x.name))) {
+    await call(admin, 'PATCH', `/tools/${t.id}`, { enabled: true });
+  }
+  log(
+    `Demo Store MCP server with ${listed.length} tools (${listed
+      .filter((t) => t.tier === 'transactional')
+      .map((t) => t.name)
+      .join(', ')} needs approval)`,
+  );
 }
 
 /** Uploads the fictional knowledge base, waits for indexing and approves it. */

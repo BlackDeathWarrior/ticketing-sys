@@ -111,11 +111,38 @@ describe('prompts and parsing', () => {
       summary: null,
       knowledge: [{ id: 'c1', label: 'Returns › Refund timing', text: 'Cards: 5 to 7 days.' }],
       categories: ['Billing > Refund status'],
+      companyTools: false,
+      update: null,
     });
     expect(p).toContain('<knowledge id="c1" source="Returns › Refund timing">');
     expect(p).toContain('Kind regards, Support');
     expect(p).toContain("customer's language (hi)");
     expect(p).toContain('Billing > Refund status');
+    expect(p).not.toContain('Company-system tools');
+  });
+
+  it('explains company tools and approval updates only when they apply', () => {
+    const base = {
+      channel: 'web_form',
+      language: null,
+      customer: { name: 'Lena', type: 'standard' },
+      ticket: { reference: 'TMS-3', subject: 'Refund', status: 'ai_handling', category: null },
+      summary: null,
+      knowledge: [],
+      categories: [],
+    };
+    const tools = agentSystemPrompt({ ...base, companyTools: true, update: null });
+    expect(tools).toContain('Company-system tools');
+    expect(tools).toContain('never say it is done');
+    // Web-form tickets are answered by email.
+    expect(tools).toContain('Kind regards, Support');
+    const update = agentSystemPrompt({
+      ...base,
+      companyTools: true,
+      update: { tool: 'issue_refund', status: 'done', detail: '{"refund_id":"RF-1"}' },
+    });
+    expect(update).toContain('<approval_update tool="issue_refund" status="done">');
+    expect(update).toContain('RF-1');
   });
 
   it('validates tool arguments and tolerates a bad confidence', () => {

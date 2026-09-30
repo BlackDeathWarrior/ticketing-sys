@@ -43,6 +43,7 @@ docker run --rm -i --network "$NETWORK" \
   -e TEST_MAIL_HOST=greenmail \
   -e TEST_LITELLM_URL=http://litellm:4000 \
   -e TEST_FAKE_LLM_URL=http://fake-providers:4010 \
+  -e TEST_FAKE_MCP_URL=http://fake-providers:4010/mcp \
   -e STEPS="$STEPS"   -e RUN="${RUN:-}"   -e TEST_LOG_LEVEL="${TEST_LOG_LEVEL:-}" \
   "$IMAGE" bash -euo pipefail -c '
     mkdir -p /repo && tar -xf - -C /repo && cd /repo

@@ -24,6 +24,7 @@
         "TEST_LITELLM_URL",
         "TEST_LITELLM_MASTER_KEY",
         "TEST_FAKE_LLM_URL",
+        "TEST_FAKE_MCP_URL",
         "TEST_LOG_LEVEL"
       ]
     },

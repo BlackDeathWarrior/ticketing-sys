@@ -5,6 +5,7 @@ import { AiPanel } from './AiPanel';
 import { ChannelsPanel } from './ChannelsPanel';
 import { type SettingsTab, visibleTabs } from './logic';
 import { ModelsPanel } from './ModelsPanel';
+import { ToolsPanel } from '../tools/ToolsPanel';
 import { ProvidersPanel } from './ProvidersPanel';
 import styles from './Settings.module.css';
 import { UsagePanel } from './UsagePanel';
@@ -63,12 +64,7 @@ export function SettingsPage() {
         {tab === 'models' && <ModelsPanel />}
         {tab === 'ai' && <AiPanel />}
         {tab === 'channels' && <ChannelsPanel />}
-        {tab === 'tools' && (
-          <p className={styles.note}>
-            Tool and MCP server credentials arrive with the tool gateway (Phase 6). They will be
-            stored the same way: encrypted, write-only and audited.
-          </p>
-        )}
+        {tab === 'tools' && <ToolsPanel />}
         {tab === 'usage' && <UsagePanel />}
       </div>
     </div>

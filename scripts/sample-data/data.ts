@@ -945,6 +945,18 @@ export const chats = [
     email: 'nina.petrova@example.org',
     text: 'I would like to talk to a real person about my damaged cargo bike, please.',
   },
+  // Answered from the Demo Store order system (Phase 6 tools).
+  {
+    name: 'María López',
+    email: 'maria.lopez@example.com',
+    text: 'Hi, where is my order DS-20517?',
+  },
+  // Asks for a refund: waits in Approvals for a supervisor.
+  {
+    name: 'Kenji Watanabe',
+    email: 'kenji.watanabe@example.org',
+    text: 'I was charged twice for order DS-20533. Can you refund the extra charge?',
+  },
 ];
 
 /** Customer emails sent to the support mailbox; the worker turns each into a ticket. */
@@ -994,6 +1006,19 @@ export const webForms = [
       'When I save a new delivery address in my account the page reloads and the old address is still there.',
   },
 ];
+
+/**
+ * "Demo Store systems": the sample MCP server in apps/fake-providers with
+ * fictional orders and payments (ADR 0013). The token is a public
+ * placeholder the fake server checks, not a credential. The URL is how the
+ * API container reaches it.
+ */
+export const tools = {
+  server: { name: 'Demo Store systems', authHeader: 'Authorization' },
+  token: 'demo-store-token',
+  /** Tools the AI may use; issue_refund keeps its "needs approval" tier. */
+  enable: ['lookup_customer', 'order_status', 'payment_status', 'issue_refund'],
+};
 
 /**
  * The scripted demo LLM (apps/fake-providers), so the AI features work with

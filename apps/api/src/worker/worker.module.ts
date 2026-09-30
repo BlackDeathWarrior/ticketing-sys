@@ -22,6 +22,8 @@ import { SettingsChangedHandler } from '../settings/settings-changed.handler';
 import { SettingsModule } from '../settings/settings.module';
 import { StorageModule } from '../storage/storage.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { ApprovalExpiryWorker, ApprovalsHandler } from '../tools/approvals.worker';
+import { ToolsModule } from '../tools/tools.module';
 import { WebFormAckHandler } from '../web-form/web-form-ack.handler';
 import { WebFormModule } from '../web-form/web-form.module';
 import { DOMAIN_EVENT_HANDLERS } from './domain-events';
@@ -50,6 +52,7 @@ const env = loadEnv();
     KbModule,
     AiModule,
     WebFormModule,
+    ToolsModule,
   ],
   providers: [
     emitterProvider,
@@ -70,6 +73,8 @@ const env = loadEnv();
     KbIngestHandler,
     AiWorker,
     AiDispatchHandler,
+    ApprovalExpiryWorker,
+    ApprovalsHandler,
     {
       provide: DOMAIN_EVENT_HANDLERS,
       inject: [
@@ -79,6 +84,7 @@ const env = loadEnv();
         KbIngestHandler,
         AiDispatchHandler,
         WebFormAckHandler,
+        ApprovalsHandler,
       ],
       useFactory: (...handlers: unknown[]) => handlers,
     },

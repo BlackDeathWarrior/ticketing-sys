@@ -230,7 +230,7 @@ function ChannelCard({ view, onChanged }: { view: ChannelSettingsView; onChanged
   );
 }
 
-function SecretField({
+export function SecretField({
   secret,
   canEdit,
   onChanged,

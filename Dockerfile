@@ -49,7 +49,8 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     --mount=type=secret,id=extra_ca,required=false \
     if [ -f /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; \
     pnpm --filter @tms/api deploy --prod /out/api && \
-    pnpm --filter @tms/db deploy --prod /out/db
+    pnpm --filter @tms/db deploy --prod /out/db && \
+    pnpm --filter @tms/fake-providers deploy --prod /out/fake-providers
 
 # ---- runtime images ----
 FROM ${NODE_IMAGE} AS runtime
@@ -85,8 +86,8 @@ COPY apps/orbit-desk/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/orbit-desk/dist /usr/share/nginx/html
 EXPOSE 80
 
-# No runtime dependencies: plain node:http.
+# Plain node:http plus the MCP SDK for the sample Demo Store server.
 FROM runtime AS fake-providers
-COPY --from=build --chown=node:node /repo/apps/fake-providers/dist ./dist
+COPY --from=build --chown=node:node /out/fake-providers ./
 EXPOSE 4010
 CMD ["node", "dist/main.js"]

@@ -18,6 +18,8 @@ interface SidebarProps {
   /** Ticket totals per view; undefined while loading. */
   counts: Partial<Record<ViewId, number>>;
   teams: Array<{ id: string; name: string; members: Array<{ id: string }> }>;
+  /** Approvals waiting for a decision; undefined when the user can't approve. */
+  pendingApprovals?: number;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -27,7 +29,16 @@ const ROLE_LABELS: Record<string, string> = {
   agent: 'Agent',
 };
 
-export function Sidebar({ route, view, onSelectView, open, onClose, counts, teams }: SidebarProps) {
+export function Sidebar({
+  route,
+  view,
+  onSelectView,
+  open,
+  onClose,
+  counts,
+  teams,
+  pendingApprovals,
+}: SidebarProps) {
   const { user, signOut, can } = useSession();
   const role = ROLE_LABELS[user.roles[0] ?? ''] ?? user.roles[0] ?? 'Agent';
 
@@ -38,7 +49,7 @@ export function Sidebar({ route, view, onSelectView, open, onClose, counts, team
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  const link = (target: Route, icon: IconName, label: string) => (
+  const link = (target: Route, icon: IconName, label: string, count?: number) => (
     <a
       href={hrefFor(target)}
       className={cx(styles.item, route === target && styles.active)}
@@ -47,6 +58,7 @@ export function Sidebar({ route, view, onSelectView, open, onClose, counts, team
     >
       <Icon name={icon} size={16} />
       <span className={styles.itemLabel}>{label}</span>
+      {count !== undefined && <span className={cx(styles.count, 'tabular')}>{count}</span>}
     </a>
   );
 
@@ -75,6 +87,7 @@ export function Sidebar({ route, view, onSelectView, open, onClose, counts, team
           <div className={styles.group}>
             {link('dashboard', 'grid', 'Overview')}
             {can('kb:read') && link('kb', 'book', 'Knowledge base')}
+            {can('approval:approve') && link('approvals', 'check', 'Approvals', pendingApprovals)}
           </div>
 
           <div className={styles.group}>

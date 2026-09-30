@@ -54,6 +54,22 @@ const envSchema = z
     /** Concurrent AI jobs (turns and classifications) per worker. */
     AI_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(4),
 
+    /**
+     * Host names MCP servers may use even though they resolve to private
+     * addresses (compose services such as `fake-providers`). Comma-separated.
+     */
+    TOOL_PRIVATE_HOSTS: z
+      .string()
+      .default('')
+      .transform((v) =>
+        v
+          .split(',')
+          .map((h) => h.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    /** How long a transactional tool call waits for a supervisor before it expires. */
+    APPROVAL_TTL_MINUTES: z.coerce.number().int().min(1).max(10_080).default(1440),
+
     // Worker
     OUTBOX_POLL_MS: z.coerce.number().int().min(50).default(1000),
     OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(100),
