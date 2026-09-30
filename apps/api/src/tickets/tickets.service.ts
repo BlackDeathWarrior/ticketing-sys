@@ -399,7 +399,13 @@ export class TicketsService {
     return this.db
       .select({
         ticket: tickets,
-        customer: { id: customers.id, displayName: customers.displayName },
+        customer: {
+          id: customers.id,
+          displayName: customers.displayName,
+          primaryEmail: customers.primaryEmail,
+          customerType: customers.customerType,
+          attributes: customers.attributes,
+        },
         assignee: { id: users.id, name: users.name },
         team: { id: teams.id, name: teams.name },
         category: { id: categories.id, name: categories.name },

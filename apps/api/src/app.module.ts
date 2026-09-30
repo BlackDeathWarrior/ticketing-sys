@@ -12,6 +12,7 @@ import { InfraModule } from './infra/infra.module';
 import { loggerModule } from './logging';
 import { OrgModule } from './org/org.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { ReportsModule } from './reports/reports.module';
 import { StorageModule } from './storage/storage.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { UsersModule } from './users/users.module';
@@ -34,6 +35,7 @@ const env = loadEnv();
     ChannelsModule,
     RealtimeModule,
     ChatModule,
+    ReportsModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],

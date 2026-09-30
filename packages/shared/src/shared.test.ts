@@ -5,6 +5,8 @@ import {
   PERMISSIONS,
   SYSTEM_ROLES,
   formatTicketNumber,
+  lastDays,
+  median,
   normalizeIdentity,
   parseTicketNumber,
 } from './index';
@@ -75,5 +77,18 @@ describe('ticket numbers', () => {
     expect(parseTicketNumber('tms-7')).toBe(7);
     expect(parseTicketNumber('1042')).toBe(1042);
     expect(parseTicketNumber('ABC-1')).toBeNull();
+  });
+});
+
+describe('report helpers', () => {
+  it('median handles empty, odd and even lists', () => {
+    expect(median([])).toBeNull();
+    expect(median([5, 1, 3])).toBe(3);
+    expect(median([4, 1, 3, 2])).toBe(2.5);
+  });
+
+  it('lastDays returns UTC dates ending today, oldest first', () => {
+    const days = lastDays(new Date('2026-03-02T23:30:00Z'), 4);
+    expect(days).toEqual(['2026-02-27', '2026-02-28', '2026-03-01', '2026-03-02']);
   });
 });
