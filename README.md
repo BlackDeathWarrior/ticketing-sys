@@ -26,17 +26,40 @@ packages/
   shared/     Zod schemas, permissions, workflow defaults, event contracts
   db/         Drizzle schema, SQL migrations, seed
 infra/
-  docker-compose.yml   Postgres (pgvector), Redis, MinIO, Mailpit, LiteLLM, OTel collector
+  docker-compose.yml   Postgres (pgvector), Redis, SeaweedFS (S3), Mailpit, LiteLLM, OTel collector
 ```
 
-## Getting started
+## Run everything in Docker
+
+Requirements: Docker with Compose v2. Nothing else is needed on the host.
+
+```bash
+pnpm docker:up     # or: docker compose -f infra/docker-compose.yml --profile app up -d --build
+```
+
+This builds the images from the root `Dockerfile`, starts the infrastructure, runs the `migrate` container (migrations + idempotent seed with demo data), then starts the API, worker and web console.
+
+| What                 | URL                                                                                             |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| Web console          | http://localhost:8080 (sign in as `admin@example.com` / `ChangeMe123!`)                         |
+| API                  | http://localhost:3000/api/v1 (health: `/api/v1/health/ready`)                                   |
+| API docs             | http://localhost:3000/docs                                                                      |
+| Mailpit (test inbox) | http://localhost:8025                                                                           |
+| S3 object storage    | http://localhost:9000 (SeaweedFS; key `tms` / `tms-dev-secret`), filer UI http://localhost:8888 |
+| LiteLLM proxy        | http://localhost:4000                                                                           |
+
+Override defaults with environment variables or a `.env` next to the compose file: `JWT_SECRET` (set this for anything shared), `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_DEMO_DATA`, `API_DOCS`, `LOG_LEVEL`.
+
+`pnpm docker:logs` follows the app logs; `pnpm docker:down` stops everything (add `-v` to the compose command to also delete the data volumes). Behind a TLS-intercepting corporate proxy, build with its CA: `docker build --secret id=extra_ca,src=/path/to/ca.pem ...`.
+
+## Local development
 
 Requirements: Node 22 (see `.nvmrc`), pnpm 9 (`corepack enable`), Docker.
 
 ```bash
 cp .env.example .env
 pnpm install
-pnpm infra:up            # Postgres, Redis, MinIO, Mailpit, LiteLLM
+pnpm infra:up            # Postgres, Redis, SeaweedFS (S3), Mailpit, LiteLLM
 pnpm build               # builds shared packages the apps depend on
 pnpm db:migrate
 pnpm db:seed             # roles, default workflow, admin from SEED_ADMIN_*, demo data

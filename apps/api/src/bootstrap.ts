@@ -31,13 +31,13 @@ export async function createApp(): Promise<NestFastifyApplication> {
   app.enableShutdownHooks();
   app.setGlobalPrefix(API_PREFIX);
   app.enableCors({ origin: env.CORS_ORIGINS, credentials: true });
-  // The Swagger UI needs inline scripts, so CSP stays off outside production.
+  // The Swagger UI needs inline scripts, so CSP is only enforced when docs are off.
   // Cast: @fastify/helmet's plugin type and Nest's register() signature disagree on generics.
   await app.register(helmet as unknown as Parameters<NestFastifyApplication['register']>[0], {
-    contentSecurityPolicy: env.NODE_ENV === 'production',
+    contentSecurityPolicy: !env.API_DOCS,
   });
 
-  if (env.NODE_ENV !== 'production') {
+  if (env.API_DOCS) {
     const config = new DocumentBuilder()
       .setTitle('TMS API')
       .setDescription('Ticket Management System')

@@ -21,7 +21,11 @@ Work happens on branch `claude/pensive-planck-yp2tyi`; each phase ends with a co
 | 1 Core domain | Done  | Auth (JWT + rotating refresh tokens), RBAC, users/teams/categories, customers with identity resolution and merge, tickets with configurable workflow, notes, history, append-only audit log, outbox → BullMQ relay, barebones UI. 4 unit + 23 API integration + 4 worker integration tests |
 | 2 Channels    | Next  |                                                                                                                                                                                                                                                                                            |
 
+Also done: the whole stack runs in Docker (`pnpm docker:up`: root multi-stage `Dockerfile` with `api`, `worker`, `migrate`, `web` targets; compose profile `app`).
+
 Deviations from the plan so far:
+
+- Object storage is SeaweedFS (S3 API) instead of MinIO, which no longer publishes free images.
 
 - Audit entries are written by services inside the change's transaction, not by an HTTP interceptor. This records field-level before/after values and can't be lost if the request fails.
 - CI uses service containers instead of Testcontainers.
@@ -39,7 +43,7 @@ Deviations from the plan so far:
 | Queue / jobs / timers | Redis + **BullMQ** (worker process)                                                                                                               |
 | Events                | Transactional **outbox** table in Postgres, relayed to BullMQ topics (swap to Kafka later without changing publishers)                            |
 | Realtime              | Socket.IO gateway (Redis adapter) for Agent UI + web chat                                                                                         |
-| Files                 | MinIO (S3 API)                                                                                                                                    |
+| Files                 | S3-compatible object storage (SeaweedFS locally; MinIO stopped publishing free images)                                                            |
 | LLM                   | **LiteLLM proxy** container (OpenAI-compatible); app talks to it with the `openai` npm SDK                                                        |
 | MCP                   | `@modelcontextprotocol/sdk` (client in Tool Gateway; sample servers in repo)                                                                      |
 | Auth                  | Local accounts + JWT first, OIDC SSO in hardening; permission-based RBAC                                                                          |
@@ -83,7 +87,7 @@ Later phases add: `llm_*`, `kb_*`, `tools`, `tool_calls`, `approvals`, `handover
 **Goal:** a repo anyone can clone and `docker compose up`.
 
 - pnpm/Turbo monorepo, TS strict, ESLint + Prettier, Vitest, commit hooks.
-- `infra/docker-compose.yml`: postgres (pgvector image), redis, minio, mailpit, litellm (+ its own Postgres DB schema), otel-collector (optional profile).
+- `infra/docker-compose.yml`: postgres (pgvector image), redis, S3 object store (SeaweedFS), mailpit, litellm (+ its own Postgres DB schema), otel-collector (optional profile).
 - NestJS skeleton: config module (zod-validated env), health endpoints (`/health/live`, `/health/ready` checking DB/Redis/LiteLLM), pino logging with request/trace IDs, global error filter, OpenAPI at `/docs`.
 - Worker skeleton with BullMQ connection and a heartbeat job.
 - `packages/db` with Drizzle config, first empty migration, seed script.
@@ -111,7 +115,7 @@ Later phases add: `llm_*`, `kb_*`, `tools`, `tool_calls`, `approvals`, `handover
 - Channel adapter interface: `receive(raw) → Envelope`, `send(conversation, OutboundMessage)`, `capabilities`. Idempotency via `channel_message_id` unique index.
 - **Orchestrator** module: inbound pipeline (dedupe → resolve customer → find/open conversation+ticket → persist message → dispatch by `controller`), per-conversation ordering via BullMQ group/Redis lock, outbound pipeline (agent reply → adapter of originating channel → delivery status).
 - **Web chat:** Socket.IO namespace `/chat`, anonymous or signed-JWT customer identity, `apps/chat-widget` minimal bundle + a demo HTML page.
-- **Email:** IMAP (imapflow, IDLE) inbound + SMTP (nodemailer) outbound against Mailpit; thread matching by `Message-ID`/`In-Reply-To`/ticket number in subject; attachments to MinIO. Graph/Gmail API adapters noted for later.
+- **Email:** IMAP (imapflow, IDLE) inbound + SMTP (nodemailer) outbound against Mailpit; thread matching by `Message-ID`/`In-Reply-To`/ticket number in subject; attachments to S3 storage. Graph/Gmail API adapters noted for later.
 - Agent realtime: Socket.IO `/agent` namespace pushes new messages/ticket updates.
 - Barebones web: conversation view with message thread + reply box.
 
@@ -186,7 +190,7 @@ Later phases add: `llm_*`, `kb_*`, `tools`, `tool_calls`, `approvals`, `handover
 ## Phase 8 — WhatsApp channel
 
 - Meta WhatsApp Cloud API adapter: webhook verify + signature (`X-Hub-Signature-256`), inbound text/media, statuses (sent/delivered/read), outbound text/media, **24-hour window** tracking and approved template messages outside it, template registry.
-- Media download to MinIO; phone-number identity resolution.
+- Media download to S3 storage; phone-number identity resolution.
 - Dev simulator script posting signed webhook payloads; sandbox number for real testing.
 - Settings: WhatsApp business number(s), tokens (encrypted), templates.
 
