@@ -1,4 +1,4 @@
-import type { CurrentUser, OverviewReport, Permission } from '@tms/shared';
+import type { Channel, CurrentUser, OverviewReport, Permission } from '@tms/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, hasSession, logout, qs } from './api/client';
 import { closeAgentSocket, useAgentEvents } from './api/realtime';
@@ -87,6 +87,7 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
   const route = useHashRoute();
   const [view, setView] = useState<ViewId>('all');
   const [search, setSearch] = useState('');
+  const [channel, setChannel] = useState<Channel | ''>('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -113,7 +114,9 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
   const pathFor = (id: ViewId, extra: Record<string, string | number | undefined> = {}) =>
     ready ? `/tickets${qs({ ...viewById(id).query(openStatuses), ...extra })}` : null;
 
-  const queue = useGet<{ items: ApiTicket[]; total: number }>(pathFor(view, { q, limit: PAGE }));
+  const queue = useGet<{ items: ApiTicket[]; total: number }>(
+    pathFor(view, { q, channel: channel || undefined, limit: PAGE }),
+  );
   const open = useGet<{ items: ApiTicket[]; total: number }>(
     ready ? `/tickets${qs({ status: openStatuses.join(','), limit: PAGE })}` : null,
   );
@@ -215,11 +218,14 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
                 openTickets={toTickets(open.data?.items)}
                 overview={overview.data}
                 search={search}
+                channel={channel}
+                onChannel={setChannel}
                 selectedId={selectedId}
                 onOpenTicket={setSelectedId}
                 onShowUrgent={() => selectView('urgent')}
                 onClearFilters={() => {
                   setSearch('');
+                  setChannel('');
                   setView('all');
                 }}
               />

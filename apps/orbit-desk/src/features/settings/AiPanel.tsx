@@ -18,6 +18,7 @@ const CHANNEL_LABELS: Record<AiChannel, string> = {
   whatsapp: 'WhatsApp',
   voice: 'Voice',
   email: 'Email',
+  web_form: 'Web form (replies by email)',
 };
 
 const MODE_LABELS: Record<AiChannelMode, string> = {

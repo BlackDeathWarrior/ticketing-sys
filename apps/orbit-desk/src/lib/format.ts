@@ -33,3 +33,10 @@ export function slaLabel(minutes: number | null): string {
   if (minutes < 0) return `${duration(minutes)} over`;
   return `${duration(minutes)} left`;
 }
+
+/** A file size for people: 900 B, 12 KB, 1.4 MB. */
+export function fileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB`;
+}

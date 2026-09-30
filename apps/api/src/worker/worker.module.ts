@@ -22,6 +22,8 @@ import { SettingsChangedHandler } from '../settings/settings-changed.handler';
 import { SettingsModule } from '../settings/settings.module';
 import { StorageModule } from '../storage/storage.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { WebFormAckHandler } from '../web-form/web-form-ack.handler';
+import { WebFormModule } from '../web-form/web-form.module';
 import { DOMAIN_EVENT_HANDLERS } from './domain-events';
 import { DomainEventsConsumer } from './domain-events.consumer';
 import { HeartbeatService } from './heartbeat.service';
@@ -47,6 +49,7 @@ const env = loadEnv();
     LlmModule,
     KbModule,
     AiModule,
+    WebFormModule,
   ],
   providers: [
     emitterProvider,
@@ -75,6 +78,7 @@ const env = loadEnv();
         SettingsChangedHandler,
         KbIngestHandler,
         AiDispatchHandler,
+        WebFormAckHandler,
       ],
       useFactory: (...handlers: unknown[]) => handlers,
     },

@@ -11,6 +11,7 @@ export interface DeliveryItem {
 
 /** Sends an outbound message on one channel. Throwing means "retry later". */
 export interface ChannelSender {
-  readonly channel: string;
+  /** Conversation channels this sender delivers for. */
+  readonly channels: readonly string[];
   send(item: DeliveryItem): Promise<void>;
 }

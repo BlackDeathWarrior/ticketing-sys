@@ -1,6 +1,102 @@
 # Test report
 
-## Latest: Phase 5, AI agent
+## Latest: Phase 5b, help-center request form and channel audit
+
+Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-5b-contact-form`.
+
+**Result: every step of the gate passed.**
+
+| Step                | Result                                                                         |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `pnpm format:check` | pass                                                                           |
+| `pnpm lint`         | pass                                                                           |
+| `pnpm build`        | pass                                                                           |
+| `pnpm typecheck`    | pass                                                                           |
+| `pnpm test`         | 127 passed (api 59, Orbit Desk 43, help center 5, shared 11, fake providers 9) |
+| `pnpm test:int`     | 84 passed (9 files)                                                            |
+| `pnpm e2e`          | 40 passed; 7 screenshot-only specs skipped as designed                         |
+| `pnpm kb:eval`      | recall@5 = 1.00 (18 of 18)                                                     |
+| `pnpm ai:eval`      | 6 of 6 golden conversations passed                                             |
+
+The widget phone-width test was added after the full run. It passed on its own, together with the channel and form specs (6 of 6).
+
+One full run had a single failure in `auth.spec.ts`: the browser context closed during teardown, not an assertion. It passed 9 of 9 on repeat and in the next full run, so it is recorded as a flake.
+
+### What was built
+
+- **Help center** at http://localhost:8080/help/ (`apps/help-center`):
+  - a "Submit a request" form with name, email, topic, order number, subject, description and up to 3 files of 10 MB each;
+  - a "Chat with us" card that opens the existing widget;
+  - after sending, the page shows the ticket reference.
+- **Channel `web_form`:** the form goes through `InboundService` like every channel.
+  - A resubmission returns the same ticket. A honeypot field rejects naive bots.
+  - The worker emails an acknowledgement with the reference.
+  - Agent and AI replies go out by email, and the customer's email replies thread back onto the same ticket.
+  - The AI drafts replies by default, as it does for email.
+- **Orbit Desk:**
+  - a channel filter on the queue;
+  - attachments in the drawer, with download;
+  - the ticket's category in the drawer;
+  - message paragraphs kept.
+
+### Channel audit: tests and UI per channel
+
+| Channel            | Built?                                  | Integration tests                                                | Browser tests                                                          | Agent UI (Orbit Desk)                                                            | Customer UI                                     |
+| ------------------ | --------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Web chat (chatbot) | Yes                                     | `chat.int` (5), `ai.int` (chat answers, drafts, handover)        | `channels.spec`, `ai.spec` (3 chat flows), **new:** widget at 390px    | Channel label and filter, reply by chat, AI marks and drafts                     | Widget labels AI replies; now tested on a phone |
+| Email              | Yes                                     | `email.int`, `ai.int` (email drafts), `web-form.int` (threading) | `channels.spec`, `ai.spec` (draft approved and mailed), `console.spec` | **Fixed:** attachments were not shown in the drawer, and paragraphs ran together | The customer's own mail client                  |
+| Web form           | Yes (this PR)                           | `web-form.int` (6)                                               | `web-form.spec` (2)                                                    | Channel filter, attachments, category                                            | Help center, desktop and phone                  |
+| WhatsApp           | No, Phase 8                             | Only the channel's secret settings (`settings.int`)              | None yet                                                               | Label, and the Settings → Channels key fields                                    | None yet                                        |
+| Voice              | No, Phase 9 (in the browser, as agreed) | None yet                                                         | Only a "Phone call" ticket logged by an agent (`new-ticket.spec`)      | "Phone call" in New ticket, and the Settings → Channels Sarvam fields            | None yet                                        |
+
+WhatsApp and voice get their adapters, tests and screens in their own phases:
+
+- **WhatsApp:** `whatsapp.int` and `whatsapp.spec` with a simulated Meta API.
+- **Voice:** `voice.int` and `voice.spec` with a fake microphone and fake Sarvam, plus a live call card in Orbit Desk.
+
+### New tests
+
+| Where                                     | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------- | ----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/api/test/web-form.int.test.ts`      |     6 | Public form config; a submission with 2 files, category and order number; acknowledgement email (subject, greeting, sent once even when retried, not a first response); customer reply threads onto the same conversation; agent reply by email; no duplicate on resubmit; JSON without files; validation messages, honeypot, unknown topic, too many files; a file over 10 MB is refused and no ticket is created |
+| `apps/help-center/src/logic.test.ts`      |     5 | Sizes, file checks, shared-schema validation messages, API error messages, submission ids                                                                                                                                                                                                                                                                                                                          |
+| `apps/orbit-desk/.../components.test.tsx` |    +1 | Queue channel filter                                                                                                                                                                                                                                                                                                                                                                                               |
+| `e2e/tests/web-form.spec.ts`              |     2 | Customer submits with a file → reference → acknowledgement in Mailpit → agent filters by Web form, downloads the file, replies → email arrives; inline validation and no sideways scroll at 390px                                                                                                                                                                                                                  |
+| `e2e/tests/responsive.spec.ts`            |    +1 | Chat widget panel fits a 390px screen                                                                                                                                                                                                                                                                                                                                                                              |
+
+### Bugs found and fixed
+
+1. **Email attachments were invisible to agents.** The API stored and served them, but Orbit Desk never showed them. The drawer now lists them as download chips.
+2. **Orbit Desk collapsed line breaks** in every message, so multi-paragraph emails ran together. Bodies now keep their paragraphs.
+3. **The drawer never showed a ticket's category**, so a customer's chosen topic sat unseen next to the AI's suggestion. It now has a Category row.
+4. **The chat demo page scrolled sideways on phones.** Its code sample overflowed; the block now scrolls on its own. The widget itself fit.
+5. **Help-center spacing:** a padding shorthand removed the space under the header. Found in the screenshots and fixed.
+
+### Screenshots
+
+The help center:
+
+![Help center](screenshots/help-center.png)
+
+A request ready to send, with a file:
+
+![Help center, filled in](screenshots/help-center-filled.png)
+
+After sending:
+
+![Request received](screenshots/help-center-receipt.png)
+
+On a phone:
+
+![Help center on a phone](screenshots/help-center-phone.png)
+
+The request in Orbit Desk, with its category, file chip and the acknowledgement:
+
+![Web-form ticket in Orbit Desk](screenshots/orbit-web-form.png)
+
+---
+
+## Phase 5: AI agent
 
 Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-5-ai-agent`.
 

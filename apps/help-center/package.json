@@ -1,0 +1,27 @@
+{
+  "name": "@tms/help-center",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Customer-facing help center: the public \"Submit a request\" form (channel web_form), with the chat widget. The Phase 10 customer portal lives here too.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tms/shared": "workspace:*",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "typescript": "~5.9.3",
+    "vite": "^6.3.0",
+    "vitest": "^3.2.4"
+  }
+}

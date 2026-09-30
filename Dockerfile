@@ -32,6 +32,7 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/db/package.json packages/db/
 COPY apps/api/package.json apps/api/
 COPY apps/chat-widget/package.json apps/chat-widget/
+COPY apps/help-center/package.json apps/help-center/
 COPY apps/web/package.json apps/web/
 COPY apps/orbit-desk/package.json apps/orbit-desk/
 COPY apps/fake-providers/package.json apps/fake-providers/
@@ -76,6 +77,7 @@ FROM ${NGINX_IMAGE} AS web
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 COPY --from=build /repo/apps/chat-widget/dist /usr/share/nginx/html/widget
+COPY --from=build /repo/apps/help-center/dist /usr/share/nginx/html/help
 EXPOSE 80
 
 FROM ${NGINX_IMAGE} AS orbit-desk

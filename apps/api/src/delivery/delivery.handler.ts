@@ -22,7 +22,7 @@ export class DeliveryHandler implements DomainEventHandler {
     private readonly tickets: TicketsService,
     @Inject(CHANNEL_SENDERS) senders: ChannelSender[],
   ) {
-    this.senders = new Map(senders.map((s) => [s.channel, s]));
+    this.senders = new Map(senders.flatMap((s) => s.channels.map((c) => [c, s] as const)));
   }
 
   handles(type: DomainEventType): boolean {

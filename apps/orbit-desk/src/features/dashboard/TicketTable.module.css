@@ -260,3 +260,15 @@ td.colTicket {
     white-space: normal;
   }
 }
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-12);
+  min-width: 0;
+}
+
+.channelSelect {
+  min-width: 160px;
+}

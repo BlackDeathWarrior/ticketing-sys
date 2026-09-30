@@ -12,19 +12,20 @@ interface EmailMeta {
 }
 
 /**
- * Sends agent replies over SMTP with the threading headers chosen at reply
+ * Sends agent replies (email and web-form tickets) over SMTP with the threading headers chosen at reply
  * time. The SMTP settings are read per send, so a Settings change applies to
  * the next message; the pooled transport is rebuilt when they differ.
  */
 @Injectable()
 export class EmailSender implements ChannelSender, OnApplicationShutdown {
-  readonly channel = 'email';
+  // Web-form tickets are answered by email too.
+  readonly channels = ['email', 'web_form'];
   private transport?: { key: string; transporter: Transporter };
 
-  constructor(private readonly channels: ChannelConfigService) {}
+  constructor(private readonly channelConfig: ChannelConfigService) {}
 
   async send({ message }: DeliveryItem): Promise<void> {
-    const config = await this.channels.email();
+    const config = await this.channelConfig.email();
     if (!config?.enabled) throw new Error('The email channel is disabled');
     const meta = message.metadata as unknown as EmailMeta;
     await this.getTransport(config).sendMail({

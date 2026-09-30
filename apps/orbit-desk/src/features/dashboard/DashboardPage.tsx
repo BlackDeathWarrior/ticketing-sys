@@ -1,4 +1,4 @@
-import type { OverviewReport } from '@tms/shared';
+import type { Channel, OverviewReport } from '@tms/shared';
 import { initials } from '../../data/adapters';
 import type { Ticket } from '../../data/types';
 import { AvatarGroup } from '../../components/ui';
@@ -25,6 +25,9 @@ interface DashboardPageProps {
   openTickets: Ticket[];
   overview: OverviewReport | undefined;
   search: string;
+  /** Queue filtered to one channel, or '' for all. */
+  channel: Channel | '';
+  onChannel: (channel: Channel | '') => void;
   selectedId: string | null;
   onOpenTicket: (id: string) => void;
   onShowUrgent: () => void;
@@ -41,6 +44,8 @@ export function DashboardPage({
   openTickets,
   overview,
   search,
+  channel,
+  onChannel,
   selectedId,
   onOpenTicket,
   onShowUrgent,
@@ -108,6 +113,8 @@ export function DashboardPage({
       <TicketTable
         {...queue}
         search={search}
+        channel={channel}
+        onChannel={onChannel}
         selectedId={selectedId}
         onSelect={onOpenTicket}
         onClearFilters={onClearFilters}

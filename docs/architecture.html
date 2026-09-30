@@ -233,10 +233,11 @@ footer{font-size:12.5px;color:var(--muted)}
       <thead><tr><th>Piece</th><th>Where</th><th>What it does</th></tr></thead>
       <tbody>
         <tr><td>API</td><td><code>apps/api</code> → <code>dist/main.js</code></td><td>NestJS on Fastify: auth and RBAC, users, teams, categories, workflow, customers, tickets, notes, history, audit, conversations, replies, attachments, reports. Socket.IO <code>/agent</code> and <code>/chat</code></td></tr>
-        <tr><td>Worker</td><td><code>apps/api</code> → <code>dist/worker.js</code></td><td>Outbox relay (Postgres NOTIFY + BullMQ), delivery of replies (webchat, email), realtime fan-out, IMAP mailbox reader</td></tr>
+        <tr><td>Worker</td><td><code>apps/api</code> → <code>dist/worker.js</code></td><td>Outbox relay (Postgres NOTIFY + BullMQ), delivery of replies (webchat, email, web form by email), web-form acknowledgements, AI turns, KB indexing, realtime fan-out, IMAP mailbox reader</td></tr>
         <tr><td>Orbit Desk</td><td><code>apps/orbit-desk</code> (:8081)</td><td>The product console (ADR 0005): dashboard, queue views, ticket drawer, new ticket, live updates. Styled from <code>docs/DESIGN.md</code></td></tr>
         <tr><td>Basic console</td><td><code>apps/web</code> (:8080)</td><td>Unstyled test console: tickets, ticket page, customers</td></tr>
         <tr><td>Chat widget</td><td><code>apps/chat-widget</code></td><td>One-script-tag web chat with resumable sessions and signed identity</td></tr>
+        <tr><td>Help center</td><td><code>apps/help-center</code> (:8080/help/), <code>apps/api/src/web-form</code></td><td>Public "Submit a request" form (channel <code>web_form</code>) with attachments; acknowledgement and replies by email (ADR 0012). The customer portal joins it in Phase 10</td></tr>
         <tr><td>Reports</td><td><code>apps/api/src/reports</code></td><td><code>GET /reports/overview</code>: read-only aggregates across modules (ADR 0006)</td></tr>
         <tr><td>Sample data</td><td><code>scripts/sample-data</code></td><td><code>pnpm sample:load</code>: fictional teams, users, customers, 40 tickets, live chats and emails, loaded through the public API (ADR 0007)</td></tr>
         <tr><td>E2E suite</td><td><code>e2e/</code></td><td>23 Playwright tests against the Docker stack; a CI job runs them</td></tr>
@@ -339,7 +340,7 @@ const INFO = {
 };
 
 const BUILT = {
- "email": "Built: IMAP IDLE reader (one worker holds a Redis lock) and SMTP replies with threading headers. Attachments go to S3. Graph/Gmail push are not built.",
+ "email": "Built: IMAP IDLE reader (one worker holds a Redis lock) and SMTP replies with threading headers. Attachments go to S3. Graph/Gmail push are not built. The help center's request form (channel web_form, ADR 0012) is answered by email too, and replies to it thread back onto the form's ticket.",
  "wa": "Not built. The channel and identity values exist. Plan: port the Cloud API adapter from whatsapp-crm (docs/research/whatsapp-crm.md).",
  "webchat": "Built: Socket.IO /chat, the apps/chat-widget bundle, resumable signed sessions, host identity tokens, rate limit. No file upload or typing indicator yet.",
  "voice": "Not built. Research: Sarvam STT/TTS over browser audio first, then Twilio/Exotel/Plivo (docs/research/voice-sarvam.md).",

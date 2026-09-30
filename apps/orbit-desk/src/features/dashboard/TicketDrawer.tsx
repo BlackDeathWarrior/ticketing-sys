@@ -1,6 +1,6 @@
 import { PRIORITIES } from '@tms/shared';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { api } from '../../api/client';
+import { api, downloadFile } from '../../api/client';
 import {
   type ApiConversation,
   type ApiNote,
@@ -13,8 +13,8 @@ import {
   toThread,
   toTicket,
 } from '../../data/adapters';
-import type { Priority, Ticket } from '../../data/types';
-import { cx, relativeTime } from '../../lib/format';
+import type { Attachment, Priority, Ticket } from '../../data/types';
+import { cx, fileSize, relativeTime } from '../../lib/format';
 import { useSession } from '../../lib/session';
 import {
   AiActivity,
@@ -53,6 +53,45 @@ interface TicketDrawerProps {
 }
 
 /** Highlight @mentions in the accent color (DESIGN.md › Testimonial Card). */
+/** A message's files; downloads go through the API with the agent's token. */
+function AttachmentList({ files }: { files: Attachment[] }) {
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <>
+      <ul className={styles.attachments} aria-label="Attachments">
+        {files.map((f) => (
+          <li key={f.path}>
+            <button
+              type="button"
+              className={styles.attachment}
+              onClick={() => {
+                setError(null);
+                downloadFile(f.path, f.filename).catch((e: Error) => setError(e.message));
+              }}
+            >
+              <Icon name="paperclip" size={14} />
+              <span className={styles.attachmentName}>{f.filename}</span>
+              <span className={styles.attachmentSize}>{fileSize(f.size)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {error && (
+        <p className={styles.hint} role="alert">
+          {error}
+        </p>
+      )}
+    </>
+  );
+}
+
+/** How a reply on each conversation reaches the customer. Web-form tickets are answered by email. */
+const REPLY_VIA: Record<string, string> = {
+  webchat: 'web chat',
+  web_form: 'email',
+  whatsapp: 'WhatsApp',
+};
+
 function withMentions(text: string) {
   return text.split(/(@\w+)/g).map((part, i) =>
     part.startsWith('@') ? (
@@ -195,7 +234,7 @@ function DrawerContent({
     if (ok) setDraft('');
   };
 
-  const replyVia = target ? (target.channel === 'webchat' ? 'web chat' : target.channel) : 'email';
+  const replyVia = target ? (REPLY_VIA[target.channel] ?? target.channel) : 'email';
 
   return (
     <>
@@ -315,6 +354,10 @@ function DrawerContent({
               <dd>{channelLabels[ticket.channel] ?? ticket.channel}</dd>
             </div>
             <div>
+              <dt>Category</dt>
+              <dd>{ticket.categoryLabel ?? '—'}</dd>
+            </div>
+            <div>
               <dt>Team</dt>
               <dd>{ticket.team?.name ?? '—'}</dd>
             </div>
@@ -364,6 +407,7 @@ function DrawerContent({
                       </time>
                     </p>
                     <p className={styles.body}>{withMentions(m.body)}</p>
+                    {m.attachments.length > 0 && <AttachmentList files={m.attachments} />}
                     {m.delivery === 'draft' ? (
                       <DraftReview
                         messageId={m.id}

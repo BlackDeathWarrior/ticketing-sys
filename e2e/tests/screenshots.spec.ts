@@ -100,6 +100,49 @@ test.describe('report screenshots', () => {
     await page.close();
   });
 
+  test('help center request form', async ({ page, browser }) => {
+    const customer = await browser.newPage();
+    await customer.goto(env.helpCenter);
+    await expect(customer.getByRole('button', { name: 'Start a chat' })).toBeVisible();
+    await customer.screenshot({ path: shot('help-center'), fullPage: true });
+
+    const form = customer.getByRole('form', { name: 'Submit a request' });
+    await form.getByLabel('Your name').fill('Ines Duarte');
+    await form.getByLabel('Email').fill(`ines.duarte.${Date.now().toString(36)}@example.org`);
+    await form.getByLabel('Topic').selectOption({ label: 'Returns' });
+    await form.getByLabel('Order number').fill('DS-51877');
+    await form.getByLabel('Subject').fill('Cracked phone case in my order');
+    await form
+      .getByLabel('How can we help?')
+      .fill(
+        'The phone case in order DS-51877 arrived with a crack along one side. Photo attached.',
+      );
+    await form.locator('input[type="file"]').setInputFiles({
+      name: 'cracked-case.jpg',
+      mimeType: 'image/jpeg',
+      buffer: Buffer.alloc(184_000, 1),
+    });
+    await customer.screenshot({ path: shot('help-center-filled'), fullPage: true });
+    await form.getByRole('button', { name: 'Send request' }).click();
+    await expect(customer.getByRole('heading', { name: 'Request received' })).toBeVisible();
+    const reference = (await customer.locator('[data-reference]').textContent())!;
+    await customer.screenshot({ path: shot('help-center-receipt') });
+    await customer.close();
+
+    const phone = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await phone.goto(env.helpCenter);
+    await expect(phone.getByRole('button', { name: 'Start a chat' })).toBeVisible();
+    await phone.screenshot({ path: shot('help-center-phone') });
+    await phone.close();
+
+    await signInOrbit(page);
+    await page.getByLabel('Channel').selectOption({ label: 'Web form' });
+    await expect(page.locator(`tr[data-ticket="${reference}"]`)).toBeVisible();
+    await openTicket(page, reference);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: shot('orbit-web-form') });
+  });
+
   test('basic console, widget and Mailpit', async ({ page, browser }) => {
     await signInConsole(page);
     const admin = (await login()).accessToken;

@@ -36,6 +36,8 @@ export interface Ticket {
   priority: Priority;
   assignee: Person | null;
   team: { id: string; name: string } | null;
+  /** "Category › Sub-category", as chosen by a person or the web form; null when unset. */
+  categoryLabel: string | null;
   channel: Channel;
   tags: string[];
   createdAt: Date;
@@ -59,8 +61,16 @@ export interface Message {
   channel: string | null;
   /** Written by the AI agent (a reply, a draft or a handover note). */
   byAi: boolean;
+  /** Files sent with the message (email, web form); `path` is the API download path. */
+  attachments: Attachment[];
   /** What the AI recorded with its reply: confidence, rules, knowledge used. */
   ai: { confidence: number | null; rules: string[]; sources: Array<{ label: string }> } | null;
+}
+
+export interface Attachment {
+  filename: string;
+  size: number;
+  path: string;
 }
 
 export interface Conversation {

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Database, DbOrTx } from '@tms/db';
 import {
+  type Channel,
   type MessageEnvelope,
   messageEnvelopeSchema,
   normalizeIdentity,
@@ -101,6 +102,7 @@ export class InboundService {
           channel: env.channel,
           subject: subjectFor(env),
           description: env.text,
+          categoryId: env.ticket?.categoryId,
           priority: 'normal',
           tags: [],
         });
@@ -180,14 +182,19 @@ export class InboundService {
     let ticketId: string | undefined;
 
     if (env.channel === 'email') {
-      conversation = await this.conversations.findByMessageIds(tx, 'email', env.references);
+      // Replies to a web-form ticket's emails thread onto the form's conversation.
+      conversation = await this.conversations.findByMessageIds(tx, EMAIL_THREADS, env.references);
       if (!conversation) {
         const num = extractTicketNumber(env.subject);
         if (num) {
           const tagged = await this.tickets.get(String(num)).catch(() => null);
           if (tagged && tagged.customerId === customerId) {
             ticketId = tagged.id;
-            conversation = await this.conversations.findLatestForTicket(tx, tagged.id, 'email');
+            conversation = await this.conversations.findLatestForTicket(
+              tx,
+              tagged.id,
+              EMAIL_THREADS,
+            );
           } else if (tagged) {
             this.logger.warn(`ignoring ticket tag TMS-${num}: sender is not the ticket's customer`);
           }
@@ -203,6 +210,9 @@ export class InboundService {
   }
 }
 
+/** Conversations whose replies travel by email. */
+const EMAIL_THREADS: Channel[] = ['email', 'web_form'];
+
 function subjectFor(env: ParsedEnvelope): string {
   if (env.subject) return env.subject.slice(0, 300);
   const firstLine =
@@ -217,6 +227,13 @@ function subjectFor(env: ParsedEnvelope): string {
 function conversationMetadata(env: ParsedEnvelope): Record<string, unknown> {
   if (env.channel === 'email') {
     return { address: env.from.identity.value.toLowerCase(), subject: env.subject };
+  }
+  if (env.channel === 'web_form') {
+    return {
+      address: env.from.identity.value.toLowerCase(),
+      subject: env.subject,
+      name: env.from.displayName,
+    };
   }
   if (env.channel === 'webchat') {
     return { sessionId: env.threadKey, visitorName: env.from.displayName };
