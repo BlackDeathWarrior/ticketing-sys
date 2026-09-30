@@ -1,0 +1,190 @@
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  type Database,
+  type DbOrTx,
+  rolePermissions,
+  roles,
+  teamMembers,
+  teams,
+  userRoles,
+  users,
+} from '@tms/db';
+import type { CreateUserInput, CurrentUser, UpdateUserInput } from '@tms/shared';
+import argon2 from 'argon2';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { AuditService } from '../audit/audit.service';
+import { OutboxService } from '../audit/outbox.service';
+import type { RequestCtx } from '../common/request-context';
+import { DB } from '../infra/tokens';
+
+const PUBLIC_COLUMNS = {
+  id: users.id,
+  email: users.email,
+  name: users.name,
+  isActive: users.isActive,
+  lastLoginAt: users.lastLoginAt,
+  createdAt: users.createdAt,
+};
+
+/** Short-lived cache so the auth guard doesn't hit the DB on every request. */
+const AUTH_CACHE_TTL_MS = 10_000;
+
+@Injectable()
+export class UsersService {
+  private readonly authCache = new Map<string, { at: number; value: CurrentUser | null }>();
+
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly audit: AuditService,
+    private readonly outbox: OutboxService,
+  ) {}
+
+  /** Returns the user with roles and permissions, or null if missing or deactivated. */
+  async getAuthContext(userId: string): Promise<CurrentUser | null> {
+    const hit = this.authCache.get(userId);
+    if (hit && Date.now() - hit.at < AUTH_CACHE_TTL_MS) return hit.value;
+
+    const [u] = await this.db.select().from(users).where(eq(users.id, userId));
+    let value: CurrentUser | null = null;
+    if (u && u.isActive) {
+      const rows = await this.db
+        .select({ key: roles.key, permission: rolePermissions.permission })
+        .from(userRoles)
+        .innerJoin(roles, eq(roles.id, userRoles.roleId))
+        .leftJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+        .where(eq(userRoles.userId, userId));
+      value = {
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        roles: [...new Set(rows.map((r) => r.key))].sort(),
+        permissions: [
+          ...new Set(rows.map((r) => r.permission).filter((p): p is string => !!p)),
+        ].sort(),
+      };
+    }
+    this.authCache.set(userId, { at: Date.now(), value });
+    return value;
+  }
+
+  invalidate(userId: string): void {
+    this.authCache.delete(userId);
+  }
+
+  async findByEmail(email: string) {
+    const [u] = await this.db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.email}) = lower(${email})`);
+    return u ?? null;
+  }
+
+  async list() {
+    const rows = await this.db.select(PUBLIC_COLUMNS).from(users).orderBy(asc(users.name));
+    return this.withRolesAndTeams(rows);
+  }
+
+  async get(id: string) {
+    const rows = await this.db.select(PUBLIC_COLUMNS).from(users).where(eq(users.id, id));
+    if (!rows[0]) throw new NotFoundException('User not found');
+    return (await this.withRolesAndTeams(rows))[0]!;
+  }
+
+  async create(ctx: RequestCtx, input: CreateUserInput) {
+    const passwordHash = await argon2.hash(input.password);
+    const id = await this.db.transaction(async (tx) => {
+      const [u] = await tx
+        .insert(users)
+        .values({ email: input.email, name: input.name, passwordHash })
+        .returning({ id: users.id });
+      await this.setRoles(tx, u!.id, input.roles);
+      await this.setTeams(tx, u!.id, input.teamIds);
+      const data = { email: input.email, roles: input.roles, teamIds: input.teamIds };
+      await this.audit.record(tx, ctx, {
+        action: 'user.created',
+        targetType: 'user',
+        targetId: u!.id,
+        data,
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'user.created',
+        aggregateType: 'user',
+        aggregateId: u!.id,
+        payload: data,
+      });
+      return u!.id;
+    });
+    return this.get(id);
+  }
+
+  async update(ctx: RequestCtx, id: string, input: UpdateUserInput) {
+    await this.get(id);
+    if (ctx.user?.id === id && input.isActive === false) {
+      throw new BadRequestException('You cannot deactivate your own account');
+    }
+    await this.db.transaction(async (tx) => {
+      const set: Partial<typeof users.$inferInsert> = {};
+      if (input.name !== undefined) set.name = input.name;
+      if (input.isActive !== undefined) set.isActive = input.isActive;
+      if (input.password !== undefined) set.passwordHash = await argon2.hash(input.password);
+      if (Object.keys(set).length) await tx.update(users).set(set).where(eq(users.id, id));
+      if (input.roles) await this.setRoles(tx, id, input.roles);
+      if (input.teamIds) await this.setTeams(tx, id, input.teamIds);
+      // Never log the password itself.
+      const data = { ...input, password: input.password ? '[changed]' : undefined };
+      await this.audit.record(tx, ctx, {
+        action: 'user.updated',
+        targetType: 'user',
+        targetId: id,
+        data,
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'user.updated',
+        aggregateType: 'user',
+        aggregateId: id,
+        payload: { fields: Object.keys(input) },
+      });
+    });
+    this.invalidate(id);
+    return this.get(id);
+  }
+
+  async touchLogin(id: string): Promise<void> {
+    await this.db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, id));
+  }
+
+  private async setRoles(tx: DbOrTx, userId: string, roleKeys: string[]) {
+    const found = await tx.select().from(roles).where(inArray(roles.key, roleKeys));
+    const missing = roleKeys.filter((k) => !found.some((r) => r.key === k));
+    if (missing.length) throw new BadRequestException(`Unknown role(s): ${missing.join(', ')}`);
+    await tx.delete(userRoles).where(eq(userRoles.userId, userId));
+    await tx.insert(userRoles).values(found.map((r) => ({ userId, roleId: r.id })));
+  }
+
+  private async setTeams(tx: DbOrTx, userId: string, teamIds: string[]) {
+    await tx.delete(teamMembers).where(eq(teamMembers.userId, userId));
+    if (teamIds.length) {
+      await tx.insert(teamMembers).values(teamIds.map((teamId) => ({ teamId, userId })));
+    }
+  }
+
+  private async withRolesAndTeams<T extends { id: string }>(rows: T[]) {
+    if (!rows.length) return [];
+    const ids = rows.map((r) => r.id);
+    const roleRows = await this.db
+      .select({ userId: userRoles.userId, key: roles.key })
+      .from(userRoles)
+      .innerJoin(roles, eq(roles.id, userRoles.roleId))
+      .where(inArray(userRoles.userId, ids));
+    const teamRows = await this.db
+      .select({ userId: teamMembers.userId, id: teams.id, name: teams.name })
+      .from(teamMembers)
+      .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+      .where(inArray(teamMembers.userId, ids));
+    return rows.map((r) => ({
+      ...r,
+      roles: roleRows.filter((x) => x.userId === r.id).map((x) => x.key),
+      teams: teamRows.filter((x) => x.userId === r.id).map(({ id, name }) => ({ id, name })),
+    }));
+  }
+}

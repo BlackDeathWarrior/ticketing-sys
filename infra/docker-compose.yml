@@ -1,0 +1,88 @@
+name: tms
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: tms
+      POSTGRES_PASSWORD: tms
+      POSTGRES_DB: tms
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tms -d tms']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: tms
+      MINIO_ROOT_PASSWORD: tms-dev-secret
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - miniodata:/data
+
+  # Local SMTP + IMAP sink for the email channel. Web UI on :8025.
+  mailpit:
+    image: axllent/mailpit:latest
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+    ports:
+      - '1025:1025'
+      - '1143:1143'
+      - '8025:8025'
+
+  # All LLM traffic goes through LiteLLM. Providers and models are added at
+  # runtime from the TMS settings pages and stored (encrypted) in its own DB.
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    command: ['--config', '/app/config.yaml', '--port', '4000']
+    environment:
+      DATABASE_URL: postgres://tms:tms@postgres:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-tms-dev-master-key}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-tms-dev-salt-key}
+      STORE_MODEL_IN_DB: 'True'
+    ports:
+      - '4000:4000'
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  otel-collector:
+    profiles: ['observability']
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ['--config=/etc/otelcol/config.yaml']
+    volumes:
+      - ./otel/config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - '4317:4317'
+      - '4318:4318'
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:

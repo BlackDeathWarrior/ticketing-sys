@@ -1,0 +1,44 @@
+import { Body, Controller, Get, Post } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { createCategorySchema, createTeamSchema } from '@tms/shared';
+import type { z } from 'zod';
+import { Ctx, type RequestCtx, RequirePermission } from '../common/request-context';
+import { ZodPipe } from '../common/zod.pipe';
+import { OrgService } from './org.service';
+
+@ApiTags('org')
+@ApiBearerAuth()
+@Controller()
+export class OrgController {
+  constructor(private readonly org: OrgService) {}
+
+  @Get('teams')
+  @RequirePermission('ticket:read')
+  listTeams() {
+    return this.org.listTeams();
+  }
+
+  @Post('teams')
+  @RequirePermission('team:manage')
+  createTeam(
+    @Ctx() ctx: RequestCtx,
+    @Body(new ZodPipe(createTeamSchema)) body: z.infer<typeof createTeamSchema>,
+  ) {
+    return this.org.createTeam(ctx, body);
+  }
+
+  @Get('categories')
+  @RequirePermission('ticket:read')
+  listCategories() {
+    return this.org.listCategories();
+  }
+
+  @Post('categories')
+  @RequirePermission('settings:categories')
+  createCategory(
+    @Ctx() ctx: RequestCtx,
+    @Body(new ZodPipe(createCategorySchema)) body: z.infer<typeof createCategorySchema>,
+  ) {
+    return this.org.createCategory(ctx, body);
+  }
+}

@@ -1,0 +1,117 @@
+import { sql } from 'drizzle-orm';
+import {
+  type AnyPgColumn,
+  bigserial,
+  boolean,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
+import { teams, timestamps, users } from './auth';
+import { customers } from './customers';
+
+export const ticketStatuses = pgTable('ticket_statuses', {
+  key: text('key').primaryKey(),
+  name: text('name').notNull(),
+  /** open | pending | resolved | closed */
+  category: text('category').notNull(),
+  sortOrder: integer('sort_order').notNull().default(100),
+  isInitial: boolean('is_initial').notNull().default(false),
+  isActive: boolean('is_active').notNull().default(true),
+});
+
+export const workflowTransitions = pgTable(
+  'workflow_transitions',
+  {
+    fromStatus: text('from_status')
+      .notNull()
+      .references(() => ticketStatuses.key, { onDelete: 'cascade' }),
+    toStatus: text('to_status')
+      .notNull()
+      .references(() => ticketStatuses.key, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.fromStatus, t.toStatus] })],
+);
+
+export const categories = pgTable(
+  'categories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    parentId: uuid('parent_id').references((): AnyPgColumn => categories.id, {
+      onDelete: 'cascade',
+    }),
+    isActive: boolean('is_active').notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('categories_parent_name_uq').on(
+      sql`coalesce(${t.parentId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      sql`lower(${t.name})`,
+    ),
+  ],
+);
+
+export const tickets = pgTable(
+  'tickets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Human-facing number, shown as TMS-<number>. */
+    number: bigserial('number', { mode: 'number' }).notNull().unique(),
+    customerId: uuid('customer_id')
+      .notNull()
+      .references(() => customers.id),
+    channel: text('channel').notNull(),
+    subject: text('subject').notNull(),
+    description: text('description'),
+    categoryId: uuid('category_id').references(() => categories.id, { onDelete: 'set null' }),
+    subcategoryId: uuid('subcategory_id').references(() => categories.id, {
+      onDelete: 'set null',
+    }),
+    priority: text('priority').notNull().default('normal'),
+    status: text('status')
+      .notNull()
+      .references(() => ticketStatuses.key),
+    /** Filled by the SLA module (Phase 7). */
+    slaPolicyId: uuid('sla_policy_id'),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'set null' }),
+    assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+    resolution: text('resolution'),
+    tags: text('tags')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    firstResponseAt: timestamp('first_response_at', { withTimezone: true }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    index('tickets_status_idx').on(t.status),
+    index('tickets_assignee_idx').on(t.assigneeId),
+    index('tickets_team_idx').on(t.teamId),
+    index('tickets_customer_idx').on(t.customerId),
+    index('tickets_created_idx').on(t.createdAt),
+    index('tickets_tags_gin').using('gin', t.tags),
+    index('tickets_subject_trgm').using('gin', sql`${t.subject} gin_trgm_ops`),
+  ],
+);
+
+export const internalNotes = pgTable(
+  'internal_notes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ticketId: uuid('ticket_id')
+      .notNull()
+      .references(() => tickets.id, { onDelete: 'cascade' }),
+    authorId: uuid('author_id').references(() => users.id, { onDelete: 'set null' }),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('internal_notes_ticket_idx').on(t.ticketId)],
+);
