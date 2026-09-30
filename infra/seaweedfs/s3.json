@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "tms",
+      "credentials": [{ "accessKey": "tms", "secretKey": "tms-dev-secret" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

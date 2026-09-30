@@ -4,6 +4,7 @@ Guidance for working in this repo. Read `docs/IMPLEMENTATION_PLAN.md` for the ph
 
 ## Commands
 
+- `pnpm docker:up` runs the whole stack in Docker (web :8080, API :3000); `pnpm docker:down` stops it. App images come from the root `Dockerfile` targets `api`, `worker`, `migrate`, `web`.
 - `pnpm build` builds all packages (apps depend on `packages/*/dist`, so build after changing `shared` or `db`).
 - `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:int` (needs Postgres + Redis; see README).
 - `pnpm db:generate` after schema edits; commit the SQL in `packages/db/drizzle`. Hand-written SQL goes in `drizzle-kit generate --custom` migrations.

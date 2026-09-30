@@ -1,5 +1,18 @@
 name: tms
 
+# Environment shared by the api, worker and migrate containers.
+x-app-env: &app-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DATABASE_URL: postgres://tms:tms@postgres:5432/tms
+  REDIS_URL: redis://redis:6379
+  LITELLM_URL: http://litellm:4000
+  LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-tms-dev-master-key}
+  # Dev default only. Set JWT_SECRET in the environment for anything shared.
+  JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me-0123456789abcdef}
+  CORS_ORIGINS: http://localhost:8080
+  API_DOCS: ${API_DOCS:-true}
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -31,17 +44,18 @@ services:
       timeout: 3s
       retries: 20
 
-  minio:
-    image: minio/minio:latest
-    command: ['server', '/data', '--console-address', ':9001']
-    environment:
-      MINIO_ROOT_USER: tms
-      MINIO_ROOT_PASSWORD: tms-dev-secret
+  # S3-compatible object storage for attachments and KB documents.
+  # (MinIO no longer publishes free images, so we use SeaweedFS.)
+  # S3 API on :9000 with the credentials in seaweedfs/s3.json; filer UI on :8888.
+  objectstore:
+    image: chrislusf/seaweedfs:latest
+    command: ['server', '-dir=/data', '-s3', '-s3.port=8333', '-s3.config=/etc/seaweedfs/s3.json']
     ports:
-      - '9000:9000'
-      - '9001:9001'
+      - '9000:8333'
+      - '8888:8888'
     volumes:
-      - miniodata:/data
+      - objectdata:/data
+      - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
 
   # Local SMTP + IMAP sink for the email channel. Web UI on :8025.
   mailpit:
@@ -72,6 +86,55 @@ services:
       postgres:
         condition: service_healthy
 
+  # ---- TMS application (profile "app": `pnpm docker:up`) ----
+
+  # One-shot: applies migrations and the idempotent seed, then exits.
+  migrate:
+    profiles: ['app']
+    build: &build
+      context: ..
+      dockerfile: Dockerfile
+      target: migrate
+    environment:
+      <<: *app-env
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-ChangeMe123!}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    profiles: ['app']
+    build: { <<: *build, target: api }
+    environment: *app-env
+    ports:
+      - '3000:3000'
+    restart: unless-stopped
+    depends_on: &app-deps
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    profiles: ['app']
+    build: { <<: *build, target: worker }
+    environment: *app-env
+    restart: unless-stopped
+    depends_on: *app-deps
+
+  web:
+    profiles: ['app']
+    build: { <<: *build, target: web }
+    ports:
+      - '8080:80'
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
   otel-collector:
     profiles: ['observability']
     image: otel/opentelemetry-collector-contrib:latest
@@ -85,4 +148,4 @@ services:
 volumes:
   pgdata:
   redisdata:
-  miniodata:
+  objectdata:

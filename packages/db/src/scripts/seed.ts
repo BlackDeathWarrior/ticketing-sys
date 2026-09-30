@@ -13,7 +13,11 @@ async function main() {
     await seedDatabase(handle.db, {
       adminEmail,
       adminPassword,
-      demoData: process.env.NODE_ENV !== 'production',
+      // Demo teams, categories and a customer: on outside production unless
+      // SEED_DEMO_DATA says otherwise (the Docker demo stack sets it to true).
+      demoData: process.env.SEED_DEMO_DATA
+        ? process.env.SEED_DEMO_DATA === 'true'
+        : process.env.NODE_ENV !== 'production',
     });
     console.log(`Seed complete. Admin: ${adminEmail}`);
   } finally {
