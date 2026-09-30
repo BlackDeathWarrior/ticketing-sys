@@ -16,8 +16,8 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 | —     | Orbit Desk console wired to the API (ADR 0005), reports overview (ADR 0006), sample data + Playwright E2E suite (ADR 0007) | Done    |
 | 3     | LLM platform on LiteLLM, Settings for AI and channel keys, cheapest-first routing with per-provider caps (ADR 0008, 0009)  | Done    |
 | 4     | Knowledge base: uploads, URL and FAQ sources, review, pgvector hybrid search with citations (ADR 0010)                     | Done    |
-| 5     | AI agent on chat and email, AI badges                                                                                      | Next    |
-| 6     | Tools/MCP and approvals                                                                                                    | Planned |
+| 5     | AI agent: answers chat, drafts email, hands over; confidence policy, classifier, AI marks in Orbit Desk (ADR 0011)         | Done    |
+| 6     | Tools/MCP and approvals                                                                                                    | Next    |
 | 7     | Handover, take-over, routing, SLA, notifications, AI-vs-human views                                                        | Planned |
 | 8     | WhatsApp (Meta Cloud API, ported from whatsapp-crm; see `docs/research/whatsapp-crm.md`)                                   | Planned |
 | 9     | Voice agent on Sarvam STT/TTS, in the browser (see `docs/research/voice-sarvam.md`)                                        | Planned |
@@ -25,7 +25,7 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 | 11    | Hardening for the demo                                                                                                     | Planned |
 | 12    | AWS live demo                                                                                                              | Planned |
 
-Not built yet, although the UI or schema hints at them: SLA and CSAT (Orbit Desk hides them until Phase 7), AI replies (`controller=ai` and AI-authored messages are never produced) and approvals. The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
+Not built yet, although the UI or schema hints at them: SLA and CSAT (Orbit Desk hides them until Phase 7), explicit take-over/hand-back and routing (Phase 7), and approvals (Phase 6). The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
 
 ## Layout
 
@@ -110,6 +110,22 @@ Admins manage AI providers, models and channel credentials in Orbit Desk under *
 - **Usage:** spend by provider and role, and the recent calls.
 
 Keys are admin-only (`settings:secrets`), encrypted, and every change is audited. See ADR 0008 and ADR 0009. The sample data registers the scripted **Demo model** provider, so everything works offline. Walkthrough: [`docs/runbooks/phase-3-demo.md`](docs/runbooks/phase-3-demo.md).
+
+## AI agent
+
+When a model is configured (Settings), new web chats, WhatsApp chats and calls go to the AI agent, and emails get AI drafts.
+
+- **Each turn:** the agent searches the knowledge base, calls tools, and ends with a reply and an honest confidence.
+- **What happens next:**
+  - at 80% or more on a channel that answers on its own, the reply is sent;
+  - between 60% and 80%, or on email, it becomes a draft that an agent sends, edits or discards;
+  - below 60%, or when the customer asks for a person, the AI hands over with an internal note.
+- **Guardrails:** replies that promise refunds or dates no tool confirmed are never sent.
+- **Classification:** new customer tickets get a suggested category, priority, language, intent and sentiment.
+- **Visibility in Orbit Desk:** AI work shows an **AI** mark and is slightly dimmed; the drawer has "AI is replying", the classification and an "AI activity" list.
+- **Settings → AI behaviour** sets each channel's mode and the thresholds, and has **Try the agent** for a dry run.
+
+`pnpm ai:eval` runs the golden conversations against the configured models. See ADR 0011 and [`docs/runbooks/phase-5-demo.md`](docs/runbooks/phase-5-demo.md).
 
 ## Knowledge base
 

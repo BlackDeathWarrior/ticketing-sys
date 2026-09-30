@@ -1,10 +1,11 @@
 import type { LlmRoleCandidate, Permission } from '@tms/shared';
 
-export type SettingsTab = 'providers' | 'models' | 'channels' | 'tools' | 'usage';
+export type SettingsTab = 'providers' | 'models' | 'ai' | 'channels' | 'tools' | 'usage';
 
 export const SETTINGS_TABS: Array<{ value: SettingsTab; label: string; needs: Permission[] }> = [
   { value: 'providers', label: 'AI providers', needs: ['settings:llm'] },
   { value: 'models', label: 'Models & roles', needs: ['settings:llm'] },
+  { value: 'ai', label: 'AI behaviour', needs: ['settings:ai'] },
   { value: 'channels', label: 'Channels', needs: ['settings:channels'] },
   { value: 'tools', label: 'Tools & MCP', needs: ['settings:secrets'] },
   { value: 'usage', label: 'Usage', needs: ['settings:llm'] },

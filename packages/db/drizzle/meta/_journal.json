@@ -57,6 +57,13 @@
       "when": 1790775785447,
       "tag": "0007_kb",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790778522700,
+      "tag": "0008_ai_agent",
+      "breakpoints": true
     }
   ]
 }

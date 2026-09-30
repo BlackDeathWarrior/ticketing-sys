@@ -1,3 +1,12 @@
+import {
+  agentReply,
+  classifierReply,
+  isAgentRequest,
+  isClassifierRequest,
+  isSummaryRequest,
+  summaryReply,
+} from './agent-script';
+
 /**
  * A scripted, OpenAI-compatible LLM. Replies are deterministic so demos and
  * tests can assert on them. Model names change behaviour:
@@ -43,6 +52,9 @@ export function textOf(content: ChatMessage['content']): string {
 }
 
 export function scriptedReply(req: ChatRequest): ScriptedReply {
+  if (isAgentRequest(req)) return agentReply(req);
+  if (isClassifierRequest(req)) return classifierReply(req);
+  if (isSummaryRequest(req)) return summaryReply(req);
   const lastUser = textOf([...req.messages].reverse().find((m) => m.role === 'user')?.content);
   for (const rule of CHAT_RULES) if (rule.when(lastUser, req)) return rule.reply(lastUser, req);
   const snippet = lastUser.replace(/\s+/g, ' ').trim().slice(0, 80);

@@ -121,6 +121,12 @@ export function describeActivity(e: ActivityEvent): { actor: string; action: str
       return { actor, action: 'added a note on' };
     case 'ticket.updated':
       return { actor, action: 'updated' };
+    case 'ticket.classified':
+      return { actor, action: 'classified' };
+    case 'ai.handover':
+      return { actor, action: 'handed over' };
+    case 'message.drafted':
+      return { actor, action: 'drafted a reply on' };
     default:
       return { actor, action: e.action.replace(/^ticket\./, '').replace(/_/g, ' ') };
   }

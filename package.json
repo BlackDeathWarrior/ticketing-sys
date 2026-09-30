@@ -26,7 +26,8 @@
     "demo:email": "node apps/api/scripts/send-test-email.mjs",
     "sample:load": "pnpm --filter @tms/sample-data load",
     "e2e": "pnpm --filter @tms/e2e e2e",
-    "kb:eval": "pnpm --filter @tms/sample-data eval:kb"
+    "kb:eval": "pnpm --filter @tms/sample-data eval:kb",
+    "ai:eval": "pnpm --filter @tms/sample-data eval:ai"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

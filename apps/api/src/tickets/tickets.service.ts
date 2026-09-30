@@ -247,25 +247,33 @@ export class TicketsService {
 
   async addNote(ctx: RequestCtx, id: string, body: string) {
     const ticket = await this.get(id);
-    return this.db.transaction(async (tx) => {
-      const [note] = await tx
-        .insert(internalNotes)
-        .values({ ticketId: ticket.id, authorId: ctx.user?.id, body })
-        .returning();
-      await this.audit.record(tx, ctx, {
-        action: 'ticket.note_added',
-        targetType: 'ticket',
-        targetId: ticket.id,
-        data: { noteId: note!.id },
-      });
-      await this.outbox.publish(tx, ctx, {
-        type: 'ticket.note_added',
-        aggregateType: 'ticket',
-        aggregateId: ticket.id,
-        payload: { noteId: note!.id },
-      });
-      return note!;
+    return this.db.transaction((tx) => this.addNoteInTx(tx, ctx, ticket.id, body));
+  }
+
+  /** Adds an internal note inside the caller's transaction (AI handover notes use this). */
+  async addNoteInTx(tx: DbOrTx, ctx: RequestCtx, ticketId: string, body: string) {
+    const [note] = await tx
+      .insert(internalNotes)
+      .values({
+        ticketId,
+        authorId: ctx.user?.id,
+        authorType: ctx.actor.type === 'ai' ? 'ai' : ctx.user ? 'user' : 'system',
+        body,
+      })
+      .returning();
+    await this.audit.record(tx, ctx, {
+      action: 'ticket.note_added',
+      targetType: 'ticket',
+      targetId: ticketId,
+      data: { noteId: note!.id },
     });
+    await this.outbox.publish(tx, ctx, {
+      type: 'ticket.note_added',
+      aggregateType: 'ticket',
+      aggregateId: ticketId,
+      payload: { noteId: note!.id },
+    });
+    return note!;
   }
 
   async notes(id: string) {
@@ -274,6 +282,7 @@ export class TicketsService {
       .select({
         id: internalNotes.id,
         body: internalNotes.body,
+        authorType: internalNotes.authorType,
         createdAt: internalNotes.createdAt,
         author: { id: users.id, name: users.name },
       })
@@ -305,22 +314,88 @@ export class TicketsService {
    * A customer wrote again. Resolved or pending tickets go back to In Progress
    * when the workflow allows it; otherwise the status is left alone.
    */
-  async reopenOnCustomerReply(tx: DbOrTx, ctx: RequestCtx, ticket: Ticket) {
+  async reopenOnCustomerReply(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    ticket: Ticket,
+    opts: { aiControlled?: boolean } = {},
+  ) {
     const { category } = await this.workflow.status(ticket.status);
     if (category !== 'resolved' && category !== 'pending') return;
+    // The AI still owns the conversation: hand the reply back to it when the workflow allows.
+    if (opts.aiControlled && (await this.workflow.check(ticket.status, 'ai_handling')).ok) {
+      await this.applyTransition(tx, ctx, ticket, 'ai_handling');
+      return;
+    }
     if ((await this.workflow.check(ticket.status, 'in_progress')).ok) {
       await this.applyTransition(tx, ctx, ticket, 'in_progress');
     }
   }
 
-  /** An agent replied: stamp first response and move New/Human Assigned to In Progress. */
-  async recordAgentReply(tx: DbOrTx, ctx: RequestCtx, ticket: Ticket) {
+  /**
+   * Moves the ticket to `to` if the workflow allows it from the current
+   * status; otherwise leaves it. Returns whether it moved.
+   */
+  async moveIfAllowed(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    ticketId: string,
+    to: string,
+    resolution?: string,
+  ) {
+    const current = await this.lock(tx, ticketId);
+    if (current.status === to || !(await this.workflow.check(current.status, to)).ok) return false;
+    await this.applyTransition(tx, ctx, current, to, resolution);
+    return true;
+  }
+
+  /** Stores what the classifier found and applies the parts it may change. */
+  async applyClassification(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    ticketId: string,
+    classification: Record<string, unknown>,
+    patch: { categoryId?: string; subcategoryId?: string; priority?: string },
+  ) {
+    const current = await this.lock(tx, ticketId);
+    const changes = diff(current, patch);
+    await tx
+      .update(tickets)
+      .set({ aiClassification: classification, ...patch })
+      .where(eq(tickets.id, ticketId));
+    const data = { classification, changes };
+    await this.audit.record(tx, ctx, {
+      action: 'ticket.classified',
+      targetType: 'ticket',
+      targetId: ticketId,
+      data,
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'ticket.classified',
+      aggregateType: 'ticket',
+      aggregateId: ticketId,
+      payload: data,
+    });
+  }
+
+  /**
+   * Someone answered the customer: stamp the first response. A human reply
+   * also moves New/Human Assigned to In Progress; an AI reply leaves the
+   * status alone (the ticket stays with the AI).
+   */
+  async recordAgentReply(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    ticket: Ticket,
+    opts: { byAi?: boolean } = {},
+  ) {
     if (!ticket.firstResponseAt) {
       await tx
         .update(tickets)
         .set({ firstResponseAt: new Date() })
         .where(eq(tickets.id, ticket.id));
     }
+    if (opts.byAi) return;
     if (ticket.status === 'new' || ticket.status === 'human_assigned') {
       if ((await this.workflow.check(ticket.status, 'in_progress')).ok) {
         await this.applyTransition(tx, ctx, ticket, 'in_progress');

@@ -25,6 +25,10 @@ export const conversations = pgTable(
       onDelete: 'set null',
     }),
     state: text('state').notNull().default('open'),
+    /** Rolling summary of older messages, kept by the AI agent for long conversations. */
+    summary: text('summary'),
+    /** The customer's language on this conversation (BCP-47 base code, e.g. hi). */
+    language: text('language'),
     /** Channel details: email {address, subject}, webchat {sessionId}. */
     metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),

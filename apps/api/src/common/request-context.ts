@@ -45,3 +45,6 @@ export const User = createParamDecorator(
 );
 
 export const SYSTEM_CTX: RequestCtx = { actor: { type: 'system', id: null } };
+
+/** The AI agent acting: audit rows and events carry actor type `ai`. */
+export const AI_CTX: RequestCtx = { actor: { type: 'ai', id: null } };

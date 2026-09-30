@@ -5,6 +5,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -86,6 +87,8 @@ export const tickets = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    /** What the AI classifier suggested (category, priority, language, intent, sentiment). */
+    aiClassification: jsonb('ai_classification').$type<Record<string, unknown>>(),
     firstResponseAt: timestamp('first_response_at', { withTimezone: true }),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     closedAt: timestamp('closed_at', { withTimezone: true }),
@@ -110,6 +113,8 @@ export const internalNotes = pgTable(
       .notNull()
       .references(() => tickets.id, { onDelete: 'cascade' }),
     authorId: uuid('author_id').references(() => users.id, { onDelete: 'set null' }),
+    /** user | ai | system */
+    authorType: text('author_type').notNull().default('user'),
     body: text('body').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

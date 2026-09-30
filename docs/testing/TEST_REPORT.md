@@ -1,6 +1,91 @@
 # Test report
 
-## Latest: Phase 4, knowledge base
+## Latest: Phase 5, AI agent
+
+Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-5-ai-agent`.
+
+**Result: every step of the gate passed.**
+
+| Step                | Result                                                 |
+| ------------------- | ------------------------------------------------------ |
+| `pnpm format:check` | pass                                                   |
+| `pnpm lint`         | pass                                                   |
+| `pnpm build`        | pass                                                   |
+| `pnpm typecheck`    | pass                                                   |
+| `pnpm test`         | 121 passed                                             |
+| `pnpm test:int`     | 78 passed                                              |
+| `pnpm e2e`          | 38 passed; 6 screenshot-only specs skipped as designed |
+| `pnpm kb:eval`      | recall@5 = 1.00 (18 of 18)                             |
+| `pnpm ai:eval`      | 6 of 6 golden conversations passed                     |
+
+Everything ran against the scripted demo model. It shows the wiring (routing, tools, rules, drafts, handover) works. It does not show answer quality: its confidence comes from word overlap, so it sometimes picks a loosely related passage. Run `pnpm ai:eval` with a real model for that.
+
+### What the AI does with the sample traffic
+
+The loader sends web chats and emails through the real channels, and the AI takes them as they arrive:
+
+- Tom Whitaker (refund timing) and Aarav Kulkarni (the same question in Hindi) are answered from the knowledge base.
+- Nina Petrova asks for a person, so the chat is handed over with an AI note.
+- Every email gets a draft for an agent to review, because email is drafts-only.
+- Questions the knowledge base barely covers are drafted.
+
+### New tests
+
+| Where                                           | Tests | Covers                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------- | ----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/ai/ai.test.ts`                    |    16 | Send, draft and hand-over thresholds; draft-only channels; factual replies without a source; unsupported promises; repeated failures; handover texts (English and Hindi); prompt tagging and injection stripping; tool argument validation; JSON extraction; language guess; requests for a person |
+| `apps/fake-providers/src/agent-script.test.ts`  |     5 | The scripted agent (search then reply, confidence by overlap, handover, Hindi) and classifier                                                                                                                                                                                                      |
+| `apps/orbit-desk/src/features/ai/logic.test.ts` |     4 | Confidence, classification text, rule labels, reply source line                                                                                                                                                                                                                                    |
+| `apps/api/test/ai.int.test.ts`                  |    18 | See below                                                                                                                                                                                                                                                                                          |
+| `e2e/tests/ai.spec.ts`                          |     5 | See below                                                                                                                                                                                                                                                                                          |
+
+`ai.int.test.ts` covers:
+
+- A chat is taken, answered from the knowledge base, delivered, labelled "AI assistant", audited as `ai` and moved to Pending Customer.
+- The ticket is classified.
+- A follow-up goes back to the AI.
+- Unsure answers become drafts that are hidden from the visitor; an edited draft is approved, delivered and audited.
+- A person's reply supersedes a waiting draft, and a draft can be discarded.
+- Asking for a person hands over, with a note and a customer message.
+- A person replying silences the AI.
+- A budget running out hands over.
+- No usable model leaves the conversation to humans.
+- Email is drafted, and the approved draft is emailed.
+- AI settings: permissions, validation, "off".
+- Six golden conversations.
+
+`ai.spec.ts` covers:
+
+- A widget answer labelled "AI assistant", with the AI mark, confidence, source, classification and AI activity in Orbit Desk.
+- An agent edits and sends a draft; the visitor gets the edited text.
+- A handover, with the AI note.
+- An email draft, approved and delivered to Mailpit.
+- An admin tries the agent in Settings; an agent gets 403.
+
+### Bugs found and fixed
+
+1. **A stale AI draft could be sent after a person had already replied** (seen on a sample ticket). A person's reply now discards waiting drafts on that conversation, audited as `superseded`.
+2. **Integration tests assumed an empty knowledge base.** The AI tests leave approved documents behind. The KB tests now look for their own document instead of expecting none, or expecting it first.
+3. **The drawer's collapsed "AI activity" list was in the DOM and quoted customer text**, which broke an existing E2E text lookup. It now renders only when opened.
+4. **Plural words didn't match in the fake agent's scoring** ("card" and "cards"). Simple plural folding fixed it.
+
+### Screenshots
+
+A chat answered by the AI, with its source and the AI activity:
+
+![AI answered](screenshots/orbit-ai-answered.png)
+
+An email draft waiting for review:
+
+![AI draft](screenshots/orbit-ai-draft.png)
+
+Settings → AI behaviour, with a dry run:
+
+![AI settings](screenshots/orbit-ai-settings.png)
+
+---
+
+## Phase 4: knowledge base
 
 Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-4-kb`.
 

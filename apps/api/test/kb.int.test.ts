@@ -175,15 +175,21 @@ describe('knowledge base documents', () => {
     expect(doc).toMatchObject({ indexMode: 'hybrid', chunkCount: 1 });
     expect(doc.content).toContain('within 30 days');
 
-    expect((await search('return unused items within 30 days')).hits).toHaveLength(0);
-    const preview = await search('return unused items within 30 days', { includeDrafts: 'true' });
-    expect(preview.hits[0]?.documentId).toBe(pdfId);
+    // Other test files may leave approved documents behind; this one must not be among the hits.
+    const beforeApproval = (await search('return unused items within 30 days', { limit: '20' }))
+      .hits;
+    expect(beforeApproval.some((h) => h.documentId === pdfId)).toBe(false);
+    const preview = await search('return unused items within 30 days', {
+      includeDrafts: 'true',
+      limit: '20',
+    });
+    expect(preview.hits.some((h) => h.documentId === pdfId)).toBe(true);
 
     await approve(pdfId);
-    const found = await search('How many days to return unused items?');
+    const found = await search('How many days to return unused items?', { limit: '20' });
     expect(found.mode).toBe('hybrid');
-    const hit = found.hits[0]!;
-    expect(hit.documentId).toBe(pdfId);
+    const hit = found.hits.find((h) => h.documentId === pdfId)!;
+    expect(hit).toBeDefined();
     expect(hit.matchedBy).toContain('vector');
     expect(hit.similarity).toBeGreaterThan(0);
     expect(hit.citation.url).toBe(`/api/v1/kb/documents/${pdfId}/file`);

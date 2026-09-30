@@ -14,7 +14,7 @@ import type {
   DeliveryStatus,
   MessageAuthor,
 } from '@tms/shared';
-import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import type { RequestCtx } from '../common/request-context';
@@ -249,11 +249,91 @@ export class ConversationsService {
       .innerJoin(conversations, eq(conversations.id, messages.conversationId))
       .leftJoin(users, eq(users.id, messages.authorUserId))
       .where(
-        and(eq(conversations.channel, 'webchat'), eq(conversations.externalThreadId, sessionId)),
+        and(
+          eq(conversations.channel, 'webchat'),
+          eq(conversations.externalThreadId, sessionId),
+          visibleToCustomer,
+        ),
       )
       .orderBy(desc(messages.createdAt))
       .limit(limit);
     return rows.reverse().map((r) => toChatView(r.message, r.authorName));
+  }
+
+  /**
+   * The conversation as the customer saw it (no drafts or discarded drafts),
+   * oldest first, at most `limit` recent messages. Used as AI context.
+   */
+  async transcript(conversationId: string, limit = 30) {
+    const rows = await this.db
+      .select()
+      .from(messages)
+      .where(and(eq(messages.conversationId, conversationId), visibleToCustomer))
+      .orderBy(desc(messages.createdAt))
+      .limit(limit);
+    return rows.reverse();
+  }
+
+  /** The AI's rolling summary and the conversation's language. */
+  async updateAiState(
+    tx: DbOrTx,
+    id: string,
+    state: {
+      summary?: string | null;
+      language?: string | null;
+      metadata?: Record<string, unknown>;
+    },
+  ) {
+    const [current] = await tx.select().from(conversations).where(eq(conversations.id, id));
+    if (!current) return;
+    await tx
+      .update(conversations)
+      .set({
+        ...(state.summary !== undefined ? { summary: state.summary } : {}),
+        ...(state.language !== undefined ? { language: state.language } : {}),
+        ...(state.metadata ? { metadata: { ...current.metadata, ...state.metadata } } : {}),
+      })
+      .where(eq(conversations.id, id));
+  }
+
+  /** Ids of AI drafts still waiting for review on a conversation. */
+  async pendingDraftIds(tx: DbOrTx, conversationId: string): Promise<string[]> {
+    const rows = await tx
+      .select({ id: messages.id })
+      .from(messages)
+      .where(
+        and(eq(messages.conversationId, conversationId), eq(messages.deliveryStatus, 'draft')),
+      );
+    return rows.map((r) => r.id);
+  }
+
+  /** Locks a message row, for draft review. */
+  async lockMessage(tx: DbOrTx, id: string): Promise<Message> {
+    const [row] = await tx.select().from(messages).where(eq(messages.id, id)).for('update');
+    if (!row) throw new NotFoundException('Message not found');
+    return row;
+  }
+
+  /** Marks a draft approved (optionally with edited text) or discarded. Audit and events are the caller's. */
+  async reviewDraft(
+    tx: DbOrTx,
+    id: string,
+    review: { status: 'pending' | 'discarded'; body?: string; reviewedBy: string | null },
+  ) {
+    const current = await this.lockMessage(tx, id);
+    await tx
+      .update(messages)
+      .set({
+        deliveryStatus: review.status,
+        ...(review.body !== undefined ? { body: review.body } : {}),
+        metadata: {
+          ...current.metadata,
+          reviewedBy: review.reviewedBy,
+          reviewedAt: new Date().toISOString(),
+          ...(review.body !== undefined && review.body !== current.body ? { edited: true } : {}),
+        },
+      })
+      .where(eq(messages.id, id));
   }
 
   async getMessage(id: string) {
@@ -324,13 +404,24 @@ export class ConversationsService {
   }
 }
 
+/** Drafts and discarded drafts never reach the customer. */
+const visibleToCustomer = or(
+  isNull(messages.deliveryStatus),
+  notInArray(messages.deliveryStatus, ['draft', 'discarded']),
+);
+
 export function toChatView(m: Message, authorName?: string | null): ChatMessageView {
   return {
     id: m.id,
     body: m.body,
     authorType: m.authorType as MessageAuthor,
-    // Visitors see an agent's first name only.
-    authorName: m.authorType === 'agent' ? (authorName?.split(' ')[0] ?? 'Support') : null,
+    // Visitors see an agent's first name only, and plainly when it's the AI.
+    authorName:
+      m.authorType === 'agent'
+        ? (authorName?.split(' ')[0] ?? 'Support')
+        : m.authorType === 'ai'
+          ? 'AI assistant'
+          : null,
     createdAt: m.createdAt.toISOString(),
   };
 }

@@ -29,6 +29,10 @@ export const PERMISSIONS = [
   'kb:read',
   /** Add, edit, approve, archive and delete knowledge base documents. */
   'kb:manage',
+  /** Approve, edit or discard AI-drafted replies. */
+  'message:approve_draft',
+  /** AI behaviour: autonomy per channel, thresholds. */
+  'settings:ai',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -39,6 +43,7 @@ export function isPermission(value: string): value is Permission {
 
 const AGENT: Permission[] = [
   'kb:read',
+  'message:approve_draft',
   'ticket:read',
   'ticket:create',
   'ticket:update',

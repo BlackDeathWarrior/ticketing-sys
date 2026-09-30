@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Tabs } from '../../components/ui';
 import { useSession } from '../../lib/session';
+import { AiPanel } from './AiPanel';
 import { ChannelsPanel } from './ChannelsPanel';
 import { type SettingsTab, visibleTabs } from './logic';
 import { ModelsPanel } from './ModelsPanel';
@@ -60,6 +61,7 @@ export function SettingsPage() {
       <div role="tabpanel" aria-label={tabs.find((t) => t.value === tab)?.label}>
         {tab === 'providers' && <ProvidersPanel />}
         {tab === 'models' && <ModelsPanel />}
+        {tab === 'ai' && <AiPanel />}
         {tab === 'channels' && <ChannelsPanel />}
         {tab === 'tools' && (
           <p className={styles.note}>

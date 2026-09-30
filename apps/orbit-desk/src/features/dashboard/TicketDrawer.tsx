@@ -16,6 +16,15 @@ import {
 import type { Priority, Ticket } from '../../data/types';
 import { cx, relativeTime } from '../../lib/format';
 import { useSession } from '../../lib/session';
+import {
+  AiActivity,
+  aiClass,
+  AiMark,
+  aiMetaClass,
+  ClassificationChips,
+  DraftReview,
+} from '../ai/AiParts';
+import { aiMetaText } from '../ai/logic';
 import { KbSearch } from '../kb/KbSearch';
 import kbStyles from '../kb/Kb.module.css';
 import { useGet } from '../../lib/useGet';
@@ -116,6 +125,7 @@ function DrawerLoader({
       ticket={toTicket(ticket.data, workflow)}
       conversations={conversations.data ?? []}
       notes={notes.data ?? []}
+      liveTick={liveTick}
       onClose={onClose}
       onChanged={async () => {
         await reload();
@@ -129,12 +139,14 @@ function DrawerContent({
   ticket,
   conversations,
   notes,
+  liveTick,
   onClose,
   onChanged,
 }: {
   ticket: Ticket;
   conversations: ApiConversation[];
   notes: ApiNote[];
+  liveTick: number;
   onClose: () => void;
   onChanged: () => Promise<void>;
 }) {
@@ -191,6 +203,7 @@ function DrawerContent({
         <div className={styles.topline}>
           <span className={styles.id}>{ticket.reference}</span>
           <StatusPill status={ticket.status.glyph} label={ticket.status.name} />
+          {thread.aiControlled && <AiMark label="AI is replying" />}
           <span className={styles.spacer} />
           <Button variant="ghost" size="sm" icon="x" iconOnly onClick={onClose} autoFocus>
             Close ticket panel
@@ -209,6 +222,9 @@ function DrawerContent({
       </header>
 
       <div className={styles.scroll}>
+        {ticket.aiClassification && (
+          <ClassificationChips classification={ticket.aiClassification} />
+        )}
         <section className={styles.controls} aria-label="Ticket properties">
           <div className={styles.statusGroup} role="radiogroup" aria-label="Status">
             {statusOptions.map((s) => (
@@ -320,13 +336,27 @@ function DrawerContent({
           ) : (
             <ol className={styles.messages}>
               {thread.messages.map((m) => (
-                <li key={m.id} className={cx(styles.message, styles[m.kind])} data-kind={m.kind}>
-                  <Avatar initials={m.initials} size={32} highlight={m.authorId === user.id} />
+                <li
+                  key={m.id}
+                  className={cx(
+                    styles.message,
+                    styles[m.kind],
+                    m.byAi && m.delivery !== 'draft' && aiClass,
+                  )}
+                  data-kind={m.kind}
+                  data-ai={m.byAi || undefined}
+                >
+                  <Avatar
+                    initials={m.initials}
+                    size={32}
+                    highlight={m.authorId === user.id || m.byAi}
+                  />
                   <div className={styles.bubble}>
                     <p className={styles.author}>
                       <span>{m.author}</span>
+                      {m.byAi && <AiMark />}
                       {m.kind === 'note' && <span className={styles.noteLabel}>Internal note</span>}
-                      {m.delivery && m.delivery !== 'sent' && (
+                      {m.delivery && m.delivery !== 'sent' && m.delivery !== 'draft' && (
                         <span className={styles.noteLabel}>{m.delivery}</span>
                       )}
                       <time className={styles.time} dateTime={m.at.toISOString()}>
@@ -334,12 +364,24 @@ function DrawerContent({
                       </time>
                     </p>
                     <p className={styles.body}>{withMentions(m.body)}</p>
+                    {m.delivery === 'draft' ? (
+                      <DraftReview
+                        messageId={m.id}
+                        body={m.body}
+                        confidence={m.ai?.confidence ?? null}
+                        onChanged={onChanged}
+                      />
+                    ) : (
+                      m.ai && <p className={aiMetaClass}>{aiMetaText(m.ai)}</p>
+                    )}
                   </div>
                 </li>
               ))}
             </ol>
           )}
         </section>
+
+        <AiActivity ticketId={ticket.id} liveTick={liveTick} />
 
         {can('kb:read') && (
           <section className={kbStyles.panel} aria-label="Knowledge base">

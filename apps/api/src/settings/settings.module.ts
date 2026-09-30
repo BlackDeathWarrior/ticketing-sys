@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { AiBehaviourService } from './ai-behaviour.service';
 import { AppSettingsService } from './app-settings.service';
 import { ChannelConfigService } from './channel-config.service';
 import { SecretsService } from './secrets.service';
@@ -8,7 +9,7 @@ import { SettingsController } from './settings.controller';
 @Global()
 @Module({
   controllers: [SettingsController],
-  providers: [SecretsService, AppSettingsService, ChannelConfigService],
-  exports: [SecretsService, AppSettingsService, ChannelConfigService],
+  providers: [SecretsService, AppSettingsService, ChannelConfigService, AiBehaviourService],
+  exports: [SecretsService, AppSettingsService, ChannelConfigService, AiBehaviourService],
 })
 export class SettingsModule {}

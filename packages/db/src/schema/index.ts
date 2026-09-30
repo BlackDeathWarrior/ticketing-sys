@@ -5,3 +5,4 @@ export * from './conversations';
 export * from './audit';
 export * from './settings';
 export * from './kb';
+export * from './ai';

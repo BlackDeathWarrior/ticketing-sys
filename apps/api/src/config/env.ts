@@ -51,6 +51,9 @@ const envSchema = z
     /** Concurrent KB ingestion jobs per worker. */
     KB_INGEST_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(2),
 
+    /** Concurrent AI jobs (turns and classifications) per worker. */
+    AI_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(4),
+
     // Worker
     OUTBOX_POLL_MS: z.coerce.number().int().min(50).default(1000),
     OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(100),
