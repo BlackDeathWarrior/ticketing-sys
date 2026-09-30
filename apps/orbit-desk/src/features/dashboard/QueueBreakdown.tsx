@@ -1,48 +1,49 @@
-import type { TicketStatus } from '../../data/types';
-import {
-  Card,
-  CardHeader,
-  Icon,
-  Meter,
-  StatusGlyph,
-  statusLabels,
-  type IconName,
-} from '../../components/ui';
+import type { OverviewReport } from '@tms/shared';
+import { channelIcons, channelLabels, glyphFor, isOpenCategory } from '../../data/adapters';
+import { Card, CardHeader, Icon, Meter, StatusGlyph } from '../../components/ui';
 import { cx } from '../../lib/format';
 import styles from './QueueBreakdown.module.css';
 
-const byStatus: { status: TicketStatus; count: number }[] = [
-  { status: 'open', count: 58 },
-  { status: 'in_progress', count: 47 },
-  { status: 'waiting', count: 37 },
-  { status: 'resolved', count: 64 },
-];
+export function QueueBreakdown({ overview }: { overview: OverviewReport }) {
+  const rows = [
+    ...overview.byStatus
+      .filter((s) => isOpenCategory(s.category))
+      .map((s) => ({
+        key: s.status,
+        name: s.name,
+        glyph: glyphFor(s.status, s.category),
+        count: s.count,
+      })),
+    {
+      key: 'resolved_today',
+      name: 'Resolved today',
+      glyph: 'resolved' as const,
+      count: overview.resolvedToday,
+    },
+  ];
+  const maxStatus = Math.max(1, ...rows.map((s) => s.count));
+  const openTotal = overview.byChannel.reduce((sum, c) => sum + c.count, 0);
 
-const byChannel: { icon: IconName; label: string; share: number }[] = [
-  { icon: 'mail', label: 'Email', share: 46 },
-  { icon: 'chat', label: 'Live chat', share: 28 },
-  { icon: 'globe', label: 'Web form', share: 18 },
-  { icon: 'phone', label: 'Phone', share: 8 },
-];
-
-export function QueueBreakdown() {
-  const maxStatus = Math.max(...byStatus.map((s) => s.count));
   return (
     <Card aria-labelledby="queue-title" className={styles.card}>
-      <CardHeader id="queue-title" title="Queue health" subtitle="142 open · 64 resolved today" />
+      <CardHeader
+        id="queue-title"
+        title="Queue health"
+        subtitle={`${overview.open} open · ${overview.resolvedToday} resolved today`}
+      />
 
       <ul className={styles.list}>
-        {byStatus.map(({ status, count }) => (
-          <li key={status} className={styles.row}>
+        {rows.map(({ key, name, glyph, count }) => (
+          <li key={key} className={styles.row} data-status={key}>
             <span className={styles.name}>
-              <StatusGlyph status={status} />
-              {status === 'resolved' ? 'Resolved today' : statusLabels[status]}
+              <StatusGlyph status={glyph} />
+              {name}
             </span>
             <span className={cx(styles.count, 'tabular')}>{count}</span>
             <Meter
               value={count}
               max={maxStatus}
-              label={`${statusLabels[status]}: ${count}`}
+              label={`${name}: ${count}`}
               alertAt={2}
               className={styles.meter}
             />
@@ -50,16 +51,22 @@ export function QueueBreakdown() {
         ))}
       </ul>
 
-      <p className={styles.subhead}>By channel</p>
-      <ul className={styles.channels}>
-        {byChannel.map((c) => (
-          <li key={c.label}>
-            <Icon name={c.icon} size={16} />
-            <span className={styles.channelName}>{c.label}</span>
-            <span className={cx(styles.count, 'tabular')}>{c.share}%</span>
-          </li>
-        ))}
-      </ul>
+      <p className={styles.subhead}>Open by channel</p>
+      {overview.byChannel.length === 0 ? (
+        <p className={styles.channelName}>No open tickets.</p>
+      ) : (
+        <ul className={styles.channels}>
+          {overview.byChannel.map((c) => (
+            <li key={c.channel} data-channel={c.channel}>
+              <Icon name={channelIcons[c.channel]} size={16} />
+              <span className={styles.channelName}>{channelLabels[c.channel]}</span>
+              <span className={cx(styles.count, 'tabular')}>
+                {Math.round((c.count / Math.max(openTotal, 1)) * 100)}%
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 }

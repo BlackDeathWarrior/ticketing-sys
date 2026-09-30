@@ -5,11 +5,11 @@ import styles from './PriorityGlyph.module.css';
 export const priorityLabels: Record<Priority, string> = {
   urgent: 'Urgent',
   high: 'High',
-  medium: 'Medium',
+  normal: 'Normal',
   low: 'Low',
 };
 
-const level: Record<Priority, number> = { low: 1, medium: 2, high: 3, urgent: 4 };
+const level: Record<Priority, number> = { low: 1, normal: 2, high: 3, urgent: 4 };
 
 /** Signal-bar priority: magnitude by filled bars; only "urgent" takes the accent. */
 export function PriorityGlyph({

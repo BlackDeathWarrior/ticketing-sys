@@ -1,8 +1,9 @@
-import type { TicketStatus } from '../../data/types';
+import type { StatusGlyphKind } from '../../data/types';
 import { cx } from '../../lib/format';
 import styles from './StatusPill.module.css';
 
-export const statusLabels: Record<TicketStatus, string> = {
+/** Default labels per glyph shape; real status names come from the workflow. */
+export const statusLabels: Record<StatusGlyphKind, string> = {
   open: 'Open',
   in_progress: 'In progress',
   waiting: 'Waiting',
@@ -13,7 +14,7 @@ export const statusLabels: Record<TicketStatus, string> = {
  * Status is encoded by glyph shape + label + opacity — never by semantic color
  * (DESIGN.md › Don't introduce red/green/yellow).
  */
-export function StatusGlyph({ status, size = 12 }: { status: TicketStatus; size?: number }) {
+export function StatusGlyph({ status, size = 12 }: { status: StatusGlyphKind; size?: number }) {
   return (
     <svg
       width={size}
@@ -57,11 +58,20 @@ export function StatusGlyph({ status, size = 12 }: { status: TicketStatus; size?
   );
 }
 
-export function StatusPill({ status, bare }: { status: TicketStatus; bare?: boolean }) {
+export function StatusPill({
+  status,
+  label,
+  bare,
+}: {
+  status: StatusGlyphKind;
+  /** Workflow status name; defaults to the glyph's generic label. */
+  label?: string;
+  bare?: boolean;
+}) {
   return (
     <span className={cx(styles.pill, bare && styles.bare, styles[status])}>
       <StatusGlyph status={status} />
-      <span className={styles.label}>{statusLabels[status]}</span>
+      <span className={styles.label}>{label ?? statusLabels[status]}</span>
     </span>
   );
 }

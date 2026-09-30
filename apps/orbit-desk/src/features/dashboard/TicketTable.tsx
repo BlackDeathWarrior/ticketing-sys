@@ -1,104 +1,82 @@
 import { useMemo, useState } from 'react';
-import { agentById } from '../../data/mock';
-import type { Ticket, TicketStatus } from '../../data/types';
-import { viewById, type ViewId } from '../../data/views';
+import { channelLabels, minutesSince } from '../../data/adapters';
+import type { Ticket } from '../../data/types';
 import { cx, relativeTime } from '../../lib/format';
 import {
   Avatar,
   Button,
   Card,
   PriorityGlyph,
-  SlaIndicator,
   StatusPill,
   Tabs,
   type TabItem,
 } from '../../components/ui';
+import { byUrgency, inTab, type StatusTab, statusTabs } from './logic';
 import styles from './TicketTable.module.css';
 
-type StatusFilter = 'any' | TicketStatus;
-
 interface TicketTableProps {
+  title: string;
   tickets: Ticket[];
-  view: ViewId;
+  /** Server-side total for the view and search (the list may be capped). */
+  total: number;
+  loading: boolean;
+  error?: string;
   search: string;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onClearFilters: () => void;
 }
 
-const priorityRank = { urgent: 0, high: 1, medium: 2, low: 3 } as const;
-
-/** Most time-critical first: breached/at-risk SLAs, then priority, then recency. */
-function byUrgency(a: Ticket, b: Ticket) {
-  const sa = a.slaMinutes ?? Number.POSITIVE_INFINITY;
-  const sb = b.slaMinutes ?? Number.POSITIVE_INFINITY;
-  if (sa !== sb) return sa - sb;
-  if (a.priority !== b.priority) return priorityRank[a.priority] - priorityRank[b.priority];
-  return a.updatedMinutesAgo - b.updatedMinutesAgo;
-}
-
-function matchesSearch(t: Ticket, q: string) {
-  if (!q) return true;
-  const hay = [t.id, t.subject, t.customer.name, t.customer.company, ...t.tags]
-    .join(' ')
-    .toLowerCase();
-  return q
-    .toLowerCase()
-    .split(/\s+/)
-    .every((term) => hay.includes(term));
-}
-
 export function TicketTable({
+  title,
   tickets,
-  view,
+  total,
+  loading,
+  error,
   search,
   selectedId,
   onSelect,
   onClearFilters,
 }: TicketTableProps) {
-  const [status, setStatus] = useState<StatusFilter>('any');
-  const currentView = viewById(view);
+  const [tab, setTab] = useState<StatusTab>('any');
 
-  const scoped = useMemo(
-    () => tickets.filter((t) => currentView.match(t) && matchesSearch(t, search.trim())),
-    [tickets, currentView, search],
-  );
   const rows = useMemo(
-    () => scoped.filter((t) => status === 'any' || t.status === status).sort(byUrgency),
-    [scoped, status],
+    () => tickets.filter((t) => inTab(t.status.category, tab)).sort(byUrgency),
+    [tickets, tab],
   );
-
-  const count = (s: StatusFilter) =>
-    s === 'any' ? scoped.length : scoped.filter((t) => t.status === s).length;
-  const tabs: TabItem<StatusFilter>[] = [
-    { value: 'any', label: 'All', count: count('any') },
-    { value: 'open', label: 'Open', count: count('open') },
-    { value: 'in_progress', label: 'In progress', count: count('in_progress') },
-    { value: 'waiting', label: 'Waiting', count: count('waiting') },
-    { value: 'resolved', label: 'Resolved', count: count('resolved') },
-  ];
+  const tabs: TabItem<StatusTab>[] = statusTabs.map((s) => ({
+    ...s,
+    count: tickets.filter((t) => inTab(t.status.category, s.value)).length,
+  }));
+  const q = search.trim();
 
   return (
     <Card padding="none" aria-labelledby="queue-table-title" className={styles.card} id="queue">
       <header className={styles.header}>
         <div>
           <h2 id="queue-table-title" className={styles.title}>
-            {currentView.label}
+            {title}
           </h2>
-          <p className={styles.subtitle}>
-            Sorted by SLA urgency
-            {search.trim() && (
+          <p className={styles.subtitle} aria-live="polite">
+            {loading && !tickets.length ? 'Loading…' : 'Open work first, then priority'}
+            {q && (
               <>
                 {' '}
-                · matching “<span className={styles.query}>{search.trim()}</span>”
+                · matching “<span className={styles.query}>{q}</span>”
               </>
             )}
+            {total > tickets.length && ` · showing ${tickets.length} of ${total}`}
           </p>
         </div>
-        <Tabs label="Filter by status" items={tabs} value={status} onChange={setStatus} />
+        <Tabs label="Filter by status" items={tabs} value={tab} onChange={setTab} />
       </header>
 
-      {rows.length === 0 ? (
+      {error ? (
+        <div className={styles.empty} role="alert">
+          <p className={styles.emptyTitle}>Couldn’t load tickets</p>
+          <p className={styles.emptyText}>{error}</p>
+        </div>
+      ) : rows.length === 0 ? (
         <div className={styles.empty}>
           <svg
             width="56"
@@ -113,24 +91,30 @@ export function TicketTable({
             <circle cx="34" cy="22" r="2" />
             <circle cx="50" cy="6" r="2" />
           </svg>
-          <p className={styles.emptyTitle}>No tickets in this part of the sky</p>
-          <p className={styles.emptyText}>Try another status, view or search term.</p>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              setStatus('any');
-              onClearFilters();
-            }}
-          >
-            Clear filters
-          </Button>
+          <p className={styles.emptyTitle}>
+            {loading ? 'Loading tickets…' : 'No tickets in this part of the sky'}
+          </p>
+          {!loading && (
+            <>
+              <p className={styles.emptyText}>Try another status, view or search term.</p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setTab('any');
+                  onClearFilters();
+                }}
+              >
+                Clear filters
+              </Button>
+            </>
+          )}
         </div>
       ) : (
         <div className={styles.scroller}>
           <table className={styles.table}>
             <caption className="visually-hidden">
-              {currentView.label}, {rows.length} tickets. Activate a row to open the ticket.
+              {title}, {rows.length} tickets. Activate a row to open the ticket.
             </caption>
             <thead>
               <tr>
@@ -147,7 +131,7 @@ export function TicketTable({
                   Assignee
                 </th>
                 <th scope="col" className={styles.colSla}>
-                  SLA
+                  Channel
                 </th>
                 <th scope="col" className={styles.colUpdated}>
                   Updated
@@ -155,59 +139,56 @@ export function TicketTable({
               </tr>
             </thead>
             <tbody>
-              {rows.map((t) => {
-                const assignee = agentById(t.assigneeId);
-                return (
-                  <tr
-                    key={t.id}
-                    className={cx(
-                      styles.row,
-                      t.id === selectedId && styles.selected,
-                      t.status === 'resolved' && styles.dim,
-                    )}
-                    onClick={() => onSelect(t.id)}
-                  >
-                    <td className={styles.colTicket}>
-                      <button
-                        type="button"
-                        className={styles.subject}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelect(t.id);
-                        }}
-                      >
-                        <span className={styles.id}>{t.id}</span>
-                        <span className={styles.subjectText}>{t.subject}</span>
-                      </button>
-                      <span className={styles.customer}>
-                        {t.customer.name} · {t.customer.company}
+              {rows.map((t) => (
+                <tr
+                  key={t.id}
+                  data-ticket={t.reference}
+                  className={cx(
+                    styles.row,
+                    t.id === selectedId && styles.selected,
+                    t.status.glyph === 'resolved' && styles.dim,
+                  )}
+                  onClick={() => onSelect(t.id)}
+                >
+                  <td className={styles.colTicket}>
+                    <button
+                      type="button"
+                      className={styles.subject}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(t.id);
+                      }}
+                    >
+                      <span className={styles.id}>{t.reference}</span>
+                      <span className={styles.subjectText}>{t.subject}</span>
+                    </button>
+                    <span className={styles.customer}>
+                      {t.customer.name}
+                      {t.customer.company && ` · ${t.customer.company}`}
+                    </span>
+                  </td>
+                  <td className={styles.colStatus}>
+                    <StatusPill status={t.status.glyph} label={t.status.name} />
+                  </td>
+                  <td className={styles.colPriority}>
+                    <PriorityGlyph priority={t.priority} showLabel />
+                  </td>
+                  <td className={styles.colAssignee}>
+                    {t.assignee ? (
+                      <span className={styles.assignee}>
+                        <Avatar initials={t.assignee.initials} size={24} />
+                        <span>{t.assignee.name.split(' ')[0]}</span>
                       </span>
-                    </td>
-                    <td className={styles.colStatus}>
-                      <StatusPill status={t.status} />
-                    </td>
-                    <td className={styles.colPriority}>
-                      <PriorityGlyph priority={t.priority} showLabel />
-                    </td>
-                    <td className={styles.colAssignee}>
-                      {assignee ? (
-                        <span className={styles.assignee}>
-                          <Avatar initials={assignee.initials} size={24} />
-                          <span>{assignee.name.split(' ')[0]}</span>
-                        </span>
-                      ) : (
-                        <span className={styles.unassigned}>Unassigned</span>
-                      )}
-                    </td>
-                    <td className={styles.colSla}>
-                      <SlaIndicator minutes={t.status === 'resolved' ? null : t.slaMinutes} />
-                    </td>
-                    <td className={cx(styles.colUpdated, styles.updated, 'tabular')}>
-                      {relativeTime(t.updatedMinutesAgo)}
-                    </td>
-                  </tr>
-                );
-              })}
+                    ) : (
+                      <span className={styles.unassigned}>Unassigned</span>
+                    )}
+                  </td>
+                  <td className={cx(styles.colSla, styles.updated)}>{channelLabels[t.channel]}</td>
+                  <td className={cx(styles.colUpdated, styles.updated, 'tabular')}>
+                    {relativeTime(minutesSince(t.updatedAt))}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

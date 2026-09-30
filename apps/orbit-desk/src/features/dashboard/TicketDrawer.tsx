@@ -1,7 +1,22 @@
-import { Fragment, useState } from 'react';
-import { agentById, agents, currentAgentId } from '../../data/mock';
-import type { Message, Priority, Ticket, TicketStatus } from '../../data/types';
+import { PRIORITIES } from '@tms/shared';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { api } from '../../api/client';
+import {
+  type ApiConversation,
+  type ApiNote,
+  type ApiRef,
+  type ApiTicket,
+  channelLabels,
+  minutesSince,
+  nextStatuses,
+  replyTarget,
+  toThread,
+  toTicket,
+} from '../../data/adapters';
+import type { Priority, Ticket } from '../../data/types';
 import { cx, relativeTime } from '../../lib/format';
+import { useSession } from '../../lib/session';
+import { useGet } from '../../lib/useGet';
 import {
   Avatar,
   Badge,
@@ -9,29 +24,22 @@ import {
   Dialog,
   Icon,
   Select,
-  SlaIndicator,
   StatusGlyph,
   StatusPill,
   Tabs,
   Textarea,
   priorityLabels,
-  statusLabels,
 } from '../../components/ui';
 import styles from './TicketDrawer.module.css';
 
 interface TicketDrawerProps {
-  ticket: Ticket | null;
+  ticketId: string | null;
+  /** Bumped by live events so an open drawer refreshes. */
+  liveTick: number;
   onClose: () => void;
-  onUpdate: (id: string, patch: Partial<Ticket>) => void;
+  /** Called after any change, so lists and counts refresh. */
+  onChanged: () => void;
 }
-
-const statuses: TicketStatus[] = ['open', 'in_progress', 'waiting', 'resolved'];
-const channelLabels = {
-  email: 'Email',
-  chat: 'Live chat',
-  phone: 'Phone',
-  web: 'Web form',
-} as const;
 
 /** Highlight @mentions in the accent color (DESIGN.md › Testimonial Card). */
 function withMentions(text: string) {
@@ -46,56 +54,141 @@ function withMentions(text: string) {
   );
 }
 
-export function TicketDrawer({ ticket, onClose, onUpdate }: TicketDrawerProps) {
+export function TicketDrawer({ ticketId, liveTick, onClose, onChanged }: TicketDrawerProps) {
   return (
-    <Dialog open={ticket !== null} onClose={onClose} variant="drawer" labelledBy="drawer-title">
-      {ticket && (
-        <DrawerContent key={ticket.id} ticket={ticket} onClose={onClose} onUpdate={onUpdate} />
+    <Dialog open={ticketId !== null} onClose={onClose} variant="drawer" labelledBy="drawer-title">
+      {ticketId && (
+        <DrawerLoader
+          key={ticketId}
+          ticketId={ticketId}
+          liveTick={liveTick}
+          onClose={onClose}
+          onChanged={onChanged}
+        />
       )}
     </Dialog>
   );
 }
 
+function DrawerLoader({
+  ticketId,
+  liveTick,
+  onClose,
+  onChanged,
+}: TicketDrawerProps & { ticketId: string }) {
+  const { workflow } = useSession();
+  const ticket = useGet<ApiTicket>(`/tickets/${ticketId}`);
+  const conversations = useGet<ApiConversation[]>(`/tickets/${ticketId}/conversations`);
+  const notes = useGet<ApiNote[]>(`/tickets/${ticketId}/notes`);
+  const { reload: reloadTicket } = ticket;
+  const { reload: reloadConversations } = conversations;
+  const { reload: reloadNotes } = notes;
+
+  const reload = useCallback(
+    () => Promise.all([reloadTicket(), reloadConversations(), reloadNotes()]),
+    [reloadTicket, reloadConversations, reloadNotes],
+  );
+  useEffect(() => {
+    if (liveTick) void reload();
+  }, [liveTick, reload]);
+
+  if (ticket.error) {
+    return (
+      <div className={styles.header} role="alert">
+        <p>{ticket.error}</p>
+        <Button variant="ghost" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+    );
+  }
+  if (!ticket.data || !workflow) {
+    return (
+      <div className={styles.header} aria-busy="true">
+        <p className={styles.hint}>Loading ticket…</p>
+      </div>
+    );
+  }
+  return (
+    <DrawerContent
+      ticket={toTicket(ticket.data, workflow)}
+      conversations={conversations.data ?? []}
+      notes={notes.data ?? []}
+      onClose={onClose}
+      onChanged={async () => {
+        await reload();
+        onChanged();
+      }}
+    />
+  );
+}
+
 function DrawerContent({
   ticket,
+  conversations,
+  notes,
   onClose,
-  onUpdate,
+  onChanged,
 }: {
   ticket: Ticket;
+  conversations: ApiConversation[];
+  notes: ApiNote[];
   onClose: () => void;
-  onUpdate: TicketDrawerProps['onUpdate'];
+  onChanged: () => Promise<void>;
 }) {
-  const [mode, setMode] = useState<'reply' | 'note'>('reply');
+  const { user, workflow, can } = useSession();
+  const thread = useMemo(
+    () => toThread(ticket, conversations, notes),
+    [ticket, conversations, notes],
+  );
+  const target = replyTarget(thread);
+  const canReply = can('message:send') && (target !== null || !!ticket.customer.email);
+  const [mode, setMode] = useState<'reply' | 'note'>(canReply ? 'reply' : 'note');
   const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const users = useGet<Array<ApiRef & { isActive: boolean }>>(
+    can('ticket:assign') && can('user:read') ? '/users' : null,
+  );
 
-  const send = (e: { preventDefault(): void }) => {
+  const allowed = workflow ? nextStatuses(workflow, ticket.status.key) : [];
+  const statusOptions = [ticket.status, ...allowed];
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await fn();
+      await onChanged();
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const send = async (e: { preventDefault(): void }) => {
     e.preventDefault();
     const body = draft.trim();
-    if (!body) return;
-    const me = agentById(currentAgentId)!;
-    const message: Message = {
-      id: `m${ticket.messages.length + 1}-${Date.now()}`,
-      kind: mode === 'note' ? 'note' : 'agent',
-      author: me.name,
-      initials: me.initials,
-      body,
-      minutesAgo: 0,
-    };
-    onUpdate(ticket.id, {
-      messages: [...ticket.messages, message],
-      updatedMinutesAgo: 0,
-      status: mode === 'reply' && ticket.status === 'open' ? 'waiting' : ticket.status,
-      assigneeId: ticket.assigneeId ?? currentAgentId,
+    if (!body || busy) return;
+    const ok = await run(() => {
+      if (mode === 'note') return api('POST', `/tickets/${ticket.id}/notes`, { body });
+      if (target) return api('POST', `/conversations/${target.id}/messages`, { body });
+      return api('POST', `/tickets/${ticket.id}/conversations`, { channel: 'email', body });
     });
-    setDraft('');
+    if (ok) setDraft('');
   };
+
+  const replyVia = target ? (target.channel === 'webchat' ? 'web chat' : target.channel) : 'email';
 
   return (
     <>
       <header className={styles.header}>
         <div className={styles.topline}>
-          <span className={styles.id}>{ticket.id}</span>
-          <StatusPill status={ticket.status} />
+          <span className={styles.id}>{ticket.reference}</span>
+          <StatusPill status={ticket.status.glyph} label={ticket.status.name} />
           <span className={styles.spacer} />
           <Button variant="ghost" size="sm" icon="x" iconOnly onClick={onClose} autoFocus>
             Close ticket panel
@@ -104,32 +197,38 @@ function DrawerContent({
         <h2 id="drawer-title" className={styles.title}>
           {ticket.subject}
         </h2>
-        <div className={styles.tags}>
-          {ticket.tags.map((tag) => (
-            <Badge key={tag}>#{tag}</Badge>
-          ))}
-        </div>
+        {ticket.tags.length > 0 && (
+          <div className={styles.tags}>
+            {ticket.tags.map((tag) => (
+              <Badge key={tag}>#{tag}</Badge>
+            ))}
+          </div>
+        )}
       </header>
 
       <div className={styles.scroll}>
         <section className={styles.controls} aria-label="Ticket properties">
           <div className={styles.statusGroup} role="radiogroup" aria-label="Status">
-            {statuses.map((s) => (
+            {statusOptions.map((s) => (
               <button
-                key={s}
+                key={s.key}
                 type="button"
                 role="radio"
-                aria-checked={ticket.status === s}
-                className={cx(styles.statusOption, ticket.status === s && styles.statusActive)}
-                onClick={() =>
-                  onUpdate(ticket.id, {
-                    status: s,
-                    slaMinutes: s === 'resolved' ? null : (ticket.slaMinutes ?? 480),
-                  })
-                }
+                aria-checked={ticket.status.key === s.key}
+                disabled={busy || !can('ticket:transition')}
+                className={cx(
+                  styles.statusOption,
+                  ticket.status.key === s.key && styles.statusActive,
+                )}
+                onClick={() => {
+                  if (s.key !== ticket.status.key)
+                    void run(() =>
+                      api('POST', `/tickets/${ticket.id}/transition`, { status: s.key }),
+                    );
+                }}
               >
-                <StatusGlyph status={s} />
-                {statusLabels[s]}
+                <StatusGlyph status={s.glyph} />
+                {s.name}
               </button>
             ))}
           </div>
@@ -139,22 +238,43 @@ function DrawerContent({
               id="drawer-priority"
               label="Priority"
               value={ticket.priority}
-              onChange={(e) => onUpdate(ticket.id, { priority: e.target.value as Priority })}
-              options={(Object.keys(priorityLabels) as Priority[]).map((p) => ({
-                value: p,
-                label: priorityLabels[p],
-              }))}
+              disabled={busy || !can('ticket:update')}
+              onChange={(e) =>
+                void run(() =>
+                  api('PATCH', `/tickets/${ticket.id}`, { priority: e.target.value as Priority }),
+                )
+              }
+              options={PRIORITIES.map((p) => ({ value: p, label: priorityLabels[p] }))}
             />
-            <Select
-              id="drawer-assignee"
-              label="Assignee"
-              value={ticket.assigneeId ?? ''}
-              onChange={(e) => onUpdate(ticket.id, { assigneeId: e.target.value || null })}
-              options={[
-                { value: '', label: 'Unassigned' },
-                ...agents.map((a) => ({ value: a.id, label: `${a.name} · ${a.team}` })),
-              ]}
-            />
+            {users.data ? (
+              <Select
+                id="drawer-assignee"
+                label="Assignee"
+                value={ticket.assignee?.id ?? ''}
+                disabled={busy}
+                onChange={(e) =>
+                  void run(() =>
+                    api('POST', `/tickets/${ticket.id}/assign`, {
+                      assigneeId: e.target.value || null,
+                    }),
+                  )
+                }
+                options={[
+                  { value: '', label: 'Unassigned' },
+                  ...users.data
+                    .filter((u) => u.isActive || u.id === ticket.assignee?.id)
+                    .map((u) => ({
+                      value: u.id,
+                      label: u.id === user.id ? `${u.name} (you)` : u.name,
+                    })),
+                ]}
+              />
+            ) : (
+              <div className={styles.readonly}>
+                <span className={styles.readonlyLabel}>Assignee</span>
+                <span>{ticket.assignee?.name ?? 'Unassigned'}</span>
+              </div>
+            )}
           </div>
 
           <dl className={styles.meta}>
@@ -168,52 +288,55 @@ function DrawerContent({
             <div>
               <dt>Company</dt>
               <dd>
-                {ticket.customer.company}{' '}
+                {ticket.customer.company ?? '—'}{' '}
                 <span className={styles.plan}>{ticket.customer.plan}</span>
               </dd>
             </div>
             <div>
               <dt>Channel</dt>
-              <dd>{channelLabels[ticket.channel]}</dd>
+              <dd>{channelLabels[ticket.channel] ?? ticket.channel}</dd>
             </div>
             <div>
-              <dt>SLA</dt>
-              <dd>
-                <SlaIndicator minutes={ticket.status === 'resolved' ? null : ticket.slaMinutes} />
-              </dd>
+              <dt>Team</dt>
+              <dd>{ticket.team?.name ?? '—'}</dd>
             </div>
             <div>
               <dt>Email</dt>
-              <dd title={ticket.customer.email}>{ticket.customer.email}</dd>
+              <dd title={ticket.customer.email ?? undefined}>{ticket.customer.email ?? '—'}</dd>
             </div>
             <div>
-              <dt>Messages</dt>
-              <dd className="tabular">{ticket.messages.length}</dd>
+              <dt>Opened</dt>
+              <dd className="tabular">{relativeTime(minutesSince(ticket.createdAt))}</dd>
             </div>
           </dl>
         </section>
 
         <section className={styles.thread} aria-label="Conversation">
           <h3 className={styles.threadTitle}>Conversation</h3>
-          <ol className={styles.messages}>
-            {ticket.messages.map((m) => (
-              <li key={m.id} className={cx(styles.message, styles[m.kind])}>
-                <Avatar
-                  initials={m.initials}
-                  size={32}
-                  highlight={m.kind !== 'customer' && m.author === agentById(currentAgentId)?.name}
-                />
-                <div className={styles.bubble}>
-                  <p className={styles.author}>
-                    <span>{m.author}</span>
-                    {m.kind === 'note' && <span className={styles.noteLabel}>Internal note</span>}
-                    <time className={styles.time}>{relativeTime(m.minutesAgo)}</time>
-                  </p>
-                  <p className={styles.body}>{withMentions(m.body)}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
+          {thread.messages.length === 0 ? (
+            <p className={styles.hint}>No messages yet.</p>
+          ) : (
+            <ol className={styles.messages}>
+              {thread.messages.map((m) => (
+                <li key={m.id} className={cx(styles.message, styles[m.kind])} data-kind={m.kind}>
+                  <Avatar initials={m.initials} size={32} highlight={m.authorId === user.id} />
+                  <div className={styles.bubble}>
+                    <p className={styles.author}>
+                      <span>{m.author}</span>
+                      {m.kind === 'note' && <span className={styles.noteLabel}>Internal note</span>}
+                      {m.delivery && m.delivery !== 'sent' && (
+                        <span className={styles.noteLabel}>{m.delivery}</span>
+                      )}
+                      <time className={styles.time} dateTime={m.at.toISOString()}>
+                        {relativeTime(minutesSince(m.at))}
+                      </time>
+                    </p>
+                    <p className={styles.body}>{withMentions(m.body)}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
         </section>
       </div>
 
@@ -224,8 +347,8 @@ function DrawerContent({
             value={mode}
             onChange={setMode}
             items={[
-              { value: 'reply', label: 'Reply to customer' },
-              { value: 'note', label: 'Internal note' },
+              ...(canReply ? [{ value: 'reply' as const, label: 'Reply to customer' }] : []),
+              { value: 'note' as const, label: 'Internal note' },
             ]}
           />
         </div>
@@ -238,19 +361,24 @@ function DrawerContent({
           onChange={(e) => setDraft(e.target.value)}
           placeholder={
             mode === 'reply'
-              ? `Reply to ${ticket.customer.name.split(' ')[0]}…`
+              ? `Reply to ${ticket.customer.name.split(' ')[0]} by ${replyVia}…`
               : 'Add a note for your team — use @name to mention'
           }
           rows={3}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(e);
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void send(e);
           }}
         />
+        {error && (
+          <p role="alert" className={styles.error}>
+            {error}
+          </p>
+        )}
         <div className={styles.composerFoot}>
           <span className={styles.hint}>
             <Icon name="sparkle" size={14} /> ⌘ Enter to send
           </span>
-          <Button type="submit" variant="secondary" icon="send" disabled={!draft.trim()}>
+          <Button type="submit" variant="secondary" icon="send" disabled={!draft.trim() || busy}>
             {mode === 'reply' ? 'Send reply' : 'Add note'}
           </Button>
         </div>

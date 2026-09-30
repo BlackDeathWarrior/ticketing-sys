@@ -1,8 +1,10 @@
-import { agents } from '../../data/mock';
+import type { OverviewReport } from '@tms/shared';
+import { initials } from '../../data/adapters';
 import type { Ticket } from '../../data/types';
-import type { ViewId } from '../../data/views';
 import { AvatarGroup } from '../../components/ui';
+import { useSession } from '../../lib/session';
 import { ActivityFeed } from './ActivityFeed';
+import { triage } from './logic';
 import { QueueBreakdown } from './QueueBreakdown';
 import { StatsRow } from './StatsRow';
 import { TeamLoad } from './TeamLoad';
@@ -12,70 +14,111 @@ import { VolumeChart } from './VolumeChart';
 import styles from './DashboardPage.module.css';
 
 interface DashboardPageProps {
-  tickets: Ticket[];
-  view: ViewId;
+  queue: {
+    title: string;
+    tickets: Ticket[];
+    total: number;
+    loading: boolean;
+    error?: string;
+  };
+  /** Open tickets for triage, independent of the selected view and search. */
+  openTickets: Ticket[];
+  overview: OverviewReport | undefined;
   search: string;
   selectedId: string | null;
   onOpenTicket: (id: string) => void;
-  onSelectView: (view: ViewId) => void;
+  onShowUrgent: () => void;
   onClearFilters: () => void;
 }
 
+function greeting(now: Date) {
+  const h = now.getHours();
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}
+
 export function DashboardPage({
-  tickets,
-  view,
+  queue,
+  openTickets,
+  overview,
   search,
   selectedId,
   onOpenTicket,
-  onSelectView,
+  onShowUrgent,
   onClearFilters,
 }: DashboardPageProps) {
+  const { user } = useSession();
+  const now = new Date();
+  const byPriority = (p: string) =>
+    overview
+      ? (overview.byPriority.find((x) => x.priority === p)?.count ?? 0)
+      : openTickets.filter((t) => t.priority === p).length;
+  const urgent = byPriority('urgent');
+  const high = byPriority('high');
+  const unassigned = overview?.unassigned ?? openTickets.filter((t) => !t.assignee).length;
+  const open = overview?.open ?? openTickets.length;
+  const agents = overview?.byAssignee ?? [];
+
   return (
     <div className={styles.page}>
       <header className={styles.hero}>
         <div>
-          <p className={styles.eyebrow}>Tuesday, 30 September</p>
-          <h1 className={styles.heading}>Good morning, Maya.</h1>
+          <p className={styles.eyebrow}>
+            {now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+          <h1 className={styles.heading}>
+            {greeting(now)}, {user.name.split(' ')[0]}.
+          </h1>
           <p className={styles.lede}>
-            Here is the state of the support sky — 142 open tickets across four teams.
+            Here is the state of the support sky: {open} open {open === 1 ? 'ticket' : 'tickets'}
+            {overview ? ` across ${overview.byChannel.length} channels.` : '.'}
           </p>
         </div>
-        <div className={styles.shift}>
-          <AvatarGroup
-            people={agents.map((a) => ({ initials: a.initials, name: a.name }))}
-            max={5}
-            size={32}
-          />
-          <span>6 agents on shift</span>
-        </div>
+        {agents.length > 0 && (
+          <div className={styles.shift}>
+            <AvatarGroup
+              people={agents.map((a) => ({ initials: initials(a.name), name: a.name }))}
+              max={5}
+              size={32}
+            />
+            <span>
+              {agents.length} {agents.length === 1 ? 'agent' : 'agents'} with open work
+            </span>
+          </div>
+        )}
       </header>
 
       <TriageCard
-        tickets={tickets}
+        focus={triage(openTickets)}
+        urgent={urgent}
+        high={high}
+        unassigned={unassigned}
         onOpen={onOpenTicket}
-        onShowUrgent={() => onSelectView('urgent')}
+        onShowUrgent={onShowUrgent}
       />
 
-      <StatsRow />
+      {overview && <StatsRow overview={overview} />}
 
-      <div className={styles.split}>
-        <VolumeChart />
-        <QueueBreakdown />
-      </div>
+      {overview && (
+        <div className={styles.split}>
+          <VolumeChart volume={overview.volume} />
+          <QueueBreakdown overview={overview} />
+        </div>
+      )}
 
       <TicketTable
-        tickets={tickets}
-        view={view}
+        {...queue}
         search={search}
         selectedId={selectedId}
         onSelect={onOpenTicket}
         onClearFilters={onClearFilters}
       />
 
-      <div className={styles.pair}>
-        <ActivityFeed onOpen={onOpenTicket} />
-        <TeamLoad />
-      </div>
+      {overview && (
+        <div className={styles.pair}>
+          <ActivityFeed events={overview.activity} onOpen={onOpenTicket} />
+          <TeamLoad overview={overview} meId={user.id} />
+        </div>
+      )}
     </div>
   );
 }

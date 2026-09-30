@@ -38,24 +38,6 @@
   min-width: 0;
 }
 
-.change {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-size: var(--text-ui);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-ash);
-}
-
-/* A favourable change earns the accent; unfavourable stays neutral — no red/green. */
-.good {
-  color: var(--color-lavender-accent);
-}
-
-.down {
-  transform: rotate(90deg);
-}
-
 .context {
   font-size: var(--text-caption);
   color: var(--color-fog);
