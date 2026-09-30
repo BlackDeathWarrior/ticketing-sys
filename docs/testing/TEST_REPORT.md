@@ -1,6 +1,55 @@
 # Test report
 
-## Latest: Phase 3, LLM platform and Settings keys
+## Latest: Phase 4, knowledge base
+
+Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-4-kb`.
+
+**Result: every step of the gate passed.**
+
+| Step                | Result                                                 |
+| ------------------- | ------------------------------------------------------ |
+| `pnpm format:check` | pass                                                   |
+| `pnpm lint`         | pass                                                   |
+| `pnpm build`        | pass                                                   |
+| `pnpm typecheck`    | pass                                                   |
+| `pnpm test`         | 96 passed                                              |
+| `pnpm test:int`     | 60 passed                                              |
+| `pnpm e2e`          | 33 passed; 5 screenshot-only specs skipped as designed |
+| `pnpm kb:eval`      | recall@5 = 1.00 (18 of 18 labelled questions)          |
+
+The check steps ran through `scripts/check-in-docker.sh` as before. `pnpm e2e` ran natively with `CHROMIUM_PATH`.
+
+### New tests
+
+| Where                                           | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------------------------------------- | ----: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/kb/kb.test.ts`                    |    13 | Heading trails and chunk sizes with overlap; sentence splitting; file-type detection; HTML headings kept and navigation dropped; PDF text without page markers; private, loopback and metadata addresses refused; rank fusion; section trails without the title; snippets                                                                                                                                                                     |
+| `apps/orbit-desk/src/features/kb/logic.test.ts` |     4 | Index state labels, review actions per status, quoting a result with its source, file sizes                                                                                                                                                                                                                                                                                                                                                   |
+| `apps/api/test/kb.int.test.ts`                  |     7 | Upload a generated PDF → indexed → not searchable as a draft → approved and found with vector and keyword matches and a file citation. Customer audience sees public documents only; team documents only for members. A new version replaces the old chunks. Keyword fallback without an embedding model. Unsafe URLs, unsupported files and non-managers refused. Audit rows and chunk deletion. Recall@5 ≥ 0.8 on the sample knowledge base |
+| `e2e/tests/kb.spec.ts`                          |     5 | Agent search with citations (no drafts, no management); supervisor adds, indexes and approves an FAQ entry; an uploaded Markdown file takes its title from its heading; the ticket drawer inserts a cited answer into the reply; no horizontal scroll at 390px                                                                                                                                                                                |
+
+### Bugs found and fixed
+
+1. **Indexing jobs never ran.** BullMQ rejects job ids containing `:`, and the error only showed in worker logs.
+   - **Fix:** ids use `--` as the separator.
+   - **Tooling:** `TEST_LOG_LEVEL` now surfaces worker logs in integration tests, and `RUN=...` runs a single test file in the container.
+2. **Embeddings came back as 256 numbers instead of 1024.** The `openai` SDK asks for base64 embeddings by default and decoded the float arrays wrongly.
+   - **Fix:** the client asks for `encoding_format: 'float'`, and the fake provider handles both formats.
+3. **Keyword search found almost nothing for questions.** `websearch_to_tsquery` requires every word.
+   - **Fix:** keyword matching ORs the meaningful words and ranks with `ts_rank_cd`.
+4. **Uploads without a title were named after the file** ("returns-policy").
+   - **Fix:** indexing replaces the file name with the document's first heading or HTML title.
+5. **Section trails repeated the document title**, and the top bar said "Overview" on the knowledge base page. Both fixed, and covered by the unit test and the screenshot below.
+
+### Screenshot
+
+Knowledge base search and documents:
+
+![Knowledge base](screenshots/orbit-kb.png)
+
+---
+
+## Phase 3: LLM platform and Settings keys
 
 Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-3-llm-settings`.
 

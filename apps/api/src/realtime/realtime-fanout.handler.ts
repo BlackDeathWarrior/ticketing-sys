@@ -19,17 +19,21 @@ export class RealtimeFanoutHandler implements DomainEventHandler {
 
   handles(type: DomainEventType): boolean {
     return (
-      type.startsWith('ticket.') || type.startsWith('message.') || type.startsWith('conversation.')
+      type.startsWith('ticket.') ||
+      type.startsWith('message.') ||
+      type.startsWith('conversation.') ||
+      type.startsWith('kb.')
     );
   }
 
   async handle(event: DomainEvent): Promise<void> {
-    const p = event.payload as { conversationId?: string; messageId?: string };
+    const p = event.payload as { conversationId?: string; messageId?: string; documentId?: string };
     const payload: AgentEvent = {
       type: event.type,
       ticketId: event.aggregateType === 'ticket' ? event.aggregateId : undefined,
       conversationId: p.conversationId,
       messageId: p.messageId,
+      documentId: event.aggregateType === 'kb' ? (p.documentId ?? undefined) : undefined,
     };
     this.emitter.of(AGENT_NAMESPACE).to(AGENTS_ROOM).emit('event', payload);
   }

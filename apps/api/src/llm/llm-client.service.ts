@@ -118,6 +118,8 @@ export class LlmClientService {
         .create({
           model: modelAlias(order[0]!),
           input,
+          // The SDK defaults to base64, which not every provider behind LiteLLM returns.
+          encoding_format: 'float',
           ...(ctx.dimensions ? { dimensions: ctx.dimensions } : {}),
         })
         .withResponse();

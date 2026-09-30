@@ -72,7 +72,10 @@ export function Sidebar({ route, view, onSelectView, open, onClose, counts, team
         </div>
 
         <nav className={styles.nav}>
-          <div className={styles.group}>{link('dashboard', 'grid', 'Overview')}</div>
+          <div className={styles.group}>
+            {link('dashboard', 'grid', 'Overview')}
+            {can('kb:read') && link('kb', 'book', 'Knowledge base')}
+          </div>
 
           <div className={styles.group}>
             <p className={styles.groupLabel}>Views</p>

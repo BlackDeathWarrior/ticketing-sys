@@ -2,9 +2,11 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { KB_MAX_FILE_BYTES } from '@tms/shared';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import type { Env } from './config/env';
@@ -37,6 +39,11 @@ export async function createApp(): Promise<NestFastifyApplication> {
   // Cast: @fastify/helmet's plugin type and Nest's register() signature disagree on generics.
   await app.register(helmet as unknown as Parameters<NestFastifyApplication['register']>[0], {
     contentSecurityPolicy: !env.API_DOCS,
+  });
+
+  // Knowledge-base uploads: one file per request, read into memory by the handler.
+  await app.register(multipart as unknown as Parameters<NestFastifyApplication['register']>[0], {
+    limits: { fileSize: KB_MAX_FILE_BYTES, files: 1, fields: 10 },
   });
 
   if (env.API_DOCS) {

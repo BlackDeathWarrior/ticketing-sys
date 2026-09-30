@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
@@ -66,6 +67,33 @@ export class StorageService {
       contentType: file.contentType,
       size: file.content.length,
     };
+  }
+
+  /** Stores an object under an exact key (knowledge-base files, recordings). */
+  async put(key: string, content: Buffer, contentType: string): Promise<void> {
+    const client = this.requireClient();
+    await this.ensureBucket();
+    await client.send(
+      new PutObjectCommand({
+        Bucket: this.env.S3_BUCKET,
+        Key: key,
+        Body: content,
+        ContentType: contentType,
+      }),
+    );
+  }
+
+  async getBuffer(key: string): Promise<Buffer> {
+    const stream = await this.get(key);
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) chunks.push(Buffer.from(chunk as Uint8Array));
+    return Buffer.concat(chunks);
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.requireClient().send(
+      new DeleteObjectCommand({ Bucket: this.env.S3_BUCKET, Key: key }),
+    );
   }
 
   async get(key: string): Promise<Readable> {

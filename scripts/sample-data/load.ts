@@ -15,6 +15,7 @@
  * (admin@example.com / ChangeMe123!), DATABASE_URL for backdating,
  * SMTP_HOST / SMTP_PORT for the support mailbox (localhost:3025).
  */
+import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import nodemailer from 'nodemailer';
 import pg from 'pg';
@@ -24,6 +25,7 @@ import {
   customers,
   emails,
   type FinalStatus,
+  kb,
   llm,
   MARKER_EMAIL,
   SAMPLE_PASSWORD,
@@ -128,6 +130,7 @@ async function main() {
   log(`${teams.length} teams`);
 
   await loadLlm(admin);
+  await loadKb(admin);
 
   // ---- users ----
   const userIds = new Map<string, string>();
@@ -331,6 +334,59 @@ async function loadLlm(admin: string) {
     await call(admin, 'POST', '/settings/llm/roles/chat_agent/try', {});
   }
   log(`demo LLM provider with ${llm.models.length} models`);
+}
+
+/** Uploads the fictional knowledge base, waits for indexing and approves it. */
+async function loadKb(admin: string) {
+  const dir = new URL('./kb/', import.meta.url);
+  const ids: string[] = [];
+  for (const f of kb.files) {
+    const form = new FormData();
+    form.append('visibility', f.visibility);
+    form.append(
+      'file',
+      new Blob([readFileSync(new URL(f.file, dir))], { type: f.contentType }),
+      f.file,
+    );
+    const res = await fetch(`${API_URL}/api/v1/kb/documents/upload`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${admin}` },
+      body: form,
+    });
+    if (!res.ok) throw new Error(`upload ${f.file} → ${res.status}: ${await res.text()}`);
+    ids.push(((await res.json()) as { id: string }).id);
+  }
+  const faqs = JSON.parse(readFileSync(new URL(kb.faqFile, dir), 'utf8')) as Array<{
+    question: string;
+    answer: string;
+  }>;
+  for (const f of faqs) {
+    const doc = await call<{ id: string }>(admin, 'POST', '/kb/documents', {
+      source: 'faq',
+      title: f.question,
+      content: f.answer,
+      visibility: 'public',
+      language: 'hi',
+    });
+    ids.push(doc.id);
+  }
+  const internal = await call<{ id: string }>(admin, 'POST', '/kb/documents', {
+    source: 'text',
+    visibility: 'internal',
+    ...kb.internal,
+  });
+  ids.push(internal.id);
+  await call(admin, 'POST', '/kb/documents', { source: 'text', visibility: 'public', ...kb.draft });
+
+  for (const id of ids) {
+    await waitFor(`KB document ${id} to be indexed`, async () => {
+      const d = await call<{ indexState: string }>(admin, 'GET', `/kb/documents/${id}`);
+      if (d.indexState === 'failed') throw new Error(`indexing ${id} failed`);
+      return d.indexState === 'indexed' || undefined;
+    });
+    await call(admin, 'POST', `/kb/documents/${id}/status`, { status: 'approved' });
+  }
+  log(`${ids.length} knowledge base documents (+1 draft)`);
 }
 
 async function sendChats(admin: string): Promise<string[]> {

@@ -55,6 +55,7 @@ const server = createServer(async (req, res) => {
         model: string;
         input: string | string[];
         dimensions?: number;
+        encoding_format?: 'float' | 'base64';
       };
       const inputs = Array.isArray(body.input) ? body.input : [body.input];
       return send(res, 200, {
@@ -63,7 +64,12 @@ const server = createServer(async (req, res) => {
         data: inputs.map((text, index) => ({
           object: 'embedding',
           index,
-          embedding: embed(text, body.dimensions),
+          embedding:
+            body.encoding_format === 'base64'
+              ? Buffer.from(new Float32Array(embed(text, body.dimensions)).buffer).toString(
+                  'base64',
+                )
+              : embed(text, body.dimensions),
         })),
         usage: { prompt_tokens: inputs.join(' ').length, total_tokens: inputs.join(' ').length },
       });

@@ -25,7 +25,8 @@
     "docker:logs": "docker compose -f infra/docker-compose.yml --profile app logs -f api worker web orbit-desk",
     "demo:email": "node apps/api/scripts/send-test-email.mjs",
     "sample:load": "pnpm --filter @tms/sample-data load",
-    "e2e": "pnpm --filter @tms/e2e e2e"
+    "e2e": "pnpm --filter @tms/e2e e2e",
+    "kb:eval": "pnpm --filter @tms/sample-data eval:kb"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

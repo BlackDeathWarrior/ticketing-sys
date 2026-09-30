@@ -15,8 +15,8 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 | 2     | Channel gateway + orchestrator, web chat widget, email (IMAP/SMTP), agent replies, live updates                            | Done    |
 | —     | Orbit Desk console wired to the API (ADR 0005), reports overview (ADR 0006), sample data + Playwright E2E suite (ADR 0007) | Done    |
 | 3     | LLM platform on LiteLLM, Settings for AI and channel keys, cheapest-first routing with per-provider caps (ADR 0008, 0009)  | Done    |
-| 4     | Knowledge base (RAG)                                                                                                       | Next    |
-| 5     | AI agent on chat and email, AI badges                                                                                      | Planned |
+| 4     | Knowledge base: uploads, URL and FAQ sources, review, pgvector hybrid search with citations (ADR 0010)                     | Done    |
+| 5     | AI agent on chat and email, AI badges                                                                                      | Next    |
 | 6     | Tools/MCP and approvals                                                                                                    | Planned |
 | 7     | Handover, take-over, routing, SLA, notifications, AI-vs-human views                                                        | Planned |
 | 8     | WhatsApp (Meta Cloud API, ported from whatsapp-crm; see `docs/research/whatsapp-crm.md`)                                   | Planned |
@@ -110,6 +110,17 @@ Admins manage AI providers, models and channel credentials in Orbit Desk under *
 - **Usage:** spend by provider and role, and the recent calls.
 
 Keys are admin-only (`settings:secrets`), encrypted, and every change is audited. See ADR 0008 and ADR 0009. The sample data registers the scripted **Demo model** provider, so everything works offline. Walkthrough: [`docs/runbooks/phase-3-demo.md`](docs/runbooks/phase-3-demo.md).
+
+## Knowledge base
+
+Orbit Desk → **Knowledge base** (`#/kb`) searches approved documents with citations, the same search the AI agent uses.
+
+- **Managers** (`kb:manage`, supervisors and admins) add documents: PDF, Word, Markdown, HTML or text files, web pages, or FAQ entries. They also approve, archive and re-index them.
+- **Indexing** runs in the worker: text extraction, heading-aware chunks, and embeddings through the Settings "Knowledge base embeddings" role. Search then combines pgvector similarity and full-text rank.
+- **Visibility:** public documents may be quoted to customers; internal and team documents are for agents only.
+- **In a ticket:** the drawer suggests articles and inserts a cited passage into the reply.
+
+`pnpm kb:eval` reports recall@5 on labelled questions. See ADR 0010 and [`docs/runbooks/phase-4-demo.md`](docs/runbooks/phase-4-demo.md).
 
 ## Try the channels
 

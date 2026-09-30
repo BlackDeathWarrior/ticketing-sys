@@ -83,6 +83,34 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   return data as T;
 }
 
+/** POSTs multipart form data (file uploads) with the session's token. */
+export async function apiForm<T = unknown>(path: string, form: FormData): Promise<T> {
+  const send = () =>
+    fetch(`${BASE}${path}`, {
+      method: 'POST',
+      headers: tokens ? { authorization: `Bearer ${tokens.accessToken}` } : {},
+      body: form,
+    });
+  let res = await send();
+  if (res.status === 401 && (await refresh())) res = await send();
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : undefined;
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as T;
+}
+
+/** Opens an authenticated file (e.g. a KB document) in a new tab via a blob URL. */
+export async function openFile(apiPath: string): Promise<void> {
+  const path = apiPath.startsWith(BASE) ? apiPath.slice(BASE.length) : apiPath;
+  let res = await raw('GET', path);
+  if (res.status === 401 && (await refresh())) res = await raw('GET', path);
+  if (!res.ok)
+    throw new ApiError(res.status, { message: `Could not open the file (${res.status})` });
+  const url = URL.createObjectURL(await res.blob());
+  window.open(url, '_blank', 'noopener');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export async function login(email: string, password: string): Promise<CurrentUser> {
   const res = await fetch(`${BASE}/auth/login`, {
     method: 'POST',

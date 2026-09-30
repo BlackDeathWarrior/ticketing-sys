@@ -9,6 +9,10 @@ import { EmailSender } from '../delivery/email.sender';
 import { CHANNEL_SENDERS } from '../delivery/senders';
 import { WebchatSender } from '../delivery/webchat.sender';
 import { InfraModule } from '../infra/infra.module';
+import { KbIndexerService } from '../kb/kb-indexer.service';
+import { KbIngestHandler, KbIngestWorker } from '../kb/kb-ingest.worker';
+import { KbModule } from '../kb/kb.module';
+import { LlmModule } from '../llm/llm.module';
 import { loggerModule } from '../logging';
 import { emitterProvider } from '../realtime/emitter.provider';
 import { RealtimeFanoutHandler } from '../realtime/realtime-fanout.handler';
@@ -38,6 +42,8 @@ const env = loadEnv();
     TicketsModule,
     ConversationsModule,
     ChannelsModule,
+    LlmModule,
+    KbModule,
   ],
   providers: [
     emitterProvider,
@@ -53,9 +59,12 @@ const env = loadEnv();
     DeliveryHandler,
     RealtimeFanoutHandler,
     SettingsChangedHandler,
+    KbIndexerService,
+    KbIngestWorker,
+    KbIngestHandler,
     {
       provide: DOMAIN_EVENT_HANDLERS,
-      inject: [RealtimeFanoutHandler, DeliveryHandler, SettingsChangedHandler],
+      inject: [RealtimeFanoutHandler, DeliveryHandler, SettingsChangedHandler, KbIngestHandler],
       useFactory: (...handlers: unknown[]) => handlers,
     },
     DomainEventsConsumer,

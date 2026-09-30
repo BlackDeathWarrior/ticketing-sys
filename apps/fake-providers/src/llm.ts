@@ -94,7 +94,8 @@ export function embed(text: string, dimensions = 1024): number[] {
   const words = text
     .toLowerCase()
     .normalize('NFKC')
-    .split(/[^\p{L}\p{N}]+/u)
+    // \p{M} keeps combining marks (Devanagari vowel signs) inside their word.
+    .split(/[^\p{L}\p{M}\p{N}]+/u)
     .filter((w) => w.length > 1);
   for (const w of words) {
     let h = 2166136261;

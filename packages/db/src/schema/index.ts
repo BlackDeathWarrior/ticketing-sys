@@ -4,3 +4,4 @@ export * from './tickets';
 export * from './conversations';
 export * from './audit';
 export * from './settings';
+export * from './kb';

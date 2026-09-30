@@ -10,6 +10,7 @@
 #   pnpm infra:up            # or pnpm docker:up
 #   bash scripts/check-in-docker.sh            # everything
 #   bash scripts/check-in-docker.sh test:int   # just one step
+#   RUN='pnpm --filter @tms/api exec vitest run -c vitest.int.config.ts test/kb.int.test.ts' #     bash scripts/check-in-docker.sh build     # steps, then one custom command
 #
 # Env: TMS_NETWORK (compose network, default tms_default),
 #      NODE_IMAGE  (default mirror.gcr.io/library/node:22-bookworm-slim).
@@ -42,7 +43,7 @@ docker run --rm -i --network "$NETWORK" \
   -e TEST_MAIL_HOST=greenmail \
   -e TEST_LITELLM_URL=http://litellm:4000 \
   -e TEST_FAKE_LLM_URL=http://fake-providers:4010 \
-  -e STEPS="$STEPS" \
+  -e STEPS="$STEPS"   -e RUN="${RUN:-}"   -e TEST_LOG_LEVEL="${TEST_LOG_LEVEL:-}" \
   "$IMAGE" bash -euo pipefail -c '
     mkdir -p /repo && tar -xf - -C /repo && cd /repo
     corepack enable >/dev/null 2>&1
@@ -53,4 +54,5 @@ docker run --rm -i --network "$NETWORK" \
       echo "=== pnpm $step"
       pnpm "$step"
     done
+    if [ -n "$RUN" ]; then echo "=== $RUN"; sh -c "$RUN"; fi
   ' <"$work/src.tar"

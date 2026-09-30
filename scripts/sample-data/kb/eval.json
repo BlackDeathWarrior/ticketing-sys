@@ -1,0 +1,87 @@
+{
+  "description": "Labelled questions for the knowledge-base recall@5 check. A hit counts when one of the top five results comes from the expected document (and section, when given).",
+  "questions": [
+    {
+      "q": "How many days do I have to return something?",
+      "doc": "Returns and refunds policy",
+      "section": "Returning an item"
+    },
+    {
+      "q": "when will my refund reach my card",
+      "doc": "Returns and refunds policy",
+      "section": "Refund timing"
+    },
+    {
+      "q": "Can I return an opened helmet?",
+      "doc": "Returns and refunds policy",
+      "section": "Items that cannot be returned"
+    },
+    {
+      "q": "I got the wrong item in my parcel",
+      "doc": "Returns and refunds policy",
+      "section": "Damaged or wrong items"
+    },
+    {
+      "q": "How long does standard delivery take?",
+      "doc": "Shipping and delivery FAQ",
+      "section": "How long does delivery take?"
+    },
+    {
+      "q": "what does express delivery cost",
+      "doc": "Shipping and delivery FAQ",
+      "section": "How much does delivery cost?"
+    },
+    {
+      "q": "tracking says delivered but the parcel is missing",
+      "doc": "Shipping and delivery FAQ",
+      "section": "My parcel says delivered but I don't have it"
+    },
+    {
+      "q": "freight container shows in transit for days",
+      "doc": "Shipping and delivery FAQ",
+      "section": "Tracking my order"
+    },
+    {
+      "q": "quote for 20 cargo bikes for my company",
+      "doc": "Shipping and delivery FAQ",
+      "section": "Bulk and business orders"
+    },
+    {
+      "q": "I was charged twice for order 55120",
+      "doc": "Billing and payments FAQ",
+      "section": "I was charged twice"
+    },
+    {
+      "q": "Do you accept cash on delivery?",
+      "doc": "Billing and payments FAQ",
+      "section": "Which payment methods do you accept?"
+    },
+    {
+      "q": "how do I get a GST invoice",
+      "doc": "Billing and payments FAQ",
+      "section": "Getting an invoice"
+    },
+    {
+      "q": "cancel my monthly plan before it renews",
+      "doc": "Billing and payments FAQ",
+      "section": "Subscriptions and plans"
+    },
+    {
+      "q": "password reset email never arrived",
+      "doc": "Account and sign-in help",
+      "section": "Resetting your password"
+    },
+    {
+      "q": "lost my phone with two-step verification",
+      "doc": "Account and sign-in help",
+      "section": "Two-step verification"
+    },
+    {
+      "q": "please delete my account and data",
+      "doc": "Account and sign-in help",
+      "section": "Deleting your account"
+    },
+    { "q": "रिफंड कब आएगा", "doc": "मेरा रिफंड कब तक आएगा?" },
+    { "q": "दो बार पैसे कट गए", "doc": "मुझसे दो बार पैसे कट गए, क्या करूँ?" }
+  ]
+}

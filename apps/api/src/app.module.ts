@@ -9,6 +9,7 @@ import { loadEnv } from './config/env';
 import { CustomersModule } from './customers/customers.module';
 import { HealthController } from './health/health.controller';
 import { InfraModule } from './infra/infra.module';
+import { KbModule } from './kb/kb.module';
 import { LlmModule } from './llm/llm.module';
 import { loggerModule } from './logging';
 import { OrgModule } from './org/org.module';
@@ -40,6 +41,7 @@ const env = loadEnv();
     ChatModule,
     ReportsModule,
     LlmModule,
+    KbModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],

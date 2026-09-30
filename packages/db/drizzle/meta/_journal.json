@@ -43,6 +43,20 @@
       "when": 1790773271179,
       "tag": "0005_settings_llm",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790775782635,
+      "tag": "0006_pgvector",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790775785447,
+      "tag": "0007_kb",
+      "breakpoints": true
     }
   ]
 }
