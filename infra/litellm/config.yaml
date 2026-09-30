@@ -1,0 +1,27 @@
+# LiteLLM proxy configuration.
+#
+# Model deployments are NOT listed here: admins add provider keys and models
+# from the TMS settings dashboard (Phase 3), which calls LiteLLM's admin API.
+# With STORE_MODEL_IN_DB=True they are persisted, encrypted with
+# LITELLM_SALT_KEY, in the `litellm` database.
+#
+# This file only holds proxy-wide behaviour: routing, retries and fallbacks.
+
+model_list: []
+
+router_settings:
+  # Spread load across deployments in the same model group, respecting rpm/tpm.
+  routing_strategy: usage-based-routing-v2
+  num_retries: 2
+  timeout: 60
+  allowed_fails: 3
+  cooldown_time: 30
+
+litellm_settings:
+  drop_params: true
+  request_timeout: 60
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: true
