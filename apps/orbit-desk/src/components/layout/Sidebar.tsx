@@ -88,6 +88,7 @@ export function Sidebar({
             {link('dashboard', 'grid', 'Overview')}
             {can('kb:read') && link('kb', 'book', 'Knowledge base')}
             {can('approval:approve') && link('approvals', 'check', 'Approvals', pendingApprovals)}
+            {can('report:read') && link('reports', 'chart', 'Reports')}
           </div>
 
           <div className={styles.group}>

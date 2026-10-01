@@ -42,8 +42,14 @@ export const messageEnvelopeSchema = z.object({
   references: z.array(z.string()).default([]),
   receivedAt: z.string().datetime(),
   metadata: z.record(z.unknown()).default({}),
-  /** Details the customer chose, applied only when this message opens a new ticket. */
-  ticket: z.object({ categoryId: z.string().uuid().optional() }).optional(),
+  /**
+   * `categoryId`: what the customer chose, applied only when this message
+   * opens a new ticket. `id`: the ticket this message belongs to, set only by
+   * an adapter that has already checked the sender owns it (the portal).
+   */
+  ticket: z
+    .object({ categoryId: z.string().uuid().optional(), id: z.string().uuid().optional() })
+    .optional(),
 });
 export type MessageEnvelope = z.input<typeof messageEnvelopeSchema>;
 export type ParsedEnvelope = z.output<typeof messageEnvelopeSchema>;

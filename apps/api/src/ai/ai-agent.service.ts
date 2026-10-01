@@ -769,7 +769,7 @@ export class AiAgentService {
   }
 
   private async categoryLabels(): Promise<string[]> {
-    const tree = await this.org.listCategories().catch(() => []);
+    const tree = await this.org.activeCategories().catch(() => []);
     return tree.flatMap((c) =>
       c.children.length ? c.children.map((s) => `${c.name} > ${s.name}`) : [c.name],
     );
@@ -796,7 +796,7 @@ export class AiAgentService {
     label: string,
   ): Promise<{ categoryId: string; subcategoryId: string | null } | null> {
     const [catName, subName] = label.split('>').map((s) => s.trim().toLowerCase());
-    const tree = await this.org.listCategories();
+    const tree = await this.org.activeCategories();
     const cat = tree.find((c) => c.name.toLowerCase() === catName);
     if (!cat) return null;
     const sub = subName ? cat.children.find((s) => s.name.toLowerCase() === subName) : undefined;

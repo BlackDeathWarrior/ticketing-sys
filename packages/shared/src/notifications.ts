@@ -11,6 +11,8 @@ export const NOTIFICATION_KINDS = [
   'llm.budget_warning',
   /** A channel that was working stopped working (to people who manage channels). */
   'channel.down',
+  /** A customer rated a ticket 1 or 2 out of 5. */
+  'csat.low',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

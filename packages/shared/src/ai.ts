@@ -44,6 +44,11 @@ export const aiBehaviourSchema = z
      * Pending Customer; the customer's next message hands it back to the AI.
      */
     awaitCustomerWhenAnswered: z.boolean().default(true),
+    /**
+     * A ticket the AI answered, and the customer has not replied to for this
+     * many hours, is resolved (a later reply reopens it). 0 never resolves.
+     */
+    autoResolveHours: z.coerce.number().int().min(0).max(720).default(72),
   })
   .refine((b) => b.handoverBelow <= b.sendAt, {
     message: 'The handover threshold must not be above the send threshold',

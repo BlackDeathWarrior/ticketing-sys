@@ -36,7 +36,7 @@ export class WebFormService {
 
   /** What the form offers: top-level categories as topics, and the upload limits. */
   async config(): Promise<WebFormConfig> {
-    const categories = await this.org.listCategories();
+    const categories = await this.org.activeCategories();
     return {
       categories: categories.map((c) => ({ id: c.id, name: c.name })),
       maxFiles: WEB_FORM_MAX_FILES,
@@ -49,7 +49,7 @@ export class WebFormService {
       throw new BadRequestException(`Attach at most ${WEB_FORM_MAX_FILES} files`);
     }
     if (form.categoryId) {
-      const known = (await this.org.listCategories()).some((c) => c.id === form.categoryId);
+      const known = (await this.org.activeCategories()).some((c) => c.id === form.categoryId);
       if (!known) throw new BadRequestException('Unknown topic');
     }
     if (files.length && !this.storage.enabled) {

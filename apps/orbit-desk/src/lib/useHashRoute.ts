@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export type Route = 'dashboard' | 'elements' | 'settings' | 'kb' | 'approvals';
+export type Route = 'dashboard' | 'elements' | 'settings' | 'kb' | 'approvals' | 'reports';
 
 function parse(): Route {
   const [first] = window.location.hash.replace(/^#\/?/, '').split('/');
@@ -8,6 +8,7 @@ function parse(): Route {
   if (first === 'settings') return 'settings';
   if (first === 'kb') return 'kb';
   if (first === 'approvals') return 'approvals';
+  if (first === 'reports') return 'reports';
   return 'dashboard';
 }
 

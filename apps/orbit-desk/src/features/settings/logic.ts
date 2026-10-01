@@ -7,7 +7,17 @@ import type {
 } from '@tms/shared';
 
 export type SettingsTab =
-  'providers' | 'models' | 'ai' | 'channels' | 'tools' | 'routing' | 'sla' | 'usage';
+  | 'providers'
+  | 'models'
+  | 'ai'
+  | 'channels'
+  | 'customers'
+  | 'tools'
+  | 'routing'
+  | 'sla'
+  | 'tickets'
+  | 'people'
+  | 'usage';
 
 export const SETTINGS_TABS: Array<{
   value: SettingsTab;
@@ -20,9 +30,17 @@ export const SETTINGS_TABS: Array<{
   { value: 'models', label: 'Models & roles', needs: ['settings:llm'] },
   { value: 'ai', label: 'AI behaviour', needs: ['settings:ai'] },
   { value: 'channels', label: 'Channels', needs: ['settings:channels'] },
+  { value: 'customers', label: 'Customers', needs: ['settings:channels'] },
   { value: 'tools', label: 'Tools & MCP', needs: ['tool:manage'], anyOf: ['tool:create'] },
   { value: 'routing', label: 'Routing', needs: ['settings:routing'] },
   { value: 'sla', label: 'SLA', needs: ['settings:sla'] },
+  {
+    value: 'tickets',
+    label: 'Tickets',
+    needs: ['settings:categories', 'settings:workflow'],
+    anyOf: ['settings:categories', 'settings:workflow'],
+  },
+  { value: 'people', label: 'People', needs: ['user:manage'] },
   { value: 'usage', label: 'Usage', needs: ['settings:llm'] },
 ];
 

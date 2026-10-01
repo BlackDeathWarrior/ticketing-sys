@@ -32,6 +32,7 @@ export function applyTestEnv() {
     EMAIL_ENABLED: 'false',
     // Tests run the channel check themselves, so it never fires in the middle of one.
     CHANNEL_CHECK_SECONDS: '0',
+    AI_AUTO_RESOLVE_SWEEP_SECONDS: '0',
     TOOL_PRIVATE_HOSTS: new URL(FAKE_MCP_URL).hostname,
   });
 }

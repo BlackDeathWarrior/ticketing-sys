@@ -53,7 +53,7 @@ export class AiClassifierService {
     const ticket = await this.tickets.get(ticketId).catch(() => null);
     if (!ticket || ticket.aiClassification) return null;
 
-    const tree = await this.org.listCategories();
+    const tree = await this.org.activeCategories();
     const labels = tree.flatMap((c) =>
       c.children.length ? c.children.map((s) => `${c.name} > ${s.name}`) : [c.name],
     );

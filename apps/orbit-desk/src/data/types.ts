@@ -79,6 +79,8 @@ export interface Message {
   channel: string | null;
   /** Written by the AI agent (a reply, a draft or a handover note). */
   byAi: boolean;
+  /** The customer wrote it in the portal, not on the conversation's channel. */
+  viaPortal?: boolean;
   /** Files sent with the message (email, web form); `path` is the API download path. */
   attachments: Attachment[];
   /** What the AI recorded with its reply: confidence, rules, knowledge used. */

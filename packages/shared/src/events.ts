@@ -21,7 +21,10 @@ export const DOMAIN_EVENT_TYPES = [
   'message.outbound',
   'message.delivery_updated',
   'team.created',
+  'team.updated',
+  'team.deleted',
   'category.created',
+  'category.updated',
   'workflow.status_upserted',
   'workflow.status_deactivated',
   'workflow.transitions_replaced',
@@ -85,6 +88,13 @@ export const DOMAIN_EVENT_TYPES = [
   'message.spoken',
   /** An admin granted a role a permission, or took it back. */
   'role.permissions_changed',
+  /** A customer was asked to rate a resolved ticket (by email or in the chat). */
+  'csat.requested',
+  /** A customer rated a ticket, or changed their rating. */
+  'csat.submitted',
+  /** A customer asked for a sign-in link to the portal; the worker emails it. */
+  'portal.link_requested',
+  'portal.signed_in',
   /** WhatsApp templates were synced from Meta, or Meta changed a template's status. */
   'whatsapp.templates_changed',
 ] as const;

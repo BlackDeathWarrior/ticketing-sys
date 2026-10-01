@@ -25,6 +25,8 @@ export const PERMISSIONS = [
   'audit:read',
   'approval:approve',
   'report:read',
+  /** Download report data as CSV. */
+  'report:export',
   /** Search the knowledge base and read documents. */
   'kb:read',
   /** Add, edit, approve, archive and delete knowledge base documents. */
@@ -81,6 +83,7 @@ const TEAM_LEAD: Permission[] = [
   'ticket:escalate',
   'user:read',
   'report:read',
+  'report:export',
 ];
 
 const SUPERVISOR: Permission[] = [

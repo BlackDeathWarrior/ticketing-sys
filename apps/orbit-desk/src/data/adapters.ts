@@ -99,6 +99,8 @@ export interface ApiConversation {
     attachments?: Array<{ filename: string; size: number; contentType: string }>;
     metadata?: {
       ai?: { confidence?: number | null; rules?: string[]; sources?: Array<{ label: string }> };
+      /** `portal`: the customer wrote it in the help center's "My requests". */
+      via?: string;
     };
   }>;
 }
@@ -282,6 +284,7 @@ export function toThread(
         deliveryError: fromCustomer ? null : (m.deliveryError ?? null),
         channel: c.channel,
         byAi,
+        viaPortal: m.metadata?.via === 'portal',
         attachments: (m.attachments ?? []).map((a, i) => ({
           filename: a.filename,
           size: a.size,

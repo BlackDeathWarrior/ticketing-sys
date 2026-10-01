@@ -20,3 +20,5 @@ export * from './notifications';
 export * from './whatsapp';
 export * from './channel-health';
 export * from './voice';
+export * from './csat';
+export * from './portal';
