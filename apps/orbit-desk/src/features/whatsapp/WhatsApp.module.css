@@ -1,0 +1,113 @@
+.composer {
+  display: grid;
+  gap: var(--spacing-12);
+}
+
+.composer > * {
+  min-width: 0;
+}
+
+.note {
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--color-fog);
+}
+
+.empty {
+  padding: var(--spacing-12);
+  border: 1px dashed var(--line-subtle);
+  border-radius: var(--radius-inputs);
+  font-size: var(--text-body-sm);
+  color: var(--color-ash);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-12);
+}
+
+.preview {
+  max-height: 140px;
+  overflow-y: auto;
+  padding: var(--spacing-12);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-inputs);
+  font-size: var(--text-body-sm);
+  line-height: 1.5;
+  color: var(--color-ash);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Settings: the setup card under the WhatsApp channel form */
+.setup {
+  display: grid;
+  gap: var(--spacing-16);
+}
+
+.setup > * {
+  min-width: 0;
+}
+
+.sectionTitle {
+  font-size: var(--text-ui);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-lilac-white);
+}
+
+.steps {
+  display: grid;
+  gap: 6px;
+  padding-left: var(--spacing-20);
+  font-size: var(--text-body-sm);
+  line-height: 1.5;
+  color: var(--color-ash);
+}
+
+.urlRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--spacing-8);
+}
+
+.urlRow > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.gaps {
+  display: grid;
+  gap: 4px;
+  padding-left: var(--spacing-20);
+  font-size: var(--text-body-sm);
+  color: var(--color-lavender-accent);
+}
+
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+}
+
+.templateBody {
+  max-width: 420px;
+  color: var(--color-ash);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .urlRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

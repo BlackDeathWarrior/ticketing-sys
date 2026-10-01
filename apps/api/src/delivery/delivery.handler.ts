@@ -4,12 +4,18 @@ import { SYSTEM_CTX } from '../common/request-context';
 import { ConversationsService } from '../conversations/conversations.service';
 import { TicketsService } from '../tickets/tickets.service';
 import type { DomainEventHandler, HandlerContext } from '../worker/domain-events';
-import { CHANNEL_SENDERS, type ChannelSender } from './senders';
+import {
+  CHANNEL_SENDERS,
+  type ChannelSender,
+  type DeliveryReceipt,
+  PermanentDeliveryError,
+} from './senders';
 
 /**
  * Delivers `message.outbound` events. Idempotent: a message that is no longer
  * `pending` is skipped. Failures are retried by the queue; after the last
- * attempt the message is marked `failed` with the error.
+ * attempt, or at once for a failure retrying can't fix, the message is marked
+ * `failed` with the error.
  */
 @Injectable()
 export class DeliveryHandler implements DomainEventHandler {
@@ -48,8 +54,9 @@ export class DeliveryHandler implements DomainEventHandler {
     }
 
     const ticket = await this.tickets.get(ticketId);
+    let receipt: DeliveryReceipt | void;
     try {
-      await sender.send({
+      receipt = await sender.send({
         ...found,
         ticket: { id: ticket.id, number: ticket.number, subject: ticket.subject },
       });
@@ -58,12 +65,19 @@ export class DeliveryHandler implements DomainEventHandler {
       this.logger.warn(
         `delivery of ${messageId} failed (attempt ${ctx.attempt}/${ctx.maxAttempts}): ${reason}`,
       );
-      if (ctx.attempt >= ctx.maxAttempts) {
+      if (err instanceof PermanentDeliveryError || ctx.attempt >= ctx.maxAttempts) {
         await this.conversations.markDelivery(SYSTEM_CTX, messageId, ticketId, 'failed', reason);
         return;
       }
       throw err;
     }
-    await this.conversations.markDelivery(SYSTEM_CTX, messageId, ticketId, 'sent');
+    await this.conversations.markDelivery(
+      SYSTEM_CTX,
+      messageId,
+      ticketId,
+      'sent',
+      undefined,
+      receipt?.channelMessageId,
+    );
   }
 }

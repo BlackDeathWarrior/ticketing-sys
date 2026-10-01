@@ -27,6 +27,8 @@ export interface Person {
 
 export interface Customer extends Person {
   email: string | null;
+  /** Digits-only phone number, when known. */
+  phone: string | null;
   company: string | null;
   /** Customer type label: Standard, VIP, Business or Internal. */
   plan: string;
@@ -67,8 +69,13 @@ export interface Message {
   authorId: string | null;
   body: string;
   at: Date;
-  /** Outbound delivery state: pending, sent, failed, or draft (an AI reply awaiting review). */
+  /**
+   * Outbound delivery state: pending, sent, delivered, read, failed, or draft
+   * (an AI reply awaiting review).
+   */
   delivery: string | null;
+  /** Why delivery failed, in plain words. */
+  deliveryError: string | null;
   channel: string | null;
   /** Written by the AI agent (a reply, a draft or a handover note). */
   byAi: boolean;
@@ -92,6 +99,8 @@ export interface Conversation {
   controller: string;
   controllerUserId: string | null;
   controllerName: string | null;
+  /** WhatsApp only: when the customer last wrote (opens the 24-hour window). */
+  lastInboundAt: string | null;
 }
 
 export interface Thread {

@@ -17,7 +17,7 @@ import type {
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
-import type { RequestCtx } from '../common/request-context';
+import { type RequestCtx, SYSTEM_CTX } from '../common/request-context';
 import { DB } from '../infra/tokens';
 
 export type Conversation = typeof conversations.$inferSelect;
@@ -100,6 +100,27 @@ export class ConversationsService {
     return row ?? null;
   }
 
+  /** A customer's most recent conversation on a channel (WhatsApp has one thread per person). */
+  async findLatestForCustomer(tx: DbOrTx, channel: Channel, customerId: string) {
+    const [row] = await tx
+      .select()
+      .from(conversations)
+      .where(and(eq(conversations.channel, channel), eq(conversations.customerId, customerId)))
+      .orderBy(desc(conversations.createdAt))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /** Adds channel details to a conversation's metadata; undefined values are left alone. */
+  async mergeMetadata(tx: DbOrTx, id: string, patch: Record<string, unknown>) {
+    const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+    if (!Object.keys(defined).length) return;
+    await tx
+      .update(conversations)
+      .set({ metadata: sql`${conversations.metadata} || ${JSON.stringify(defined)}::jsonb` })
+      .where(eq(conversations.id, id));
+  }
+
   /** Returns the existing message and its ticket if this provider id was already stored. */
   async findMessageByChannelId(tx: DbOrTx, channel: Channel, channelMessageId: string) {
     const [row] = await tx
@@ -108,6 +129,11 @@ export class ConversationsService {
       .innerJoin(conversations, eq(conversations.id, messages.conversationId))
       .where(and(eq(messages.channel, channel), eq(messages.channelMessageId, channelMessageId)));
     return row ?? null;
+  }
+
+  /** Whether a provider message id is already stored (a redelivered webhook). */
+  async hasChannelMessage(channel: Channel, channelMessageId: string): Promise<boolean> {
+    return !!(await this.findMessageByChannelId(this.db, channel, channelMessageId));
   }
 
   async create(
@@ -367,13 +393,17 @@ export class ConversationsService {
     return row ?? null;
   }
 
-  /** Records the outcome of a delivery attempt. */
+  /**
+   * Records the outcome of a delivery attempt. `channelMessageId` is the id
+   * the provider gave the message, so later status reports can find it.
+   */
   async markDelivery(
     ctx: RequestCtx,
     messageId: string,
     ticketId: string,
     status: DeliveryStatus,
     error?: string,
+    channelMessageId?: string,
   ) {
     await this.db.transaction(async (tx) => {
       await tx
@@ -382,21 +412,88 @@ export class ConversationsService {
           deliveryStatus: status,
           deliveryError: error ?? null,
           ...(status === 'sent' ? { sentAt: new Date() } : {}),
+          ...(channelMessageId ? { channelMessageId } : {}),
         })
         .where(eq(messages.id, messageId));
-      const data = { messageId, status, ...(error ? { error } : {}) };
-      await this.audit.record(tx, ctx, {
-        action: `message.${status === 'failed' ? 'delivery_failed' : 'delivered'}`,
-        targetType: 'ticket',
-        targetId: ticketId,
-        data,
-      });
-      await this.outbox.publish(tx, ctx, {
-        type: 'message.delivery_updated',
-        aggregateType: 'ticket',
-        aggregateId: ticketId,
-        payload: data,
-      });
+      await this.recordDelivery(tx, ctx, messageId, ticketId, status, error);
+    });
+  }
+
+  /**
+   * A provider's report on a message we sent (WhatsApp: sent, delivered, read,
+   * failed). Reports can arrive late or out of order, so a status only ever
+   * moves forward. Returns `unknown` when no message has that provider id.
+   */
+  async applyProviderStatus(
+    channel: Channel,
+    channelMessageId: string,
+    status: 'sent' | 'delivered' | 'read' | 'failed',
+    opts: { at: Date; error?: string },
+  ): Promise<'applied' | 'ignored' | 'unknown'> {
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({ message: messages, ticketId: conversations.ticketId })
+        .from(messages)
+        .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+        .where(
+          and(
+            eq(messages.channel, channel),
+            eq(messages.channelMessageId, channelMessageId),
+            eq(messages.direction, 'outbound'),
+          ),
+        )
+        .for('update', { of: messages });
+      if (!row) return 'unknown';
+      if (!statusAdvances(row.message.deliveryStatus, status)) return 'ignored';
+      const stamp = status === 'delivered' ? 'deliveredAt' : status === 'read' ? 'readAt' : null;
+      await tx
+        .update(messages)
+        .set({
+          deliveryStatus: status,
+          deliveryError: status === 'failed' ? (opts.error ?? 'Delivery failed') : null,
+          ...(row.message.sentAt || status === 'failed' ? {} : { sentAt: opts.at }),
+          ...(stamp
+            ? { metadata: { ...row.message.metadata, [stamp]: opts.at.toISOString() } }
+            : {}),
+        })
+        .where(eq(messages.id, row.message.id));
+      await this.recordDelivery(
+        tx,
+        SYSTEM_CTX,
+        row.message.id,
+        row.ticketId,
+        status,
+        status === 'failed' ? opts.error : undefined,
+      );
+      return 'applied';
+    });
+  }
+
+  private async recordDelivery(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    messageId: string,
+    ticketId: string,
+    status: DeliveryStatus,
+    error?: string,
+  ) {
+    const data = { messageId, status, ...(error ? { error } : {}) };
+    await this.audit.record(tx, ctx, {
+      action:
+        status === 'failed'
+          ? 'message.delivery_failed'
+          : status === 'read'
+            ? 'message.read'
+            : 'message.delivered',
+      targetType: 'ticket',
+      targetId: ticketId,
+      data,
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'message.delivery_updated',
+      aggregateType: 'ticket',
+      aggregateId: ticketId,
+      payload: data,
     });
   }
 
@@ -408,6 +505,17 @@ export class ConversationsService {
       .where(eq(messages.deliveryStatus, 'pending'));
     return row?.n ?? 0;
   }
+}
+
+const STATUS_ORDER: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3 };
+
+/** Whether a provider's status report moves a message forward. Exported for tests. */
+export function statusAdvances(current: string | null, incoming: string): boolean {
+  // Failed is final, and drafts were never sent: neither takes reports.
+  if (current === null || !(current in STATUS_ORDER)) return false;
+  // A message that reached the phone can't fail afterwards.
+  if (incoming === 'failed') return STATUS_ORDER[current]! < STATUS_ORDER.delivered!;
+  return incoming in STATUS_ORDER && STATUS_ORDER[incoming]! > STATUS_ORDER[current]!;
 }
 
 /** Drafts and discarded drafts never reach the customer. */

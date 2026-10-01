@@ -15,8 +15,10 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   type ApproveDraftInput,
   approveDraftSchema,
+  type ParsedSendTemplate,
   type ReplyInput,
   replySchema,
+  sendTemplateSchema,
   type StartConversationInput,
   startConversationSchema,
 } from '@tms/shared';
@@ -46,7 +48,7 @@ export class ChannelsController {
     return this.conversations.listForTicket(ticket.id);
   }
 
-  /** Starts a new conversation on a ticket (email only for now). */
+  /** Starts a new conversation on a ticket: an email, or a WhatsApp template. */
   @Post('tickets/:id/conversations')
   @RequirePermission('message:send')
   start(
@@ -54,7 +56,20 @@ export class ChannelsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodPipe(startConversationSchema)) body: StartConversationInput,
   ) {
-    return this.outbound.startEmailConversation(ctx, id, body.body);
+    return body.channel === 'whatsapp'
+      ? this.outbound.startWhatsAppConversation(ctx, id, body.template)
+      : this.outbound.startEmailConversation(ctx, id, body.body);
+  }
+
+  /** Sends an approved WhatsApp template on a conversation (needed once the 24-hour window closes). */
+  @Post('conversations/:id/whatsapp-template')
+  @RequirePermission('message:send')
+  template(
+    @Ctx() ctx: RequestCtx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(sendTemplateSchema)) body: ParsedSendTemplate,
+  ) {
+    return this.outbound.replyWithTemplate(ctx, id, body);
   }
 
   /** Replies on the conversation's own channel. */

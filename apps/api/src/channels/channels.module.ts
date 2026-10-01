@@ -8,12 +8,33 @@ import { AiPolicyService } from './ai-policy.service';
 import { ChannelsController } from './channels.controller';
 import { InboundService } from './inbound.service';
 import { OutboundService } from './outbound.service';
+import { WhatsAppTemplatesService } from './whatsapp/whatsapp-templates.service';
+import { WhatsAppWebhookQueue } from './whatsapp/whatsapp-webhook.queue';
+import { WhatsAppController, WhatsAppWebhookController } from './whatsapp/whatsapp.controller';
+import { WhatsAppService } from './whatsapp/whatsapp.service';
 
-/** Channel-agnostic intake (InboundService) and agent replies (OutboundService). */
+/**
+ * Channel-agnostic intake (InboundService) and agent replies (OutboundService),
+ * plus the WhatsApp Cloud API adapter (ADR 0015).
+ */
 @Module({
   imports: [ConversationsModule, CustomersModule, TicketsModule, WorkflowModule, LlmModule],
-  controllers: [ChannelsController],
-  providers: [InboundService, OutboundService, AiPolicyService],
-  exports: [InboundService, OutboundService, AiPolicyService, ConversationsModule],
+  controllers: [ChannelsController, WhatsAppWebhookController, WhatsAppController],
+  providers: [
+    InboundService,
+    OutboundService,
+    AiPolicyService,
+    WhatsAppTemplatesService,
+    WhatsAppService,
+    WhatsAppWebhookQueue,
+  ],
+  exports: [
+    InboundService,
+    OutboundService,
+    AiPolicyService,
+    ConversationsModule,
+    WhatsAppService,
+    WhatsAppTemplatesService,
+  ],
 })
 export class ChannelsModule {}

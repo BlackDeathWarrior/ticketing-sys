@@ -27,6 +27,8 @@ export async function createApp(): Promise<NestFastifyApplication> {
   });
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, {
     bufferLogs: true,
+    // Webhook signatures (WhatsApp) are computed over the exact bytes received.
+    rawBody: true,
   });
   const env = app.get<Env>(ENV);
 

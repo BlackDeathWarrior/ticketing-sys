@@ -77,6 +77,8 @@ export const DOMAIN_EVENT_TYPES = [
   'notification.created',
   /** A team lead escalated a ticket. */
   'ticket.escalated',
+  /** WhatsApp templates were synced from Meta, or Meta changed a template's status. */
+  'whatsapp.templates_changed',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];

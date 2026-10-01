@@ -270,6 +270,21 @@
   color: var(--color-lavender-accent);
 }
 
+/* WhatsApp's 24-hour rule, shown above the reply box on every screen size. */
+.windowNote {
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--color-fog);
+}
+
+/* Why a message was not delivered: label and words, no colour. */
+.deliveryError {
+  margin-top: var(--spacing-8);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--color-lavender-accent);
+}
+
 .system .bubble {
   opacity: 0.8;
 }

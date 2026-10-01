@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { channelSchema } from './tickets';
 import { identityTypeSchema } from './customers';
+import { sendTemplateSchema } from './whatsapp';
 
 /**
  * Every channel adapter turns its native payload into this envelope. The
@@ -53,8 +54,19 @@ export type ConversationController = (typeof CONVERSATION_CONTROLLERS)[number];
 export const MESSAGE_AUTHORS = ['customer', 'ai', 'agent', 'system'] as const;
 export type MessageAuthor = (typeof MESSAGE_AUTHORS)[number];
 
-/** `draft`: an AI reply waiting for a human; `discarded`: a draft the human threw away. */
-export const DELIVERY_STATUSES = ['pending', 'sent', 'failed', 'draft', 'discarded'] as const;
+/**
+ * `draft`: an AI reply waiting for a human; `discarded`: a draft the human threw away.
+ * `delivered` and `read` come from channels that report them (WhatsApp).
+ */
+export const DELIVERY_STATUSES = [
+  'pending',
+  'sent',
+  'delivered',
+  'read',
+  'failed',
+  'draft',
+  'discarded',
+] as const;
 export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
 
 // ---- API contracts ----
@@ -62,11 +74,12 @@ export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
 export const replySchema = z.object({ body: z.string().trim().min(1).max(20_000) });
 export type ReplyInput = z.infer<typeof replySchema>;
 
-export const startConversationSchema = z.object({
-  channel: z.literal('email'),
-  body: z.string().trim().min(1).max(20_000),
-});
-export type StartConversationInput = z.infer<typeof startConversationSchema>;
+/** Email starts with free text; WhatsApp must start with an approved template. */
+export const startConversationSchema = z.discriminatedUnion('channel', [
+  z.object({ channel: z.literal('email'), body: z.string().trim().min(1).max(20_000) }),
+  z.object({ channel: z.literal('whatsapp'), template: sendTemplateSchema }),
+]);
+export type StartConversationInput = z.output<typeof startConversationSchema>;
 
 // ---- Realtime (Socket.IO) ----
 

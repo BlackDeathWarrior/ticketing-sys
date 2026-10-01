@@ -8,3 +8,4 @@ export * from './kb';
 export * from './ai';
 export * from './tools';
 export * from './operations';
+export * from './whatsapp';

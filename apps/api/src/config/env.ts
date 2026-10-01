@@ -41,7 +41,7 @@ const envSchema = z
       .optional(),
     /** Sarvam API base URL; tests point it at the fake provider. */
     SARVAM_API_URL: z.string().url().default('https://api.sarvam.ai'),
-    /** Meta Graph API base URL; tests point it at the fake provider. */
+    /** Meta Graph API base URL. Only change it to go through a proxy. */
     WHATSAPP_GRAPH_URL: z.string().url().default('https://graph.facebook.com'),
     /** Serve Swagger UI at /docs. Defaults to on outside production. */
     API_DOCS: bool.optional(),

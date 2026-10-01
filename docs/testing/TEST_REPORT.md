@@ -1,6 +1,108 @@
 # Test report
 
-## Latest: Phase 7, handover, routing, SLA and notifications
+## Latest: Phase 8, WhatsApp
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-8-whatsapp`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                           |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                             |
+| `pnpm test`                                       | 209 passed (api 110, Orbit Desk 61, shared 18, fake providers 15, help center 5) |
+| `pnpm test:int`                                   | 134 passed (13 files)                                                            |
+| `pnpm e2e`                                        | 55 passed; 9 screenshot-only specs skipped as designed                           |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                       |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed                                               |
+
+### What was and wasn't tested
+
+There is no Meta app yet, and by decision there is no simulator or fake Graph API (ADR 0015). So:
+
+- **Tested for real:** the public webhook route, signature and handshake checks, the queue, the worker, tickets and customers, media into object storage, the sender's request to Meta, delivery reports, the 24-hour rule, templates, and every screen.
+- **Answered inside the test process:** calls to `graph.facebook.com` in the integration tests. The code under test is the real client; only Meta's replies are supplied by the test.
+- **Not tested:** a round trip with Meta's servers. That needs a Meta app and a public HTTPS address (`docs/runbooks/phase-8-demo.md`).
+
+### Sample data
+
+Unchanged. The four sample WhatsApp tickets are still tickets with the WhatsApp label and no conversation. Sample WhatsApp conversations would need either Meta credentials or pretend deliveries, and the channel is off until someone connects a real number.
+
+### New tests
+
+| Where                                             | Tests | Covers                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------- | ----: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/channels/whatsapp/whatsapp.test.ts` |    41 | The ported code: phone and identity helpers, signature and verify-token checks, Graph requests (phone or user-id recipient, templates, error envelope, media host and size limits, template paging), error explanations and retry decisions, template components, webhook parsing, status order |
+| `packages/shared/src/whatsapp.test.ts`            |     7 | 24-hour window, template variables and preview, send and start-conversation schemas                                                                                                                                                                                                             |
+| `apps/orbit-desk/.../whatsapp/logic.test.ts`      |    10 | Window note, template picker fields and request, setup checklist, delivery labels                                                                                                                                                                                                               |
+| `apps/api/test/whatsapp.int.test.ts`              |    21 | See below                                                                                                                                                                                                                                                                                       |
+| `e2e/tests/whatsapp.spec.ts`                      |     4 | See below                                                                                                                                                                                                                                                                                       |
+
+`whatsapp.int.test.ts` covers:
+
+- **Before setup:** the handshake and every delivery are refused, including one signed with an empty key.
+- **Webhook security:** the handshake answers only for the saved verify token; unsigned, wrongly signed and tampered bodies get 401 and create nothing.
+- **Connection test:** shows the number, its name and quality; a rejected token is explained.
+- **Inbound:**
+  - a first message opens a ticket and a customer, and the next one joins it;
+  - a redelivered webhook stores nothing twice;
+  - a photo is saved as a downloadable attachment;
+  - a message whose file can't be fetched is still stored;
+  - reactions and other phone numbers on the same app are ignored.
+- **Outbound:**
+  - an agent reply reaches Meta with the right address, token and body, and Meta's message id is saved;
+  - reports arriving out of order (read, then delivered, then failed) leave the message read;
+  - a failed report shows Meta's reason;
+  - an error a retry can't fix fails after one attempt, and a temporary one is retried.
+- **Username-only senders:** filed under the user id, answered with `recipient`; when Meta later shows the phone number, it is the same customer and ticket.
+- **Templates and the 24-hour window:**
+  - sync is admin-only, and agents see approved templates only;
+  - Meta's status webhooks add and remove templates from that list;
+  - free text after 24 hours gets a 409, a template with too few values gets a 400, and a complete one is sent with its components;
+  - once the customer answers, free text works again;
+  - an unapproved template is refused;
+  - a ticket can be opened on WhatsApp with a template, and the customer's reply lands on it.
+- **AI:** a WhatsApp question is answered by the AI and sent through Meta.
+- **No token:** an agent's reply is refused with "not connected".
+
+`whatsapp.spec.ts` covers:
+
+- The webhook's handshake and a refused forged call, against the running stack.
+- Settings → Channels: the webhook address, the "Still to do" list, the empty template list, and the reason a sync can't run yet.
+- A customer message opens a ticket in the queue. The AI's answer shows "Not delivered" with the reason, and an agent's reply is refused with the same explanation.
+- A message older than 24 hours leaves the reply box with templates only, checked at phone width.
+
+### Bugs found and fixed
+
+1. **A known customer writing on WhatsApp for the first time broke the inbound message.** A customer saved with a phone number has a `phone` identity. Their first WhatsApp message tried to create a second customer with the same number and hit the unique index. They are now recognised as the same person and linked. Found while testing conversations started by an agent.
+2. **A refused webhook handshake answered 500 instead of 403.** The plain-text content type was set before the error was written. Found by the integration test.
+3. **A message arriving just after the channel was switched on could be dropped.** The worker kept the old "off" setting for up to five seconds. WhatsApp settings are now read fresh every time.
+4. **Buttons in the WhatsApp settings card were stretched** to the height of the neighbouring column. Fixed for every channel card.
+
+### Known limits
+
+- WhatsApp is off until a Meta app is connected, and Meta needs a public HTTPS address for the webhook.
+- Agents send text and templates, not files. The AI doesn't read customers' files.
+- One WhatsApp number.
+- Reactions are ignored, and customers don't get read receipts.
+- Templates are written in WhatsApp Manager; TMS only syncs and sends them.
+
+### Screenshots
+
+Settings → Channels → WhatsApp, with the webhook address and what is still missing:
+
+![WhatsApp settings](screenshots/orbit-settings-whatsapp.png)
+
+A WhatsApp ticket. The AI's answer could not be sent, and the reason is shown under it:
+
+![WhatsApp conversation](screenshots/orbit-whatsapp-conversation.png)
+
+More than 24 hours after the customer's last message, at phone width:
+
+![WhatsApp template picker](screenshots/orbit-whatsapp-template-phone.png)
+
+---
+
+## Phase 7: handover, routing, SLA and notifications
 
 Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-7-handover-sla`.
 
@@ -223,17 +325,17 @@ One full run had a single failure in `auth.spec.ts`: the browser context closed 
 
 ### Channel audit: tests and UI per channel
 
-| Channel            | Built?                                  | Integration tests                                                | Browser tests                                                          | Agent UI (Orbit Desk)                                                            | Customer UI                                     |
-| ------------------ | --------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------- |
-| Web chat (chatbot) | Yes                                     | `chat.int` (5), `ai.int` (chat answers, drafts, handover)        | `channels.spec`, `ai.spec` (3 chat flows), **new:** widget at 390px    | Channel label and filter, reply by chat, AI marks and drafts                     | Widget labels AI replies; now tested on a phone |
-| Email              | Yes                                     | `email.int`, `ai.int` (email drafts), `web-form.int` (threading) | `channels.spec`, `ai.spec` (draft approved and mailed), `console.spec` | **Fixed:** attachments were not shown in the drawer, and paragraphs ran together | The customer's own mail client                  |
-| Web form           | Yes (this PR)                           | `web-form.int` (6)                                               | `web-form.spec` (2)                                                    | Channel filter, attachments, category                                            | Help center, desktop and phone                  |
-| WhatsApp           | No, Phase 8                             | Only the channel's secret settings (`settings.int`)              | None yet                                                               | Label, and the Settings → Channels key fields                                    | None yet                                        |
-| Voice              | No, Phase 9 (in the browser, as agreed) | None yet                                                         | Only a "Phone call" ticket logged by an agent (`new-ticket.spec`)      | "Phone call" in New ticket, and the Settings → Channels Sarvam fields            | None yet                                        |
+| Channel            | Built?                                                 | Integration tests                                                | Browser tests                                                          | Agent UI (Orbit Desk)                                                             | Customer UI                                     |
+| ------------------ | ------------------------------------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Web chat (chatbot) | Yes                                                    | `chat.int` (5), `ai.int` (chat answers, drafts, handover)        | `channels.spec`, `ai.spec` (3 chat flows), **new:** widget at 390px    | Channel label and filter, reply by chat, AI marks and drafts                      | Widget labels AI replies; now tested on a phone |
+| Email              | Yes                                                    | `email.int`, `ai.int` (email drafts), `web-form.int` (threading) | `channels.spec`, `ai.spec` (draft approved and mailed), `console.spec` | **Fixed:** attachments were not shown in the drawer, and paragraphs ran together  | The customer's own mail client                  |
+| Web form           | Yes (this PR)                                          | `web-form.int` (6)                                               | `web-form.spec` (2)                                                    | Channel filter, attachments, category                                             | Help center, desktop and phone                  |
+| WhatsApp           | Yes, since Phase 8 (off until a Meta app is connected) | `whatsapp.int` (21 tests), `whatsapp.test` (41 unit tests)       | `whatsapp.spec` (4 tests)                                              | Delivery labels and failure reasons, 24-hour note, template picker, Settings card | `orbit-whatsapp-*`, `orbit-settings-whatsapp`   |
+| Voice              | No, Phase 9 (in the browser, as agreed)                | None yet                                                         | Only a "Phone call" ticket logged by an agent (`new-ticket.spec`)      | "Phone call" in New ticket, and the Settings → Channels Sarvam fields             | None yet                                        |
 
 WhatsApp and voice get their adapters, tests and screens in their own phases:
 
-- **WhatsApp:** `whatsapp.int` and `whatsapp.spec` with a simulated Meta API.
+- **WhatsApp:** done in Phase 8 (see the top of this report). There is no simulated Meta API; the tests post signed webhooks to the real route.
 - **Voice:** `voice.int` and `voice.spec` with a fake microphone and fake Sarvam, plus a live call card in Orbit Desk.
 
 ### New tests
