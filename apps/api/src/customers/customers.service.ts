@@ -211,7 +211,33 @@ export class CustomersService {
       .where(and(eq(customerIdentities.type, input.type), eq(customerIdentities.value, value)));
     if (owner) return owner.customerId === customerId;
     await this.insertIdentity(tx, ctx, customerId, input.type, value, input.verified);
+    if (input.type === 'email') await this.fillPrimaryEmail(tx, ctx, customerId, value);
     return true;
+  }
+
+  /**
+   * A customer first known by something else (a chat identity, an app's own
+   * id) gets the first email attached to them as their contact address.
+   */
+  private async fillPrimaryEmail(tx: DbOrTx, ctx: RequestCtx, customerId: string, email: string) {
+    const [filled] = await tx
+      .update(customers)
+      .set({ primaryEmail: email })
+      .where(and(eq(customers.id, customerId), isNull(customers.primaryEmail)))
+      .returning({ id: customers.id });
+    if (!filled) return;
+    await this.audit.record(tx, ctx, {
+      action: 'customer.updated',
+      targetType: 'customer',
+      targetId: customerId,
+      data: { primaryEmail: email },
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'customer.updated',
+      aggregateType: 'customer',
+      aggregateId: customerId,
+      payload: { fields: ['primaryEmail'] },
+    });
   }
 
   /** Moves identities, tickets and conversations from source to target, then retires source. */

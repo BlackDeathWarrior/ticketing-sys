@@ -102,4 +102,5 @@ export const CHANNEL_LABELS: Record<string, string> = {
   whatsapp: 'WhatsApp',
   voice: 'Phone call',
   agent: 'Opened by our team',
+  api: 'In the app',
 };

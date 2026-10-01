@@ -57,6 +57,12 @@ export interface Ticket {
   handling: TicketHandling;
   /** The most urgent SLA timer; null when no policy applies. */
   sla: { state: SlaState; minutes: number | null; label?: string; raw: string } | null;
+  /** The outside app that raised the ticket through the API, by name. */
+  integration: string | null;
+  /** That app's id for what the ticket is about. */
+  externalRef: string | null;
+  /** Context the app sent along. Third-party data: shown as text, never trusted. */
+  metadata: Record<string, unknown>;
 }
 
 export type MessageKind = 'customer' | 'agent' | 'ai' | 'note' | 'system';

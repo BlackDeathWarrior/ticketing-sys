@@ -13,6 +13,7 @@ import { CsatModule } from './csat/csat.module';
 import { CustomersModule } from './customers/customers.module';
 import { HealthController } from './health/health.controller';
 import { InfraModule } from './infra/infra.module';
+import { IntegrationApiModule } from './integration-api/integration-api.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { KbModule } from './kb/kb.module';
 import { LearningModule } from './learning/learning.module';
@@ -71,6 +72,7 @@ const env = loadEnv();
     RoutingModule,
     NotificationsModule,
     HandoverModule,
+    IntegrationApiModule,
   ],
   controllers: [HealthController],
   providers: [

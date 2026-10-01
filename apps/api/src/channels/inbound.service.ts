@@ -49,131 +49,139 @@ export class InboundService {
   ) {}
 
   async handle(input: MessageEnvelope): Promise<InboundResult> {
+    return this.db.transaction((tx) => this.handleInTx(tx, input));
+  }
+
+  /** The same pipeline inside the caller's transaction, for adapters that write more with it. */
+  async handleInTx(tx: DbOrTx, input: MessageEnvelope): Promise<InboundResult> {
     const env = messageEnvelopeSchema.parse(input);
     const sender = normalizeIdentity(env.from.identity.type, env.from.identity.value);
 
-    return this.db.transaction(async (tx) => {
-      // Serialize messages from the same sender on the same channel, so two
-      // quick messages can't both open a new ticket.
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtext(${`${env.channel}:${env.from.identity.type}:${sender}`}))`,
-      );
+    // Serialize messages from the same sender on the same channel, so two
+    // quick messages can't both open a new ticket.
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${`${env.channel}:${env.from.identity.type}:${sender}`}))`,
+    );
 
-      const dup = await this.conversations.findMessageByChannelId(
-        tx,
-        env.channel,
-        env.channelMessageId,
-      );
-      if (dup) {
-        return {
-          duplicate: true,
-          messageId: dup.message.id,
-          conversationId: dup.message.conversationId,
-          ticketId: dup.ticketId,
-          createdTicket: false,
-        };
-      }
-
-      const { customer } = await this.customers.resolveOrCreate(
-        SYSTEM_CTX,
-        {
-          type: env.from.identity.type,
-          value: env.from.identity.value,
-          displayName: env.from.displayName,
-        },
-        tx,
-      );
-      const ctx: RequestCtx = { actor: { type: 'customer', id: customer.id } };
-      for (const extra of env.from.extraIdentities) {
-        await this.customers.attachIdentity(tx, ctx, customer.id, extra);
-      }
-
-      let { conversation, ticket } = await this.match(tx, env, customer.id);
-      if (ticket && (await this.workflow.status(ticket.status)).category === 'closed') {
-        // Closed tickets stay closed; the customer gets a fresh one.
-        conversation = null;
-        ticket = null;
-      }
-
-      let createdTicket = false;
-      if (!ticket) {
-        ticket = await this.tickets.createInTx(tx, ctx, {
-          customerId: customer.id,
-          channel: env.channel,
-          subject: subjectFor(env),
-          description: env.text,
-          categoryId: env.ticket?.categoryId,
-          priority: 'normal',
-          tags: [],
-        });
-        createdTicket = true;
-      } else {
-        await this.tickets.reopenOnCustomerReply(tx, ctx, ticket, {
-          aiControlled: conversation?.controller === 'ai' && conversation.ticketId === ticket.id,
-        });
-      }
-
-      if (!conversation || conversation.ticketId !== ticket.id) {
-        // New conversations go to the AI when it is on for this channel and a model can serve it.
-        const aiTakesIt = await this.aiPolicy.takesNewConversations(env.channel);
-        conversation = await this.conversations.create(tx, ctx, {
-          ticketId: ticket.id,
-          customerId: customer.id,
-          channel: env.channel,
-          externalThreadId: env.threadKey,
-          controller: aiTakesIt ? 'ai' : 'none',
-          metadata: conversationMetadata(env),
-        });
-        if (aiTakesIt) {
-          await this.tickets.moveIfAllowed(tx, ctx, ticket.id, 'ai_handling');
-          await this.tickets.setHandling(tx, ticket.id, 'ai');
-        }
-      }
-
-      const message = await this.conversations.addMessage(tx, {
-        conversationId: conversation.id,
-        channel: env.channel,
-        direction: 'inbound',
-        authorType: 'customer',
-        body: env.text,
-        attachments: env.attachments,
-        channelMessageId: env.channelMessageId,
-        metadata: { ...messageMetadata(env), ...(env.subject ? { subject: env.subject } : {}) },
-      });
-
-      if (env.channel === 'whatsapp') {
-        // Keeps the send address and the 24-hour window current.
-        await this.conversations.mergeMetadata(tx, conversation.id, conversationMetadata(env));
-      }
-
-      const data = {
-        conversationId: conversation.id,
-        messageId: message.id,
-        channel: env.channel,
-        createdTicket,
-      };
-      await this.audit.record(tx, ctx, {
-        action: 'message.received',
-        targetType: 'ticket',
-        targetId: ticket.id,
-        data,
-      });
-      await this.outbox.publish(tx, ctx, {
-        type: 'message.received',
-        aggregateType: 'ticket',
-        aggregateId: ticket.id,
-        payload: data,
-      });
-
+    const dup = await this.conversations.findMessageByChannelId(
+      tx,
+      env.channel,
+      env.channelMessageId,
+    );
+    if (dup) {
       return {
-        duplicate: false,
-        messageId: message.id,
-        conversationId: conversation.id,
+        duplicate: true,
+        messageId: dup.message.id,
+        conversationId: dup.message.conversationId,
+        ticketId: dup.ticketId,
+        createdTicket: false,
+      };
+    }
+
+    const { customer } = await this.customers.resolveOrCreate(
+      SYSTEM_CTX,
+      {
+        type: env.from.identity.type,
+        value: env.from.identity.value,
+        displayName: env.from.displayName,
+      },
+      tx,
+    );
+    const ctx: RequestCtx = { actor: { type: 'customer', id: customer.id } };
+    for (const extra of env.from.extraIdentities) {
+      await this.customers.attachIdentity(tx, ctx, customer.id, extra);
+    }
+
+    let { conversation, ticket } = await this.match(tx, env, customer.id);
+    if (ticket && (await this.workflow.status(ticket.status)).category === 'closed') {
+      // Closed tickets stay closed; the customer gets a fresh one.
+      conversation = null;
+      ticket = null;
+    }
+
+    let createdTicket = false;
+    if (!ticket) {
+      ticket = await this.tickets.createInTx(tx, ctx, {
+        customerId: customer.id,
+        channel: env.channel,
+        subject: subjectFor(env),
+        description: env.text,
+        categoryId: env.ticket?.categoryId,
+        priority: env.ticket?.priority ?? 'normal',
+        tags: env.ticket?.tags ?? [],
+        externalRef: env.ticket?.externalRef,
+        metadata: env.ticket?.metadata,
+        integrationId: env.ticket?.integrationId,
+      });
+      createdTicket = true;
+    } else {
+      await this.tickets.reopenOnCustomerReply(tx, ctx, ticket, {
+        aiControlled: conversation?.controller === 'ai' && conversation.ticketId === ticket.id,
+      });
+    }
+
+    if (!conversation || conversation.ticketId !== ticket.id) {
+      // New conversations go to the AI when it is on for this channel and a model can serve it,
+      // unless the sender asked for people only.
+      const aiTakesIt =
+        env.ai !== 'off' && (await this.aiPolicy.takesNewConversations(env.channel));
+      conversation = await this.conversations.create(tx, ctx, {
         ticketId: ticket.id,
         customerId: customer.id,
-        createdTicket,
-      };
+        channel: env.channel,
+        externalThreadId: env.threadKey,
+        controller: aiTakesIt ? 'ai' : 'none',
+        metadata: conversationMetadata(env),
+      });
+      if (aiTakesIt) {
+        await this.tickets.moveIfAllowed(tx, ctx, ticket.id, 'ai_handling');
+        await this.tickets.setHandling(tx, ticket.id, 'ai');
+      }
+    }
+
+    const message = await this.conversations.addMessage(tx, {
+      conversationId: conversation.id,
+      channel: env.channel,
+      direction: 'inbound',
+      authorType: 'customer',
+      body: env.text,
+      attachments: env.attachments,
+      channelMessageId: env.channelMessageId,
+      metadata: { ...messageMetadata(env), ...(env.subject ? { subject: env.subject } : {}) },
     });
+
+    if (env.channel === 'whatsapp') {
+      // Keeps the send address and the 24-hour window current.
+      await this.conversations.mergeMetadata(tx, conversation.id, conversationMetadata(env));
+    }
+
+    const data = {
+      conversationId: conversation.id,
+      messageId: message.id,
+      channel: env.channel,
+      createdTicket,
+    };
+    await this.audit.record(tx, ctx, {
+      action: 'message.received',
+      targetType: 'ticket',
+      targetId: ticket.id,
+      data,
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'message.received',
+      aggregateType: 'ticket',
+      aggregateId: ticket.id,
+      payload: data,
+    });
+
+    return {
+      duplicate: false,
+      messageId: message.id,
+      conversationId: conversation.id,
+      ticketId: ticket.id,
+      customerId: customer.id,
+      createdTicket,
+    };
   }
 
   /**
@@ -190,11 +198,15 @@ export class InboundService {
     let ticketId: string | undefined;
 
     if (env.ticket?.id) {
-      // The portal names the ticket. The sender must still be its customer.
+      // The portal or an integration names the ticket. The sender must still be its customer.
       const pinned = await this.tickets.lockRow(tx, env.ticket.id);
       if (pinned.customerId === customerId) {
         return {
-          conversation: await this.conversations.findLatestForTicket(tx, pinned.id, EMAIL_THREADS),
+          conversation: await this.conversations.findLatestForTicket(
+            tx,
+            pinned.id,
+            env.channel === 'api' ? API_THREADS : EMAIL_THREADS,
+          ),
           ticket: pinned,
         };
       }
@@ -235,6 +247,8 @@ export class InboundService {
 
 /** Conversations whose replies travel by email. */
 const EMAIL_THREADS: Channel[] = ['email', 'web_form'];
+/** Conversations an integration reads through the API. */
+const API_THREADS: Channel[] = ['api'];
 
 function subjectFor(env: ParsedEnvelope): string {
   if (env.subject) return env.subject.slice(0, 300);
@@ -244,7 +258,13 @@ function subjectFor(env: ParsedEnvelope): string {
       .find((l) => l.trim())
       ?.trim() ?? '';
   const label =
-    env.channel === 'webchat' ? 'Chat' : env.channel === 'whatsapp' ? 'WhatsApp' : env.channel;
+    env.channel === 'webchat'
+      ? 'Chat'
+      : env.channel === 'whatsapp'
+        ? 'WhatsApp'
+        : env.channel === 'api'
+          ? 'Request'
+          : env.channel;
   return firstLine ? `${label}: ${firstLine.slice(0, 120)}` : `${label} conversation`;
 }
 
@@ -271,6 +291,9 @@ function conversationMetadata(env: ParsedEnvelope): Record<string, unknown> {
   if (env.channel === 'whatsapp') {
     // Set by the WhatsApp adapter; see WaConversationMeta.
     return (env.metadata.conversation ?? {}) as Record<string, unknown>;
+  }
+  if (env.channel === 'api') {
+    return { integrationId: env.ticket?.integrationId, customerName: env.from.displayName };
   }
   return {};
 }

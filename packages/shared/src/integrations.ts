@@ -1,5 +1,14 @@
 import { z } from 'zod';
 import type { Permission } from './permissions';
+import {
+  externalRefSchema,
+  type Priority,
+  prioritySchema,
+  STATUS_CATEGORIES,
+  type StatusCategory,
+  ticketMetadataSchema,
+  ticketTagSchema,
+} from './tickets';
 
 /**
  * Integrations (ADR 0022): an outside app that connects to TMS. Its API keys,
@@ -99,3 +108,98 @@ export interface IntegrationIdentity {
   integration: { slug: string; name: string };
   key: { name: string; prefix: string; scopes: ApiKeyScope[]; rateLimitPerMinute: number };
 }
+
+// ---- The integration API: tickets (ADR 0023) ----
+
+/** Who the ticket is for, as the integration knows them. At least one of the two ids. */
+export const integrationCustomerSchema = z
+  .object({
+    /** The app's own id for the person: the same id always finds the same customer. */
+    externalId: z.string().trim().min(1).max(200).optional(),
+    email: z.string().trim().email().max(320).optional(),
+    name: z.string().trim().min(1).max(200).optional(),
+  })
+  .refine((c) => !!c.externalId || !!c.email, {
+    message: 'Give the customer an externalId or an email',
+  });
+export type IntegrationCustomerInput = z.output<typeof integrationCustomerSchema>;
+
+export const createIntegrationTicketSchema = z.object({
+  customer: integrationCustomerSchema,
+  subject: z.string().trim().min(1).max(300),
+  body: z.string().trim().min(1).max(20_000),
+  /** A top-level category by name, as set up in Settings → Tickets. */
+  category: z.string().trim().min(1).max(100).optional(),
+  priority: prioritySchema.default('normal'),
+  tags: z.array(ticketTagSchema).max(20).default([]),
+  externalRef: externalRefSchema.optional(),
+  metadata: ticketMetadataSchema.default({}),
+  /** `off`: people only; the AI does not answer this ticket. */
+  ai: z.enum(['default', 'off']).default('default'),
+});
+export type CreateIntegrationTicketInput = z.output<typeof createIntegrationTicketSchema>;
+
+export const integrationMessageSchema = z.object({
+  body: z.string().trim().min(1).max(20_000),
+});
+export type IntegrationMessageInput = z.output<typeof integrationMessageSchema>;
+
+/** Sent as the `Idempotency-Key` header: a retry with the same key creates nothing new. */
+export const idempotencyKeySchema = z
+  .string()
+  .trim()
+  .regex(/^[\x21-\x7e]{8,200}$/, 'Use 8 to 200 printable characters without spaces');
+
+export const listIntegrationTicketsQuerySchema = z.object({
+  externalRef: externalRefSchema.optional(),
+  /** Where the ticket is in its life, whatever the workflow's statuses are called. */
+  state: z.enum(STATUS_CATEGORIES).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+export type ListIntegrationTicketsQuery = z.output<typeof listIntegrationTicketsQuerySchema>;
+
+export const integrationMessagesQuerySchema = z.object({
+  /** Only messages created after this moment: pass the last `createdAt` you have seen. */
+  after: z.string().datetime().optional(),
+});
+
+export interface IntegrationTicketView {
+  /** How the ticket is addressed in this API and shown to people, e.g. `TMS-1042`. */
+  reference: string;
+  subject: string;
+  status: { key: string; name: string; state: StatusCategory };
+  priority: Priority;
+  category: string | null;
+  tags: string[];
+  externalRef: string | null;
+  metadata: Record<string, unknown>;
+  customer: { name: string; email: string | null };
+  /** Whether a person, the AI or nobody yet is answering. */
+  handling: string;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+  closedAt: string | null;
+}
+
+/** A message the customer wrote or was sent. Drafts and internal notes never appear. */
+export interface IntegrationMessageView {
+  id: string;
+  from: 'customer' | 'assistant' | 'support' | 'system';
+  /** First name of the agent who wrote it, when a person did. */
+  name: string | null;
+  body: string;
+  createdAt: string;
+}
+
+export interface IntegrationTicketList {
+  items: IntegrationTicketView[];
+  total: number;
+}
+
+/**
+ * The `external_id` identity of an integration's customer. Namespaced by the
+ * integration, so two apps that both have a user "42" get two customers.
+ */
+export const integrationExternalId = (slug: string, externalId: string) => `${slug}:${externalId}`;

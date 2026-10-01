@@ -213,7 +213,7 @@ describe('AI agent on web chat', () => {
     expect(run).toMatchObject({
       decision: 'sent',
       model: 'openai/scripted-cheap',
-      promptVersion: 'agent-v3',
+      promptVersion: 'agent-v4',
     });
     expect(run.sources.length).toBeGreaterThan(0);
     const reply = await waitFor(async () => {
@@ -466,6 +466,92 @@ describe('AI agent on email', () => {
       const m = (await conversations(r.ticketId))[0]!.messages.find((x) => x.id === draft.id);
       return m?.deliveryStatus === 'sent' ? m : undefined;
     }, 'the approved email to be sent');
+  });
+});
+
+describe('AI agent on tickets an integration raises', () => {
+  let key: string;
+
+  /** Calls the integration API with the app's key. */
+  async function app(method: 'GET' | 'POST', url: string, body?: unknown) {
+    const res = await t.app.inject({
+      method,
+      url: `/api/v1${url}`,
+      headers: {
+        authorization: `Bearer ${key}`,
+        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+      },
+      payload: body === undefined ? undefined : JSON.stringify(body),
+    });
+    return { status: res.statusCode, body: res.json() };
+  }
+  const raise = (extra: Record<string, unknown> = {}) =>
+    app('POST', '/integration/tickets', {
+      customer: { externalId: uniq('shopper-'), name: 'Asha Verma' },
+      subject: 'Refund timing',
+      body: 'When will my refund reach my card?',
+      externalRef: 'ORDER-55120',
+      metadata: { order_total: 1499 },
+      ...extra,
+    });
+  const seenByApp = async (reference: string) =>
+    (await app('GET', `/integration/tickets/${reference}/messages`)).body as Array<{
+      from: string;
+      body: string;
+    }>;
+
+  beforeAll(async () => {
+    const integration = await t.call('POST', '/integrations', {
+      token: admin,
+      body: { slug: uniq('ai-app-'), name: 'Storefront' },
+    });
+    const made = await t.call('POST', `/integrations/${integration.body.id}/keys`, {
+      token: admin,
+      body: { name: 'Backend', scopes: ['integration:ticket'] },
+    });
+    key = made.body.key;
+  });
+
+  it('drafts the answer; the app sees it only once a person approves it', async () => {
+    const made = await raise();
+    expect(made.status).toBe(201);
+    expect(made.body.status.key).toBe('ai_handling');
+    const ticketId = (await ticket(made.body.reference)).id as string;
+
+    const run = await waitForTurn(ticketId);
+    expect(run).toMatchObject({ decision: 'drafted', promptVersion: 'agent-v4' });
+    expect(run.rules).toContain('draft_channel');
+    const draft = (await conversations(ticketId))[0]!.messages.find(
+      (m) => m.deliveryStatus === 'draft',
+    )!;
+    expect(draft.body).toMatch(/business days/);
+    // No "a person will reply" message either: that is for live chats.
+    expect((await seenByApp(made.body.reference)).map((m) => m.from)).toEqual(['customer']);
+
+    expect(
+      (await t.call('POST', `/messages/${draft.id}/approve`, { token: agent, body: {} })).status,
+    ).toBe(200);
+    await waitFor(async () => {
+      const m = (await conversations(ticketId))[0]!.messages.find((x) => x.id === draft.id);
+      return m?.deliveryStatus === 'sent' ? m : undefined;
+    }, 'the approved reply to be marked sent');
+    const seen = await seenByApp(made.body.reference);
+    expect(seen.map((m) => m.from)).toEqual(['customer', 'assistant']);
+    expect(seen[1]!.body).toBe(draft.body);
+  });
+
+  it('leaves the ticket to people when the app asks for that', async () => {
+    const made = await raise({ ai: 'off' });
+    expect(made.body.status.key).toBe('new');
+    expect(made.body.handling).toBe('none');
+    const ticketId = (await ticket(made.body.reference)).id as string;
+    expect((await conversations(ticketId))[0]!.controller).toBe('none');
+    // The classifier still files it; no turn runs.
+    await waitFor(
+      async () => ((await ticket(ticketId)).aiClassification ? true : undefined),
+      'the ticket to be classified',
+    );
+    expect((await runs(ticketId)).filter((r) => r.kind === 'turn')).toEqual([]);
   });
 });
 

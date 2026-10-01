@@ -3,6 +3,8 @@ import {
   expiresAtFor,
   isValidSlug,
   keyStatusLabel,
+  metadataLabel,
+  metadataRows,
   parseRateLimit,
   scopeSummary,
   slugFromName,
@@ -23,6 +25,38 @@ describe('integration slugs', () => {
     expect(isValidSlug('a')).toBe(false);
     expect(isValidSlug('9lives')).toBe(false);
     expect(isValidSlug('Has Space')).toBe(false);
+  });
+});
+
+describe('ticket context', () => {
+  it('turns keys into labels', () => {
+    expect(metadataLabel('price_current')).toBe('Price current');
+    expect(metadataLabel('productUrl')).toBe('Product url');
+    expect(metadataLabel('scraped-at')).toBe('Scraped at');
+    expect(metadataLabel('_')).toBe('_');
+  });
+
+  it('shows values as text, leaving out empty ones and cutting long ones', () => {
+    const rows = metadataRows({
+      source: 'Myntra',
+      price_current: 1499,
+      in_stock: false,
+      rating: null,
+      note: '',
+      other_sources: [{ source: 'Amazon', price: 1399 }],
+      html: '<script>alert(1)</script>'.repeat(20),
+    });
+    expect(rows.map((r) => r.key)).toEqual([
+      'source',
+      'price_current',
+      'in_stock',
+      'other_sources',
+      'html',
+    ]);
+    expect(rows[1]).toEqual({ key: 'price_current', label: 'Price current', value: '1499' });
+    expect(rows[2]!.value).toBe('false');
+    expect(rows[3]!.value).toBe('[{"source":"Amazon","price":1399}]');
+    expect(rows[4]!.value).toHaveLength(301);
   });
 });
 
