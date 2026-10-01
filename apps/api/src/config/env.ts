@@ -43,8 +43,22 @@ const envSchema = z
     SARVAM_API_URL: z.string().url().default('https://api.sarvam.ai'),
     /** Meta Graph API base URL. Only change it to go through a proxy. */
     WHATSAPP_GRAPH_URL: z.string().url().default('https://graph.facebook.com'),
+    /**
+     * Rate limits on public and sign-in routes (ADR 0021). Only switch them off
+     * for tests that hammer those routes on purpose.
+     */
+    RATE_LIMITS: z.enum(['on', 'off']).default('on'),
     /** Where customers reach the help center; used in the links we email them. */
     HELP_CENTER_URL: z.string().url().default('http://localhost:8080/help/'),
+    /**
+     * Where to send traces (an OTLP/HTTP collector, e.g. http://otel-collector:4318).
+     * Unset: tracing is off and costs nothing.
+     */
+    OTEL_EXPORTER_OTLP_ENDPOINT: z.preprocess(
+      // Compose passes an empty value when it isn't set.
+      (v) => (v === '' ? undefined : v),
+      z.string().url().optional(),
+    ),
     /** Serve Swagger UI at /docs. Defaults to on outside production. */
     API_DOCS: bool.optional(),
 
@@ -71,6 +85,8 @@ const envSchema = z
       ),
     /** How often the worker resolves tickets the AI answered and the customer left alone. 0 = off. */
     AI_AUTO_RESOLVE_SWEEP_SECONDS: z.coerce.number().int().min(0).max(86_400).default(600),
+    /** How often the worker deletes operational data past its retention period. 0 = off. */
+    RETENTION_SWEEP_HOURS: z.coerce.number().int().min(0).max(168).default(24),
     /** How long a transactional tool call waits for a supervisor before it expires. */
     APPROVAL_TTL_MINUTES: z.coerce.number().int().min(1).max(10_080).default(1440),
     /** How often the worker checks SLA timers for at-risk and breached tickets. */

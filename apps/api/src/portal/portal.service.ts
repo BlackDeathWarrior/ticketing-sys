@@ -24,18 +24,18 @@ import {
   type PortalTicketSummary,
   type StatusCategory,
 } from '@tms/shared';
-import { eq } from 'drizzle-orm';
-import type Redis from 'ioredis';
+import { eq, lt } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import { InboundService } from '../channels/inbound.service';
 import type { RequestCtx } from '../common/request-context';
+import { RateLimiterService } from '../common/rate-limit';
 import { readToken, signToken } from '../common/signed-token';
 import type { Env } from '../config/env';
 import { ConversationsService } from '../conversations/conversations.service';
 import { CsatService } from '../csat/csat.service';
 import { CustomersService } from '../customers/customers.service';
-import { DB, ENV, REDIS } from '../infra/tokens';
+import { DB, ENV } from '../infra/tokens';
 import { CustomerExperienceService } from '../settings/customer-experience.service';
 import { StorageService } from '../storage/storage.service';
 import { TicketsService } from '../tickets/tickets.service';
@@ -69,7 +69,7 @@ export class PortalService {
   constructor(
     @Inject(DB) private readonly db: Database,
     @Inject(ENV) private readonly env: Env,
-    @Inject(REDIS) private readonly redis: Redis,
+    private readonly limiter: RateLimiterService,
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
@@ -96,10 +96,14 @@ export class PortalService {
    */
   async requestLink(email: string, ctx: RequestCtx): Promise<void> {
     await this.assertEnabled();
-    const key = `tms:portal:links:${createHash('sha256').update(email).digest('hex')}`;
-    const count = await this.redis.incr(key);
-    if (count === 1) await this.redis.expire(key, RATE_WINDOW_SECONDS);
-    if (count > PORTAL_LINKS_PER_ADDRESS) {
+    // Always on, whatever RATE_LIMITS says: it protects a customer's inbox, not our servers.
+    const allowance = await this.limiter.hit(
+      'portal-links',
+      createHash('sha256').update(email).digest('hex'),
+      PORTAL_LINKS_PER_ADDRESS,
+      RATE_WINDOW_SECONDS,
+    );
+    if (!allowance.allowed) {
       throw new HttpException(
         'Too many sign-in links were requested for this address. Try again in 15 minutes.',
         HttpStatus.TOO_MANY_REQUESTS,
@@ -333,5 +337,14 @@ export class PortalService {
   private async categories(): Promise<Map<string, StatusCategory>> {
     const { statuses } = await this.workflow.load();
     return new Map(statuses.map((s) => [s.key, s.category as StatusCategory]));
+  }
+
+  /** Deletes sign-in links that expired before `before`. */
+  async purgeLogins(before: Date): Promise<number> {
+    const rows = await this.db
+      .delete(portalLogins)
+      .where(lt(portalLogins.expiresAt, before))
+      .returning({ id: portalLogins.id });
+    return rows.length;
   }
 }

@@ -1,27 +1,10 @@
-import {
-  type BeforeApplicationShutdown,
-  Controller,
-  Get,
-  Inject,
-  Injectable,
-  Logger,
-  Module,
-  type OnApplicationBootstrap,
-  Param,
-  ParseUUIDPipe,
-  Res,
-  StreamableFile,
-} from '@nestjs/common';
+import { Controller, Get, Module, Param, ParseUUIDPipe, Res, StreamableFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Queue, Worker } from 'bullmq';
 import type { FastifyReply } from 'fastify';
-import Redis from 'ioredis';
 import { AiModule } from '../../ai/ai.module';
 import { ChatModule } from '../../chat/chat.module';
 import { Ctx, type RequestCtx, RequirePermission } from '../../common/request-context';
-import type { Env } from '../../config/env';
 import { HandoverModule } from '../../handover/handover.module';
-import { ENV } from '../../infra/tokens';
 import { TicketsModule } from '../../tickets/tickets.module';
 import { TicketsService } from '../../tickets/tickets.service';
 import { UsersModule } from '../../users/users.module';
@@ -84,44 +67,3 @@ export class VoiceController {
   exports: [VoiceService],
 })
 export class VoiceModule {}
-
-export const VOICE_RETENTION_QUEUE = 'voice-retention';
-
-/** Worker side: once a day, deletes recordings older than the retention period. */
-@Injectable()
-export class VoiceRetentionWorker implements OnApplicationBootstrap, BeforeApplicationShutdown {
-  private readonly logger = new Logger(VoiceRetentionWorker.name);
-  private readonly connection: Redis;
-  private readonly queue: Queue;
-  private worker?: Worker;
-
-  constructor(
-    @Inject(ENV) env: Env,
-    private readonly records: VoiceCallsService,
-  ) {
-    this.connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
-    this.queue = new Queue(VOICE_RETENTION_QUEUE, { connection: this.connection });
-  }
-
-  async onApplicationBootstrap() {
-    this.worker = new Worker(
-      VOICE_RETENTION_QUEUE,
-      async () => {
-        const purged = await this.records.purgeRecordings();
-        if (purged) this.logger.log(`deleted ${purged} call recording(s) past retention`);
-      },
-      { connection: this.connection.duplicate(), concurrency: 1 },
-    );
-    await this.queue.upsertJobScheduler(
-      'voice-retention',
-      { every: 24 * 3_600_000 },
-      { name: 'purge', opts: { removeOnComplete: 10, removeOnFail: 10 } },
-    );
-  }
-
-  async beforeApplicationShutdown() {
-    await this.worker?.close();
-    await this.queue.close();
-    await this.connection.quit().catch(() => undefined);
-  }
-}

@@ -3,6 +3,7 @@ import { Tabs } from '../../components/ui';
 import { useSession } from '../../lib/session';
 import { CustomersPanel } from '../admin/CustomersPanel';
 import { PeoplePanel } from '../admin/PeoplePanel';
+import { SystemPanel } from '../admin/SystemPanel';
 import { TicketSetupPanel } from '../admin/TicketSetupPanel';
 import { AiPanel } from './AiPanel';
 import { ChannelsPanel } from './ChannelsPanel';
@@ -76,6 +77,7 @@ export function SettingsPage() {
         {tab === 'tickets' && <TicketSetupPanel />}
         {tab === 'people' && <PeoplePanel />}
         {tab === 'usage' && <UsagePanel />}
+        {tab === 'system' && <SystemPanel />}
       </div>
     </div>
   );

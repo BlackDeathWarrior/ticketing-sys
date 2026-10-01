@@ -77,6 +77,14 @@ export class KbIndexerService {
     }
 
     await this.db.transaction(async (tx) => {
+      // One swap at a time per document. Two jobs for one document can overlap (a new
+      // version and a "re-index everything"); without the lock neither sees the other's
+      // chunks to delete, and the document ends up with both sets.
+      await tx
+        .select({ id: kbDocuments.id })
+        .from(kbDocuments)
+        .where(eq(kbDocuments.id, doc.id))
+        .for('update');
       await tx.delete(kbChunks).where(eq(kbChunks.documentId, doc.id));
       await tx.insert(kbChunks).values(
         chunks.map((c, i) => ({

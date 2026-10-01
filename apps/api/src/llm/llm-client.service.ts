@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { type Database, llmCalls } from '@tms/db';
 import type { ModelRole } from '@tms/shared';
+import { lt } from 'drizzle-orm';
 import OpenAI from 'openai';
 import type {
   ChatCompletion,
@@ -10,6 +11,7 @@ import type {
 } from 'openai/resources/chat/completions';
 import type { Env } from '../config/env';
 import { DB, ENV } from '../infra/tokens';
+import { currentTrace, currentTraceId, SpanKind, withSpan } from '../telemetry/tracing';
 import { rankCandidates, routeOrder } from './llm-router';
 import { LlmSettingsService, modelAlias, modelIdFromAlias } from './llm-settings.service';
 
@@ -61,6 +63,12 @@ const DEFAULT_TIMEOUT_MS = 60_000;
  * written to `llm_calls` with its cost, which is what the caps are checked
  * against.
  */
+/** Passes the trace on to LiteLLM, which continues it when its own tracing is on. */
+function traceHeaders(): Record<string, string> | undefined {
+  const traceparent = currentTrace();
+  return traceparent ? { traceparent } : undefined;
+}
+
 @Injectable()
 export class LlmClientService {
   private readonly logger = new Logger(LlmClientService.name);
@@ -91,19 +99,27 @@ export class LlmClientService {
       ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
       metadata: { tms_role: req.role, ticket_id: req.ticketId ?? undefined },
     } as ChatCompletionCreateParamsNonStreaming;
-    try {
-      const { data, response } = await this.client.chat.completions
-        .create(body, { timeout: req.timeoutMs ?? DEFAULT_TIMEOUT_MS })
-        .withResponse();
-      const meta = await this.record(req, response.headers, order[0]!, started, 'ok', {
-        prompt: data.usage?.prompt_tokens,
-        completion: data.usage?.completion_tokens,
-      });
-      return { completion: data, ...meta };
-    } catch (err) {
-      await this.recordError(req, order[0]!, started, err);
-      throw err;
-    }
+    return withSpan(
+      `llm chat ${req.role}`,
+      { kind: SpanKind.CLIENT, attributes: { 'tms.llm.role': req.role } },
+      async (span) => {
+        req = { ...req, traceId: req.traceId ?? currentTraceId() };
+        try {
+          const { data, response } = await this.client.chat.completions
+            .create(body, { timeout: req.timeoutMs ?? DEFAULT_TIMEOUT_MS, headers: traceHeaders() })
+            .withResponse();
+          const meta = await this.record(req, response.headers, order[0]!, started, 'ok', {
+            prompt: data.usage?.prompt_tokens,
+            completion: data.usage?.completion_tokens,
+          });
+          span.setAttributes({ 'tms.llm.model': meta.model, 'tms.llm.cost_usd': meta.costUsd });
+          return { completion: data, ...meta };
+        } catch (err) {
+          await this.recordError(req, order[0]!, started, err);
+          throw err;
+        }
+      },
+    );
   }
 
   async embed(
@@ -115,13 +131,16 @@ export class LlmClientService {
     const started = Date.now();
     try {
       const { data, response } = await this.client.embeddings
-        .create({
-          model: modelAlias(order[0]!),
-          input,
-          // The SDK defaults to base64, which not every provider behind LiteLLM returns.
-          encoding_format: 'float',
-          ...(ctx.dimensions ? { dimensions: ctx.dimensions } : {}),
-        })
+        .create(
+          {
+            model: modelAlias(order[0]!),
+            input,
+            // The SDK defaults to base64, which not every provider behind LiteLLM returns.
+            encoding_format: 'float',
+            ...(ctx.dimensions ? { dimensions: ctx.dimensions } : {}),
+          },
+          { headers: traceHeaders() },
+        )
         .withResponse();
       const meta = await this.record(req, response.headers, order[0]!, started, 'ok', {
         prompt: data.usage?.prompt_tokens,
@@ -218,5 +237,14 @@ export class LlmClientService {
         traceId: req.traceId ?? null,
       })
       .catch(() => undefined);
+  }
+
+  /** Deletes the log of model calls made before `before` (usage figures then start later). */
+  async purgeCalls(before: Date): Promise<number> {
+    const rows = await this.db
+      .delete(llmCalls)
+      .where(lt(llmCalls.createdAt, before))
+      .returning({ id: llmCalls.id });
+    return rows.length;
   }
 }

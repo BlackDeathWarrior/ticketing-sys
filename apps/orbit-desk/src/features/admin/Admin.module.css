@@ -66,3 +66,22 @@
   font-size: var(--text-ui);
   color: var(--color-lilac-white);
 }
+
+/* Failed jobs, grouped under the kind of work they belong to. */
+.failed {
+  margin-top: var(--spacing-16);
+}
+
+.failedTitle {
+  margin: 0 0 var(--spacing-4);
+  font-size: var(--text-ui);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-ash);
+}
+
+.jobDetail {
+  margin: 2px 0 0;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+  overflow-wrap: anywhere;
+}

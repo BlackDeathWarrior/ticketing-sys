@@ -29,6 +29,8 @@ export const PERMISSIONS = [
   'report:export',
   /** Review rated tickets and write the lessons the AI follows. */
   'learning:manage',
+  /** Failed background jobs and data retention. Admin only. */
+  'system:manage',
   /** Search the knowledge base and read documents. */
   'kb:read',
   /** Add, edit, approve, archive and delete knowledge base documents. */

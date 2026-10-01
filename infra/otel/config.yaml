@@ -11,7 +11,8 @@ processors:
 
 exporters:
   debug:
-    verbosity: basic
+    # One line per span (name, trace id) in `docker compose logs otel-collector`.
+    verbosity: normal
 
 service:
   pipelines:

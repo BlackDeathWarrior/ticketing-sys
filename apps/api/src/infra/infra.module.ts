@@ -1,6 +1,7 @@
 import { Global, Inject, Module, type OnApplicationShutdown } from '@nestjs/common';
 import { createDb, type DbHandle } from '@tms/db';
 import Redis from 'ioredis';
+import { RateLimiterService } from '../common/rate-limit';
 import { type Env, loadEnv } from '../config/env';
 import { DB, DB_HANDLE, ENV, REDIS } from './tokens';
 
@@ -21,8 +22,9 @@ import { DB, DB_HANDLE, ENV, REDIS } from './tokens';
       useFactory: (env: Env) =>
         new Redis(env.REDIS_URL, { lazyConnect: false, maxRetriesPerRequest: 2 }),
     },
+    RateLimiterService,
   ],
-  exports: [ENV, DB, DB_HANDLE, REDIS],
+  exports: [ENV, DB, DB_HANDLE, REDIS, RateLimiterService],
 })
 export class InfraModule implements OnApplicationShutdown {
   constructor(

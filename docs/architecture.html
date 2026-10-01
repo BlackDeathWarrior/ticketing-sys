@@ -363,10 +363,10 @@ const BUILT = {
  "agentui": "Built: Orbit Desk (queue, ticket drawer with AI and people lanes, take-over, approvals, knowledge base, voice calls, reports, settings and admin pages) and a basic test console. Customers have their own pages in the help center: request form, portal (My requests) and ratings (ADR 0019).",
  "agents": "Built: roles agent, team lead, supervisor, admin, with 19 permissions.",
  "reporting": "Built (Phase 10, ADR 0019): the overview, and a performance report that puts the AI next to people (resolution, handover, first reply, time to final answer, SLA, customer ratings, cost), with period, channel and team filters and an audited CSV export. Computed live (ADR 0006); no fact tables.",
- "iam": "Built: local accounts, JWT, rotating refresh tokens, permission guard. No SSO or MFA.",
+ "iam": "Built: local accounts, JWT, rotating refresh tokens, permission guard, sign-in lockout and rate limits on public routes (ADR 0021). No SSO or MFA.",
  "audit": "Built: append-only audit_log (a trigger blocks UPDATE and DELETE), written in the same transaction as each change.",
  "vault": "Built (Phase 3): LLM keys in LiteLLM credentials; channel and tool secrets AES-256-GCM in the secrets table, write-only, admin-only, audited (ADR 0009). The master key comes from the environment or SSM.",
- "obs": "Partial: pino logs with request IDs, health checks, worker heartbeat, an optional OTel collector. No traces or metrics in code.",
+ "obs": "Partial: pino logs with request IDs, health checks, worker heartbeat, a failed-jobs view for admins, and OpenTelemetry traces from the API through the worker to the model call, sent to an optional collector (ADR 0021). No metrics, dashboards or alerts.",
  "events": "Built: transactional outbox → BullMQ domain-events queue, woken by Postgres NOTIFY. Not Kafka."
 };
 

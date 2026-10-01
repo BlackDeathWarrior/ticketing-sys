@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
+import { RateLimitGuard } from '../common/rate-limit';
 import type { Env } from '../config/env';
 import { ENV } from '../infra/tokens';
 import { UsersModule } from '../users/users.module';
@@ -23,7 +24,8 @@ import { AuthService } from './auth.service';
   controllers: [AuthController],
   providers: [
     AuthService,
-    // Order matters: authenticate first, then check permissions.
+    // Order matters: rate limits before anything costly, then authenticate, then permissions.
+    { provide: APP_GUARD, useClass: RateLimitGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],

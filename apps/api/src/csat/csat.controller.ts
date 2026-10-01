@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { type CsatSubmit, csatSubmitSchema } from '@tms/shared';
+import { RateLimit } from '../common/rate-limit';
 import { Ctx, Public, type RequestCtx, RequirePermission } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
 import { CustomerExperienceService } from '../settings/customer-experience.service';
@@ -13,6 +14,7 @@ import { CsatService } from './csat.service';
  */
 @ApiTags('public')
 @Public()
+@RateLimit({ name: 'public-csat', limit: 60, windowSeconds: 60 })
 @Controller('public/csat')
 export class PublicCsatController {
   constructor(private readonly csat: CsatService) {}

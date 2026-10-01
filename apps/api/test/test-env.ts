@@ -33,6 +33,9 @@ export function applyTestEnv() {
     // Tests run the channel check themselves, so it never fires in the middle of one.
     CHANNEL_CHECK_SECONDS: '0',
     AI_AUTO_RESOLVE_SWEEP_SECONDS: '0',
+    RETENTION_SWEEP_HOURS: '0',
+    // Tests call public routes far faster than a person would; security.int.test.ts turns limits on.
+    RATE_LIMITS: 'off',
     TOOL_PRIVATE_HOSTS: new URL(FAKE_MCP_URL).hostname,
   });
 }

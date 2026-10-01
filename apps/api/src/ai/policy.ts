@@ -9,6 +9,9 @@ import type { AiBehaviour, AiChannelMode, AiDecision, AiRule } from '@tms/shared
  *   knowledge source can't be sent on its own: capped just below `sendAt`.
  * - A reply on a topic, or from a document, that customers rated badly
  *   (ADR 0020) can't be sent on its own either: a person sees it first.
+ * - A reply that repeats the agent's own instructions or carries something
+ *   shaped like a key is dropped and the conversation handed over: whatever
+ *   talked the model into it, the customer never sees it (ADR 0021).
  * - A reply that promises money or dates no tool confirmed is capped below
  *   `handoverBelow`, which hands the conversation over.
  * - Below `handoverBelow`: hand over. Too many unconfident turns in one
@@ -38,6 +41,24 @@ export interface Assessment {
 const PROMISE =
   /\b(i|we)(?:'ve| have| will| shall|'ll)? (?:issued|processed|refunded|credited|cancelled|canceled|approved|waived)\b|\brefund (?:has been|is|was) (?:issued|processed|approved)\b|\byou will (?:get|receive) (?:a |your )?(?:full )?(?:refund|credit|compensation)\b|\b(?:guarantee|guaranteed)\b|\b(?:arrive|be delivered|reach you) (?:by|on|tomorrow|today)\b/i;
 
+/**
+ * Text that only exists in the agent's instructions or tool plumbing, and the
+ * shapes of keys and tokens. None of it belongs in a message to a customer.
+ */
+const INTERNAL = [
+  /you are the first-line support assistant/i,
+  /finish every turn by calling/i,
+  /lessons from reviewed customer feedback/i,
+  /<\/?(customer_message|knowledge|approval_update|summary)\b/i,
+  /\b(send_reply|request_human|search_knowledge|update_ticket)\b/,
+  /\bsk-[A-Za-z0-9_-]{16,}\b/,
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+];
+
+/** Whether a reply repeats internal instructions or contains something shaped like a secret. */
+export const leaksInternals = (reply: string) => INTERNAL.some((re) => re.test(reply));
+
 /** Statements that need a source: numbers, prices, durations. */
 const FACTUAL = /\d/;
 
@@ -49,6 +70,9 @@ export function assess(i: AssessInput): Assessment {
   let c = Math.max(0, Math.min(1, i.selfConfidence ?? 0.5));
 
   if (!i.reply.trim()) return { decision: 'handover', confidence: 0, rules: ['no_answer'] };
+  if (leaksInternals(i.reply)) {
+    return { decision: 'handover', confidence: 0, rules: ['unsafe_output'] };
+  }
   if (i.citedSources === 0 && FACTUAL.test(i.reply) && c >= sendAt) {
     c = Math.max(0, sendAt - 0.01);
     rules.push('no_sources');

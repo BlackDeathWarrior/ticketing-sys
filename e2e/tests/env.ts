@@ -8,6 +8,8 @@ export const env = {
   mailpit: process.env.MAILPIT_URL ?? 'http://localhost:8025',
   smtpHost: process.env.SMTP_HOST ?? 'localhost',
   smtpPort: Number(process.env.SMTP_PORT ?? 3025),
+  /** The stack's Redis: one spec queues a job that fails, to show it in Settings → System. */
+  redis: process.env.REDIS_URL ?? 'redis://localhost:6379',
 };
 
 export const ADMIN = {
