@@ -22,22 +22,31 @@ describe('settings tabs', () => {
       'tool:manage',
       'settings:routing',
       'settings:sla',
+      'settings:categories',
+      'settings:workflow',
+      'user:manage',
     ]);
     expect(visibleTabs(admin).map((t) => t.value)).toEqual([
       'providers',
       'models',
       'ai',
       'channels',
+      'customers',
       'tools',
       'routing',
       'sla',
+      'tickets',
+      'people',
       'usage',
     ]);
     expect(canOpenSettings(can(['ticket:read']))).toBe(false);
   });
 
-  it('shows only channels to someone with channel settings alone', () => {
-    expect(visibleTabs(can(['settings:channels'])).map((t) => t.value)).toEqual(['channels']);
+  it('shows channels and customers to someone with channel settings alone', () => {
+    expect(visibleTabs(can(['settings:channels'])).map((t) => t.value)).toEqual([
+      'channels',
+      'customers',
+    ]);
   });
 
   it('opens Tools for someone who may only create custom tools', () => {

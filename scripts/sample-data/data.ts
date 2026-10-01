@@ -959,6 +959,58 @@ export const chats = [
   },
 ];
 
+/**
+ * Chats the AI answers and the customer never comes back to. The loader moves
+ * them back in time, lets the AI resolve them (quiet for more than 72 hours),
+ * and then answers the "How did we do?" question as the visitor would.
+ */
+export const quietChats = [
+  { name: 'Tom Whitaker', quietHours: 96, rating: 5 },
+  { name: 'Aarav Kulkarni', quietHours: 110, rating: 4 },
+  { name: 'María López', quietHours: 80, rating: 5 },
+];
+
+/**
+ * Ratings customers give in the portal ("My requests") for resolved tickets.
+ * The loader signs each customer in with the link emailed to them.
+ */
+export const ratings: Array<{
+  customer: string;
+  subject: string;
+  rating: number;
+  comment?: string;
+}> = [
+  {
+    customer: 'henrik',
+    subject: 'Order confirmation email never arrived',
+    rating: 5,
+    comment: 'Sorted within the hour, thank you.',
+  },
+  { customer: 'lucia', subject: 'Update billing address on account', rating: 4 },
+  {
+    customer: 'noah',
+    subject: 'Printer ink cartridges back-ordered',
+    rating: 2,
+    comment: 'It took three days to hear back.',
+  },
+  { customer: 'noah', subject: 'Update phone number on account', rating: 5 },
+  {
+    customer: 'sofia',
+    subject: 'Allergen list for spice blends',
+    rating: 5,
+    comment: 'Exactly what I needed.',
+  },
+  { customer: 'yara', subject: 'Return seed trays ordered twice', rating: 3 },
+  { customer: 'grace', subject: 'Quarterly volume discount not applied', rating: 4 },
+  { customer: 'kiri', subject: 'Request for bulk pricing sheet', rating: 5 },
+  {
+    customer: 'ravi',
+    subject: 'Dealer login shows wrong price tier',
+    rating: 1,
+    comment: 'I still see the wrong tier on some products.',
+  },
+];
+
 /** Customer emails sent to the support mailbox; the worker turns each into a ticket. */
 export const emails = [
   {

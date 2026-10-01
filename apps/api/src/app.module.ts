@@ -9,6 +9,7 @@ import { VoiceModule } from './channels/voice/voice.module';
 import { ChatModule } from './chat/chat.module';
 import { AllExceptionsFilter } from './common/exception.filter';
 import { loadEnv } from './config/env';
+import { CsatModule } from './csat/csat.module';
 import { CustomersModule } from './customers/customers.module';
 import { HealthController } from './health/health.controller';
 import { InfraModule } from './infra/infra.module';
@@ -16,6 +17,7 @@ import { KbModule } from './kb/kb.module';
 import { LlmModule } from './llm/llm.module';
 import { loggerModule } from './logging';
 import { OrgModule } from './org/org.module';
+import { PortalModule } from './portal/portal.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { ReportsModule } from './reports/reports.module';
 import { SettingsModule } from './settings/settings.module';
@@ -55,6 +57,8 @@ const env = loadEnv();
     KbModule,
     AiModule,
     WebFormModule,
+    CsatModule,
+    PortalModule,
     ToolsModule,
     SlaModule,
     RoutingModule,

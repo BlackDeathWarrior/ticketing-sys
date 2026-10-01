@@ -273,6 +273,37 @@ export class ConversationsService {
     }));
   }
 
+  /** For each ticket, the last message the customer could see, across its conversations. */
+  async lastVisibleMessages(
+    ticketIds: string[],
+  ): Promise<Map<string, { direction: string; authorType: string; createdAt: Date }>> {
+    if (!ticketIds.length) return new Map();
+    const rows = await this.db
+      .selectDistinctOn([conversations.ticketId], {
+        ticketId: conversations.ticketId,
+        direction: messages.direction,
+        authorType: messages.authorType,
+        createdAt: messages.createdAt,
+      })
+      .from(messages)
+      .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+      .where(and(inArray(conversations.ticketId, ticketIds), visibleToCustomer))
+      .orderBy(conversations.ticketId, desc(messages.createdAt));
+    return new Map(rows.map(({ ticketId, ...m }) => [ticketId, m]));
+  }
+
+  /** The tickets a chat session's conversations belong to, oldest first. */
+  async ticketIdsForChatSession(sessionId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ ticketId: conversations.ticketId })
+      .from(conversations)
+      .where(
+        and(eq(conversations.channel, 'webchat'), eq(conversations.externalThreadId, sessionId)),
+      )
+      .orderBy(asc(conversations.createdAt));
+    return [...new Set(rows.map((r) => r.ticketId))];
+  }
+
   /** What a chat visitor sees: every message on their session's conversations. */
   async chatHistory(sessionId: string, limit = 100): Promise<ChatMessageView[]> {
     const rows = await this.db

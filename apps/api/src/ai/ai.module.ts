@@ -8,6 +8,7 @@ import { TicketsModule } from '../tickets/tickets.module';
 import { HandoverModule } from '../handover/handover.module';
 import { ToolsModule } from '../tools/tools.module';
 import { AiAgentService } from './ai-agent.service';
+import { AiAutoResolveService } from './ai-auto-resolve';
 import { AiClassifierService } from './ai-classifier.service';
 import { AiCopilotService } from './ai-copilot.service';
 import { AiRunsModule } from './ai-runs.module';
@@ -32,7 +33,13 @@ import { LanguageService } from './language.service';
     HandoverModule,
   ],
   controllers: [AiController],
-  providers: [AiAgentService, AiClassifierService, AiCopilotService, LanguageService],
-  exports: [AiAgentService, AiClassifierService, AiRunsModule],
+  providers: [
+    AiAgentService,
+    AiClassifierService,
+    AiCopilotService,
+    LanguageService,
+    AiAutoResolveService,
+  ],
+  exports: [AiAgentService, AiClassifierService, AiRunsModule, AiAutoResolveService],
 })
 export class AiModule {}

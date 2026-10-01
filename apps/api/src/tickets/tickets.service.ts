@@ -107,6 +107,57 @@ export class TicketsService {
     return { items: items.map(present), total };
   }
 
+  /** One customer's tickets, most recently updated first (the customer portal). */
+  async forCustomer(customerId: string, limit = 100) {
+    const rows = await this.baseSelect()
+      .where(eq(tickets.customerId, customerId))
+      .orderBy(desc(tickets.updatedAt))
+      .limit(limit);
+    return rows.map(present);
+  }
+
+  /** Open and pending tickets of a team (before a team is deleted). */
+  async openForTeam(teamId: string): Promise<number> {
+    const { statuses } = await this.workflow.load();
+    const open = statuses
+      .filter((s) => s.category === 'open' || s.category === 'pending')
+      .map((s) => s.key);
+    if (!open.length) return 0;
+    return this.db.$count(tickets, and(eq(tickets.teamId, teamId), inArray(tickets.status, open)));
+  }
+
+  /** Tickets the AI is answering that are waiting for the customer, oldest update first. */
+  async awaitingCustomerWithAi(limit: number): Promise<string[]> {
+    const { statuses } = await this.workflow.load();
+    const pending = statuses.filter((s) => s.category === 'pending').map((s) => s.key);
+    if (!pending.length) return [];
+    const rows = await this.db
+      .select({ id: tickets.id })
+      .from(tickets)
+      .where(and(eq(tickets.handling, 'ai'), inArray(tickets.status, pending)))
+      .orderBy(asc(tickets.updatedAt))
+      .limit(limit);
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Moves a ticket to a resolved status the workflow allows from where it is.
+   * False when there is none, or it is no longer waiting with the AI.
+   */
+  async resolveInTx(tx: DbOrTx, ctx: RequestCtx, ticketId: string, resolution: string) {
+    const current = await this.lock(tx, ticketId);
+    if (current.handling !== 'ai') return false;
+    if ((await this.workflow.status(current.status)).category !== 'pending') return false;
+    const { statuses } = await this.workflow.load();
+    for (const s of statuses.filter((x) => x.category === 'resolved' && x.isActive)) {
+      if ((await this.workflow.check(current.status, s.key)).ok) {
+        await this.applyTransition(tx, ctx, current, s.key, resolution);
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** Accepts a UUID or a ticket reference such as "TMS-1042". */
   async get(ref: string) {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref);

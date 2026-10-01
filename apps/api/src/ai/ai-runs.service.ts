@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { aiRuns, type Database, type DbOrTx } from '@tms/db';
 import type { AiDecision, AiRule, AiRunView } from '@tms/shared';
-import { and, desc, eq, gt, isNotNull, lt, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, lt, type SQL } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import { AI_CTX } from '../common/request-context';
@@ -36,6 +36,16 @@ export class AiRunsService {
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
   ) {}
+
+  /** Whether the AI took at least one turn on the ticket. */
+  async workedOn(ticketId: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: aiRuns.id })
+      .from(aiRuns)
+      .where(and(eq(aiRuns.ticketId, ticketId), inArray(aiRuns.kind, ['turn', 'followup'])))
+      .limit(1);
+    return !!row;
+  }
 
   async record(tx: DbOrTx, run: NewAiRun): Promise<string> {
     const [row] = await tx

@@ -1,4 +1,4 @@
-import type { HandoverView, TicketSlaView } from '@tms/shared';
+import { CSAT_LABELS, type CsatView, type HandoverView, type TicketSlaView } from '@tms/shared';
 import { useEffect, useState } from 'react';
 import { Icon, SlaIndicator, Tabs } from '../../components/ui';
 import { minutesSince } from '../../data/adapters';
@@ -51,6 +51,30 @@ export function SlaPanel({ ticketId, liveTick }: { ticketId: string; liveTick: n
           </div>
         ))}
       </dl>
+    </section>
+  );
+}
+
+const RATED_IN = { email: 'from the survey email', chat: 'in the chat', portal: 'in the portal' };
+
+/** The customer's rating, once they have given one. Staff can read it, never set it. */
+export function RatingPanel({ ticketId, liveTick }: { ticketId: string; liveTick: number }) {
+  const r = useLive<{ rating: CsatView | null }>(`/tickets/${ticketId}/rating`, liveTick);
+  const rating = r.data?.rating;
+  if (!rating) return null;
+  return (
+    <section className={styles.panel} aria-label="Customer rating" data-rating={rating.rating}>
+      <h3 className={styles.panelTitle}>
+        <Icon name="target" size={14} />
+        Customer rating
+      </h3>
+      <p className={styles.rating}>
+        <span className="tabular">{rating.rating} / 5</span> · {CSAT_LABELS[rating.rating]}
+      </p>
+      {rating.comment && <p className={styles.ratingComment}>“{rating.comment}”</p>}
+      <p className={styles.muted}>
+        Given {RATED_IN[rating.source]} · {relativeTime(minutesSince(new Date(rating.updatedAt)))}
+      </p>
     </section>
   );
 }

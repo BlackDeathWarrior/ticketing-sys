@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Tabs } from '../../components/ui';
 import { useSession } from '../../lib/session';
+import { CustomersPanel } from '../admin/CustomersPanel';
+import { PeoplePanel } from '../admin/PeoplePanel';
+import { TicketSetupPanel } from '../admin/TicketSetupPanel';
 import { AiPanel } from './AiPanel';
 import { ChannelsPanel } from './ChannelsPanel';
 import { type SettingsTab, visibleTabs } from './logic';
@@ -16,7 +19,7 @@ function tabFromHash(): string | undefined {
   return window.location.hash.replace(/^#\/?/, '').split('/')[1];
 }
 
-/** Settings (#/settings/<tab>): AI, channels, tools, routing and SLA. Tabs are limited to what the user may manage. */
+/** Settings (#/settings/<tab>): AI, channels, customers, tools, routing, SLA, ticket setup and people. Tabs are limited to what the user may manage. */
 export function SettingsPage() {
   const { can } = useSession();
   const tabs = visibleTabs(can);
@@ -47,8 +50,8 @@ export function SettingsPage() {
         <p className={styles.eyebrow}>Settings</p>
         <h1 className={styles.heading}>Workspace settings</h1>
         <p className={styles.lede}>
-          The AI agent and its models, channel and tool credentials, routing and SLA. Keys are
-          write-only: after saving, only their last four characters are shown.
+          The AI agent and its models, channels and tools, routing and SLA, ticket setup and people.
+          Keys are write-only: after saving, only their last four characters are shown.
         </p>
       </header>
       <Tabs
@@ -69,6 +72,9 @@ export function SettingsPage() {
         {tab === 'tools' && <ToolsPanel />}
         {tab === 'routing' && <RoutingPanel />}
         {tab === 'sla' && <SlaSettingsPanel />}
+        {tab === 'customers' && <CustomersPanel />}
+        {tab === 'tickets' && <TicketSetupPanel />}
+        {tab === 'people' && <PeoplePanel />}
         {tab === 'usage' && <UsagePanel />}
       </div>
     </div>

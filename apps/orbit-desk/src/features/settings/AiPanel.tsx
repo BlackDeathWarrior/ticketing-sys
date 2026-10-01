@@ -134,6 +134,20 @@ export function AiPanel() {
                 { value: 'no', label: 'Leave the status as it is' },
               ]}
             />
+            <Input
+              id="ai-auto-resolve"
+              label="Resolve the ticket when the customer has not replied for (hours; 0 = never)"
+              type="number"
+              min={0}
+              max={720}
+              value={String(form.autoResolveHours)}
+              onChange={(e) => setForm({ ...form, autoResolveHours: Number(e.target.value) })}
+              required
+            />
+            <p className={styles.note}>
+              Only tickets the AI answered and still owns. A later reply from the customer reopens
+              the ticket. These count as “resolved by the AI alone” in Reports.
+            </p>
             <div className={styles.formActions}>
               <Button type="submit" disabled={saving}>
                 Save AI behaviour

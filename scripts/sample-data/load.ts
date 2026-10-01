@@ -3,9 +3,11 @@
  *
  * Everything goes through the public API (and the chat widget socket and the
  * support mailbox), so audit rows, outbox events, realtime updates and email
- * delivery all happen exactly as they would for real traffic. The one
- * exception is the optional backdating step, which rewrites ticket timestamps
- * directly in Postgres so charts have two weeks of history.
+ * delivery all happen exactly as they would for real traffic. Customers rate
+ * their tickets the real way too: in the chat, and in the portal after opening
+ * the sign-in link emailed to them. The one exception is the optional
+ * backdating step, which rewrites timestamps directly in Postgres so charts
+ * have two weeks of history and the AI's "quiet for 72 hours" rule applies.
  *
  *   pnpm sample:load                 # load, then backdate
  *   pnpm sample:load -- --no-backdate
@@ -13,7 +15,8 @@
  *
  * Env: API_URL (http://localhost:3000), ADMIN_EMAIL / ADMIN_PASSWORD
  * (admin@example.com / ChangeMe123!), DATABASE_URL for backdating,
- * SMTP_HOST / SMTP_PORT for the support mailbox (localhost:3025).
+ * SMTP_HOST / SMTP_PORT for the support mailbox (localhost:3025), MAILPIT_URL
+ * for the inbox outgoing mail lands in (http://localhost:8025).
  */
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
@@ -28,6 +31,8 @@ import {
   kb,
   llm,
   MARKER_EMAIL,
+  quietChats,
+  ratings,
   SAMPLE_PASSWORD,
   type SampleTicket,
   teams,
@@ -52,6 +57,8 @@ const ADMIN_PASSWORD =
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://tms:tms@localhost:5432/tms';
 const SMTP_HOST = process.env.SMTP_HOST ?? 'localhost';
 const SMTP_PORT = Number(process.env.SMTP_PORT ?? 3025);
+/** Where the stack's outgoing mail lands; the loader reads customers' sign-in links from it. */
+const MAILPIT_URL = (process.env.MAILPIT_URL ?? 'http://localhost:8025').replace(/\/$/, '');
 const FAKE_LLM_URL = process.env.FAKE_LLM_URL ?? 'http://fake-providers:4010/v1';
 /** The sample MCP server as the API container reaches it, and as this script does. */
 const FAKE_MCP_URL = process.env.FAKE_MCP_URL ?? 'http://fake-providers:4010/mcp';
@@ -215,7 +222,7 @@ async function main() {
 
   // ---- inbound traffic: web chat and email ----
   if (!args['skip-inbound']) {
-    const chatRefs = await sendChats(admin);
+    const { refs: chatRefs, sessions } = await sendChats(admin);
     log(`${chatRefs.length} web chat conversations (${chatRefs.join(', ')})`);
     const emailRefs = await sendEmails(admin);
     log(`${emailRefs.length} customer emails (${emailRefs.join(', ')})`);
@@ -238,7 +245,19 @@ async function main() {
       { lead, tokenOf, userIds, teamIds, team: 'Returns', admin },
     );
     log(`agents replied on ${chatTicket} (chat) and ${emailTicket} (email)`);
+
+    if (!args['no-backdate']) {
+      const done = await resolveQuietChats(admin, sessions);
+      log(`${done} chats resolved by the AI after the customer went quiet, and rated in the chat`);
+    }
   }
+
+  const rated = await rateInPortal();
+  log(
+    rated === null
+      ? 'no portal ratings: the mail inbox (Mailpit) could not be reached'
+      : `${rated} tickets rated by customers in the portal`,
+  );
 
   if (!args['no-backdate']) {
     await backdate(created);
@@ -471,15 +490,20 @@ async function loadKb(admin: string) {
   log(`${ids.length} knowledge base documents (+1 draft)`);
 }
 
-async function sendChats(admin: string): Promise<string[]> {
+async function sendChats(admin: string) {
   const refs: string[] = [];
+  /** The session token of each visitor, to come back as the same person later. */
+  const sessions = new Map<string, string>();
   for (const c of chats) {
     const socket = io(`${API_URL}/chat`, {
       transports: ['websocket'],
       auth: { name: c.name, email: c.email },
     });
     await new Promise<void>((resolve, reject) => {
-      socket.once('session', () => resolve());
+      socket.once('session', (s: { token: string }) => {
+        sessions.set(c.name, s.token);
+        resolve();
+      });
       socket.once('connect_error', reject);
     });
     const ack = (await socket.timeout(10_000).emitWithAck('message', {
@@ -498,7 +522,146 @@ async function sendChats(admin: string): Promise<string[]> {
     });
     refs.push(ref);
   }
-  return refs;
+  return { refs, sessions };
+}
+
+/**
+ * The chats the AI answered and the customer left alone. Dev-only, like
+ * `backdate`: their history is moved back in time, so the AI's rule "resolve
+ * after 72 quiet hours" applies today. The AI then resolves them through the
+ * API, and each visitor comes back to answer the rating question in the chat.
+ */
+async function resolveQuietChats(admin: string, sessions: Map<string, string>): Promise<number> {
+  type Row = Ticket & { handling: string; customer: { displayName: string } };
+  const find = async (name: string) =>
+    (await call<{ items: Row[] }>(admin, 'GET', '/tickets?channel=webchat&limit=50')).items.find(
+      (t) => t.customer.displayName === name,
+    );
+
+  const client = new pg.Client({ connectionString: DATABASE_URL });
+  await client.connect();
+  try {
+    for (const q of quietChats) {
+      // The AI's answer has gone out and the ticket waits for the customer.
+      const ticket = await waitFor(`the AI's answer to ${q.name}`, async () => {
+        const t = await find(q.name);
+        return t?.status === 'pending_customer' && t.handling === 'ai' ? t : undefined;
+      });
+      await client.query('BEGIN');
+      const shift = [ticket.id, q.quietHours];
+      await client.query(
+        `UPDATE tickets SET created_at = created_at - make_interval(hours => $2::int),
+           first_response_at = first_response_at - make_interval(hours => $2::int),
+           updated_at = updated_at - make_interval(hours => $2::int)
+         WHERE id = $1`,
+        shift,
+      );
+      await client.query(
+        `UPDATE messages m SET created_at = m.created_at - make_interval(hours => $2::int),
+           sent_at = m.sent_at - make_interval(hours => $2::int)
+         FROM conversations c WHERE c.id = m.conversation_id AND c.ticket_id = $1`,
+        shift,
+      );
+      await client.query(
+        `UPDATE sla_timers SET started_at = started_at - make_interval(hours => $2::int),
+           due_at = due_at - make_interval(hours => $2::int),
+           at_risk_at = at_risk_at - make_interval(hours => $2::int),
+           resumed_at = resumed_at - make_interval(hours => $2::int),
+           met_at = met_at - make_interval(hours => $2::int)
+         WHERE ticket_id = $1`,
+        shift,
+      );
+      await client.query('COMMIT');
+    }
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    await client.end();
+  }
+
+  await call(admin, 'POST', '/ai/auto-resolve');
+
+  let rated = 0;
+  for (const q of quietChats) {
+    await waitFor(`${q.name}'s chat to be resolved`, async () =>
+      (await find(q.name))?.status === 'resolved' ? true : undefined,
+    );
+    const socket = io(`${API_URL}/chat`, {
+      transports: ['websocket'],
+      auth: { token: sessions.get(q.name) },
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        socket.once('session', () => resolve());
+        socket.once('connect_error', reject);
+      });
+      // The question was asked while the visitor was away; it is waiting in the chat.
+      const prompt = await waitFor(`the rating question for ${q.name}`, async () => {
+        const h = (await socket.timeout(10_000).emitWithAck('history')) as {
+          rate?: { token: string } | null;
+        };
+        return h.rate ?? undefined;
+      });
+      const ack = (await socket
+        .timeout(10_000)
+        .emitWithAck('rate', { token: prompt.token, rating: q.rating })) as { ok: boolean };
+      if (ack.ok) rated++;
+    } finally {
+      socket.disconnect();
+    }
+  }
+  return rated;
+}
+
+/**
+ * Customers rate their resolved tickets in the portal. Each one signs in the
+ * real way: asks for a link, and opens the one that arrives by email (read
+ * here from Mailpit, where the stack's outgoing mail lands).
+ */
+async function rateInPortal(): Promise<number | null> {
+  const mail = async <T>(path: string): Promise<T> => {
+    const res = await fetch(`${MAILPIT_URL}/api/v1${path}`);
+    if (!res.ok) throw new Error(`Mailpit ${path} → ${res.status}`);
+    return (await res.json()) as T;
+  };
+  try {
+    await mail('/info');
+  } catch {
+    return null;
+  }
+
+  let rated = 0;
+  for (const key of [...new Set(ratings.map((r) => r.customer))]) {
+    const email = customers.find((c) => c.key === key)!.email;
+    await call(null, 'POST', '/public/portal/sign-in', { email });
+    const token = await waitFor(`the sign-in link for ${email}`, async () => {
+      const query = encodeURIComponent(`to:"${email}" subject:"sign-in link"`);
+      const found = await mail<{ messages: Array<{ ID: string }> }>(`/search?query=${query}`);
+      const id = found.messages[0]?.ID;
+      if (!id) return undefined;
+      const { Text } = await mail<{ Text: string }>(`/message/${id}`);
+      return /#\/portal\/verify\/(\S+)/.exec(Text)?.[1];
+    });
+    const session = await call<{ token: string }>(null, 'POST', '/public/portal/session', {
+      token,
+    });
+    const mine = await call<Array<{ reference: string; subject: string }>>(
+      session.token,
+      'GET',
+      '/portal/tickets',
+    );
+    for (const r of ratings.filter((x) => x.customer === key)) {
+      const ticket = mine.find((t) => t.subject === r.subject);
+      if (!ticket) throw new Error(`No ticket "${r.subject}" for ${email}`);
+      await call(session.token, 'POST', `/portal/tickets/${ticket.reference}/rating`, {
+        rating: r.rating,
+        ...(r.comment ? { comment: r.comment } : {}),
+      });
+      rated++;
+    }
+  }
+  return rated;
 }
 
 /** Submits the help-center form as a customer would (no token). */

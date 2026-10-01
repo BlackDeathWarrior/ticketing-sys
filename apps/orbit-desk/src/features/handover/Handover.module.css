@@ -179,3 +179,16 @@
 .full {
   flex-basis: 100%;
 }
+
+.rating {
+  margin: 0;
+  font-size: var(--text-body-sm);
+  color: var(--color-lilac-white);
+}
+
+.ratingComment {
+  margin: 4px 0;
+  font-size: var(--text-body-sm);
+  line-height: 1.5;
+  color: var(--color-ash);
+}

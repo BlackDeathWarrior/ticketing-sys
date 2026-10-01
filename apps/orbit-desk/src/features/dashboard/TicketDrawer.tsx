@@ -29,7 +29,7 @@ import { aiMetaText } from '../ai/logic';
 import { KbSearch } from '../kb/KbSearch';
 import { ControlBar } from '../handover/ControlBar';
 import { laneRows } from '../handover/logic';
-import { HandoverContext, History, SlaPanel } from '../handover/Panels';
+import { HandoverContext, History, RatingPanel, SlaPanel } from '../handover/Panels';
 import { ToolCalls } from '../tools/ToolCalls';
 import { CallPanel } from '../voice/CallPanel';
 import { windowNote } from '../whatsapp/logic';
@@ -430,6 +430,7 @@ function DrawerContent({
 
         <CallPanel ticketId={ticket.id} liveTick={liveTick} onChanged={() => void onChanged()} />
         <SlaPanel ticketId={ticket.id} liveTick={liveTick} />
+        <RatingPanel ticketId={ticket.id} liveTick={liveTick} />
         <HandoverContext ticketId={ticket.id} liveTick={liveTick} />
 
         <section className={styles.thread} aria-label="Conversation">
@@ -490,6 +491,7 @@ function DrawerContent({
                         {m.kind === 'note' && (
                           <span className={styles.noteLabel}>Internal note</span>
                         )}
+                        {m.viaPortal && <span className={styles.noteLabel}>From the portal</span>}
                         {deliveryLabel(m.delivery) && (
                           <span className={styles.noteLabel} data-delivery={m.delivery}>
                             {deliveryLabel(m.delivery)}

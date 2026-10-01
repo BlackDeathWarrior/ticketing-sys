@@ -1,6 +1,130 @@
 # Test report
 
-## Latest: Phase 9, voice calls in the browser
+## Latest: Phase 10, reports, ratings, the customer portal and admin pages
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-10-reporting`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                            |
+| ------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                              |
+| `pnpm test`                                       | 314 passed (api 164, Orbit Desk 91, shared 34, fake providers 15, help center 10) |
+| `pnpm test:int`                                   | 188 passed (18 files)                                                             |
+| `pnpm e2e`                                        | 86 passed; 9 screenshot-only specs skipped as designed                            |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                        |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed                                                |
+
+### Sample data
+
+- Three chats the AI answered are moved back in time by the loader (dev-only, like the existing backdating), resolved by the AI's "quiet for 72 hours" rule through the API, and rated by the visitor in the chat.
+- Nine resolved tickets are rated in the portal. The loader signs each customer in the real way: it asks for a link and opens the one that arrives in Mailpit.
+- So Reports shows real numbers on a fresh stack: 3 of 22 resolved tickets by the AI alone, 12 ratings, SLA and cost per provider.
+
+### New tests
+
+| Where                                       | Tests | Covers                                                                                                                     |
+| ------------------------------------------- | ----: | -------------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared/src/reports.test.ts`       |    11 | Report periods, dates that don't exist, rates, CSV quoting and formula defusing, rating and portal schemas, who may export |
+| `apps/api/src/common/signed-token.test.ts`  |     4 | Link tokens: refused when changed, cut, signed with another key or made for another purpose; the survey email text         |
+| `apps/orbit-desk/.../reports/logic.test.ts` |     8 | Filters, formatting, the key figures, the three-way split, the side-by-side rows                                           |
+| `apps/orbit-desk/.../admin/logic.test.ts`   |     7 | The user form (only what changed is sent), status keys, workflow changes and warnings, the new settings tabs               |
+| `apps/help-center/src/portal-logic.test.ts` |     5 | Page routes from the URL, the session in the browser tab, author names                                                     |
+| `apps/api/test/portal.int.test.ts`          |     8 | See below                                                                                                                  |
+| `apps/api/test/performance.int.test.ts`     |    10 | See below                                                                                                                  |
+| `e2e/tests/reports.spec.ts`                 |     6 | See below                                                                                                                  |
+| `e2e/tests/admin.spec.ts`                   |     7 | See below                                                                                                                  |
+| `e2e/tests/portal.spec.ts`                  |     5 | See below                                                                                                                  |
+
+`portal.int.test.ts` (real routes, worker and mail server):
+
+- **Sign-in:** the link arrives by email and works once; a changed token is refused; an unknown address gets the same answer and no email; the sixth request for one address in 15 minutes is refused.
+- **Separation:** a staff token is refused by the portal and a portal token by the staff API.
+- **My requests:** a customer sees their own tickets from every channel; an agent's reply shows with the first name only; internal notes never appear; another customer's ticket answers 404 by reference and by id, for reading, replying and rating.
+- **Replies:** a reply joins the ticket, marked as from the portal, and reopens a resolved ticket. On a ticket without an email thread it starts one, and the agent's answer reaches the customer's inbox. Closed tickets can't be answered.
+- **Ratings:** an open ticket can't be rated; staff have no route to rate; the survey email arrives once per ticket; its link rates only that ticket; the customer can change the rating in the portal; a rating of 2 notifies the assignee; the audit trail names the customer as the actor.
+- **Chat:** the widget is asked when the ticket is resolved, and again when the visitor comes back; the answer is stored with source `chat`.
+- **Switches:** with the portal and surveys off, sign-in is refused and no survey is sent.
+
+`performance.int.test.ts` (figures checked on one team, so other tests don't change them):
+
+- **The report:** created, resolved by the AI, by the AI then a person, and by a person; resolution, deflection and handover rates; ratings and SLA split between the AI and people; cost per provider; per channel; the time-saved estimate following the admin's setting.
+- **Filters:** channel, explicit dates, and refusals for a bad period.
+- **Ticket list and CSV:** paging, the "handled by" filter, the export for team leads but not agents, a formula-like subject defused, and the audit entry.
+- **The AI resolves what it answered:** after 72 quiet hours, not before, not when the customer had the last word, not after a person took over; the AI is the actor in the audit trail; the waiting time follows the setting and 0 switches it off.
+- **Admin:** rename a team and replace its members; a team with open tickets or routing rules can't be deleted; rename a category and switch it off, after which the request form no longer offers it.
+
+`reports.spec.ts`: the key figures, the chart with its legend and table view, the side-by-side table and AI cost on the sample data; filters; opening a ticket from the list and seeing its rating; the CSV download; no Reports link for agents; a phone screen.
+
+`admin.spec.ts`: an admin adds a user and a team, changes them and switches the user off (who can then no longer sign in); can't demote themselves; categories; a new status with its moves and the workflow warnings; the customer settings changing the report's estimate; permissions; a phone screen.
+
+`portal.spec.ts`: a customer signs in from the emailed link, replies, and rates the solved request while the agent sees each step; an unknown address and someone else's request; the survey link; the rating question in the chat widget; a phone screen.
+
+### Bugs found and fixed
+
+1. **The AI never resolved a ticket.** It answered and left tickets waiting for the customer for ever, so "resolved by the AI" would always have been zero. Tickets the AI answered now resolve after 72 quiet hours (a setting; 0 switches it off).
+2. **On the rating form a click could choose another rating.** The five hidden radio inputs sat on top of each other. Found by the browser test.
+3. **The ticket report failed** because the database driver returns timestamps as text. Found by the integration test before the page existed.
+4. **30 February was accepted as a date** (and read as 2 March). Dates are now checked for real.
+5. **First-reply times were measured from message timestamps**, which disagreed with the ticket's own first-response time (the one SLA uses). The report now uses the ticket's time and the message only to tell who replied.
+6. **Action buttons in the new admin tables broke the row lines.** They now sit inside proper table cells.
+
+### Known limits
+
+- Reports are live queries. A very long period reads many rows; fact tables are the next step if it gets slow.
+- "Time saved" is an estimate from a number an admin sets, not a measurement.
+- Survey emails and sign-in links need the email channel. WhatsApp and voice tickets are not asked for a rating (the portal still allows one).
+- Sign-in links are limited per address, not per network address (Phase 11).
+- The retention settings page moved to Phase 11, with the jobs it controls.
+- Report charts use the console's two tones (accent for the AI, neutral for people), as the design rules require. A palette check passes them for contrast and colour-blind separation and notes that the neutral reads as grey; labels, the legend and a table view carry the meaning.
+
+### Screenshots
+
+Reports:
+
+![Reports](screenshots/orbit-reports.png)
+
+The customer's rating on a ticket:
+
+![Rating on a ticket](screenshots/orbit-ticket-rating.png)
+
+Settings → People:
+
+![People](screenshots/orbit-settings-people.png)
+
+Settings → Tickets, the allowed moves:
+
+![Workflow](screenshots/orbit-settings-workflow.png)
+
+Settings → Customers:
+
+![Customers](screenshots/orbit-settings-customers.png)
+
+The portal, "My requests":
+
+![My requests](screenshots/portal-requests.png)
+
+A request in the portal, with the rating form:
+
+![A request](screenshots/portal-request.png)
+
+The page behind the survey email:
+
+![Rate your request](screenshots/portal-rate.png)
+
+The rating question in the chat widget:
+
+![Rating in the chat](screenshots/widget-rating.png)
+
+On a phone:
+
+![Reports on a phone](screenshots/orbit-reports-phone.png)
+
+![A request on a phone](screenshots/portal-request-phone.png)
+
+---
+
+## Phase 9: voice calls in the browser
 
 Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-9-voice`.
 

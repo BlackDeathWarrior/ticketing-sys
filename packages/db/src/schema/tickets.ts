@@ -109,6 +109,7 @@ export const tickets = pgTable(
     index('tickets_created_idx').on(t.createdAt),
     index('tickets_sla_idx').on(t.slaState, t.slaDueAt),
     index('tickets_handling_idx').on(t.handling),
+    index('tickets_resolved_idx').on(t.resolvedAt),
     index('tickets_tags_gin').using('gin', t.tags),
     index('tickets_subject_trgm').using('gin', sql`${t.subject} gin_trgm_ops`),
   ],

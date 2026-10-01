@@ -6,10 +6,31 @@ export const createTeamSchema = z.object({
   description: z.string().trim().max(500).optional(),
 });
 
+/** Any of the fields; `memberIds` replaces the whole member list. */
+export const updateTeamSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    description: z.string().trim().max(500).nullable(),
+    memberIds: z.array(z.string().uuid()).max(500),
+  })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, { message: 'Provide at least one field to update' });
+export type UpdateTeamInput = z.infer<typeof updateTeamSchema>;
+
 export const createCategorySchema = z.object({
   name: z.string().trim().min(1).max(100),
   parentId: z.string().uuid().optional(),
 });
+
+/** Rename a category, or switch it off: it stays on old tickets but can't be chosen. */
+export const updateCategorySchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    isActive: z.boolean(),
+  })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, { message: 'Provide at least one field to update' });
+export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 
 export const upsertStatusSchema = z.object({
   key: z

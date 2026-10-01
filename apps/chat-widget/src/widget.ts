@@ -27,6 +27,12 @@ interface ChatMessage {
   createdAt: string;
 }
 
+/** Shown when the visitor's ticket is solved; the token goes back with their answer. */
+interface RatingPrompt {
+  token: string;
+  reference: string;
+}
+
 type Ack<T> = ({ ok: true } & T) | { ok: false; error: string };
 
 const script = document.currentScript as HTMLScriptElement | null;
@@ -63,6 +69,13 @@ form button:disabled { opacity: .5; cursor: default; }
 .details label { font-size: 13px; color: #374151; }
 .details input { border: 1px solid #d1d5db; border-radius: 8px; padding: 8px; font-size: 14px; width: 100%; }
 .details button { padding: 10px; }
+.rate { align-self: stretch; padding: 10px; border: 1px solid #d1d5db; border-radius: 10px; background: #fff; }
+.rate p { margin: 0 0 8px; }
+.rate .scale { display: flex; gap: 6px; }
+.rate .scale button { flex: 1; min-height: 36px; border: 1px solid #1f4e89; border-radius: 8px; background: #fff; color: #1f4e89;
+  font-size: 15px; cursor: pointer; }
+.rate .scale button:hover { background: #e8eef7; }
+.rate .ends { display: flex; justify-content: space-between; font-size: 11px; color: #6b7280; margin-top: 4px; }
 `;
 
 export function init(options: ChatOptions = {}) {
@@ -105,6 +118,7 @@ export function init(options: ChatOptions = {}) {
   let token = stored.token;
   let visitor = { name: stored.name, email: stored.email };
   const seen = new Set<string>();
+  const asked = new Set<string>();
 
   const needsDetails = () => options.askForDetails !== false && !token && !options.identityToken;
 
@@ -147,10 +161,60 @@ export function init(options: ChatOptions = {}) {
     socket.on('session', async (s: { token: string }) => {
       token = s.token;
       writeStore(storageKey, { token, ...visitor });
-      const res = (await socket!.emitWithAck('history')) as Ack<{ messages: ChatMessage[] }>;
-      if (res.ok) res.messages.forEach((m) => render(m));
+      const res = (await socket!.emitWithAck('history')) as Ack<{
+        messages: ChatMessage[];
+        rate?: RatingPrompt | null;
+      }>;
+      if (!res.ok) return;
+      res.messages.forEach((m) => render(m));
+      // A rating we asked for while the visitor was away.
+      if (res.rate) askForRating(res.rate);
     });
     socket.on('message', (m: ChatMessage) => render(m));
+    socket.on('rate', (p: RatingPrompt) => askForRating(p));
+  }
+
+  /** "How did we do?": five buttons in the conversation, asked once per solved ticket. */
+  function askForRating(prompt: RatingPrompt) {
+    if (asked.has(prompt.reference)) return;
+    asked.add(prompt.reference);
+    log.querySelector('.empty')?.remove();
+    const box = document.createElement('div');
+    box.className = 'rate';
+    box.setAttribute('role', 'group');
+    box.setAttribute('aria-label', 'Rate our support');
+    const question = document.createElement('p');
+    question.textContent = `Your request ${prompt.reference} is solved. How did we do?`;
+    const scale = document.createElement('div');
+    scale.className = 'scale';
+    for (let n = 1; n <= 5; n++) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = String(n);
+      b.setAttribute('aria-label', `${n} out of 5`);
+      b.addEventListener('click', () => void rate(prompt, n, box, question));
+      scale.appendChild(b);
+    }
+    const ends = document.createElement('div');
+    ends.className = 'ends';
+    ends.innerHTML = '<span>Very unhappy</span><span>Very happy</span>';
+    box.append(question, scale, ends);
+    log.appendChild(box);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  async function rate(prompt: RatingPrompt, rating: number, box: HTMLElement, text: HTMLElement) {
+    try {
+      const res = (await socket!
+        .timeout(10_000)
+        .emitWithAck('rate', { token: prompt.token, rating })) as Ack<{ rating: number }>;
+      if (!res.ok) throw new Error(res.error);
+      box.replaceChildren(text);
+      text.textContent = `Thanks for your rating: ${res.rating} out of 5.`;
+      box.setAttribute('role', 'status');
+    } catch (err) {
+      text.textContent = `Your rating was not saved: ${err instanceof Error ? err.message : 'please try again'}`;
+    }
   }
 
   function setStatus(text: string) {

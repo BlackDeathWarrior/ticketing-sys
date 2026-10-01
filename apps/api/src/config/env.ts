@@ -43,6 +43,8 @@ const envSchema = z
     SARVAM_API_URL: z.string().url().default('https://api.sarvam.ai'),
     /** Meta Graph API base URL. Only change it to go through a proxy. */
     WHATSAPP_GRAPH_URL: z.string().url().default('https://graph.facebook.com'),
+    /** Where customers reach the help center; used in the links we email them. */
+    HELP_CENTER_URL: z.string().url().default('http://localhost:8080/help/'),
     /** Serve Swagger UI at /docs. Defaults to on outside production. */
     API_DOCS: bool.optional(),
 
@@ -67,6 +69,8 @@ const envSchema = z
           .map((h) => h.trim().toLowerCase())
           .filter(Boolean),
       ),
+    /** How often the worker resolves tickets the AI answered and the customer left alone. 0 = off. */
+    AI_AUTO_RESOLVE_SWEEP_SECONDS: z.coerce.number().int().min(0).max(86_400).default(600),
     /** How long a transactional tool call waits for a supervisor before it expires. */
     APPROVAL_TTL_MINUTES: z.coerce.number().int().min(1).max(10_080).default(1440),
     /** How often the worker checks SLA timers for at-risk and breached tickets. */

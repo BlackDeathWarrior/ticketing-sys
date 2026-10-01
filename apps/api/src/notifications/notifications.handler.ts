@@ -1,12 +1,11 @@
-import { Injectable, Logger, type OnApplicationShutdown } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   type DomainEvent,
   type DomainEventType,
   EMAILED_NOTIFICATIONS,
   type NotificationKind,
 } from '@tms/shared';
-import nodemailer, { type Transporter } from 'nodemailer';
-import { ChannelConfigService } from '../settings/channel-config.service';
+import { SystemMailer } from '../settings/system-mailer.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { UsersService } from '../users/users.service';
 import type { DomainEventHandler } from '../worker/domain-events';
@@ -115,15 +114,14 @@ export class NotificationsHandler implements DomainEventHandler {
 
 /** Emails the notifications that shouldn't wait for someone to open Orbit Desk. */
 @Injectable()
-export class NotificationMailer implements DomainEventHandler, OnApplicationShutdown {
+export class NotificationMailer implements DomainEventHandler {
   readonly name = 'notification-mailer';
   private readonly logger = new Logger(NotificationMailer.name);
-  private transport?: { key: string; transporter: Transporter };
 
   constructor(
     private readonly notifications: NotificationsService,
     private readonly users: UsersService,
-    private readonly channels: ChannelConfigService,
+    private readonly mailer: SystemMailer,
   ) {}
 
   handles(type: DomainEventType): boolean {
@@ -133,39 +131,17 @@ export class NotificationMailer implements DomainEventHandler, OnApplicationShut
   async handle(event: DomainEvent): Promise<void> {
     const p = event.payload as { notificationId: string; userId: string; kind: NotificationKind };
     if (!EMAILED_NOTIFICATIONS.includes(p.kind)) return;
-    const config = await this.channels.email();
-    if (!config?.enabled) return;
     const n = await this.notifications.get(p.notificationId);
     const user = await this.users.get(p.userId).catch(() => null);
     if (!user) return;
-    const key = JSON.stringify([config.smtpHost, config.smtpPort, config.smtpUser]);
-    if (this.transport?.key !== key) {
-      this.transport?.transporter.close();
-      this.transport = {
-        key,
-        transporter: nodemailer.createTransport({
-          host: config.smtpHost,
-          port: config.smtpPort,
-          secure: config.smtpSecure,
-          auth: config.smtpUser
-            ? { user: config.smtpUser, pass: config.smtpPassword ?? '' }
-            : undefined,
-        }),
-      };
-    }
-    await this.transport.transporter.sendMail({
-      from: { name: `${config.fromName} (Orbit Desk)`, address: config.address },
+    const sent = await this.mailer.send({
       to: user.email,
       subject: n.title,
       text: `${n.body}\n\nOpen Orbit Desk to act on it.`,
       // Retries of this event reuse the id, so mail servers can drop duplicates.
-      messageId: `<notify-${n.id}@${config.address.split('@')[1]}>`,
-      headers: { 'Auto-Submitted': 'auto-generated' },
+      id: `notify-${n.id}`,
+      fromSuffix: 'Orbit Desk',
     });
-    this.logger.log(`emailed ${p.kind} to ${user.email}`);
-  }
-
-  onApplicationShutdown() {
-    this.transport?.transporter.close();
+    if (sent) this.logger.log(`emailed ${p.kind} to ${user.email}`);
   }
 }

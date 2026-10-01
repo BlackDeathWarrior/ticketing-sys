@@ -11,12 +11,15 @@ import {
   CHAT_NAMESPACE,
   chatHandshakeSchema,
   chatMessageSchema,
-  chatRoom,
   type ChatMessageView,
+  type ChatRatingPrompt,
+  chatRatingSchema,
+  chatRoom,
 } from '@tms/shared';
 import type { Namespace, Socket } from 'socket.io';
 import { InboundService } from '../channels/inbound.service';
 import { ConversationsService } from '../conversations/conversations.service';
+import { CsatService } from '../csat/csat.service';
 import { type ChatSession, ChatSessionService } from './chat-session.service';
 
 const RATE_WINDOW_MS = 10_000;
@@ -41,6 +44,7 @@ export class ChatGateway implements OnGatewayConnection {
     private readonly sessions: ChatSessionService,
     private readonly inbound: InboundService,
     private readonly conversations: ConversationsService,
+    private readonly csat: CsatService,
   ) {}
 
   /** Visitors with the chat open on this API instance; null before the server is up. */
@@ -106,10 +110,35 @@ export class ChatGateway implements OnGatewayConnection {
   @SubscribeMessage('history')
   async onHistory(
     @ConnectedSocket() socket: Socket,
-  ): Promise<Ack<{ messages: ChatMessageView[] }> | Nack> {
+  ): Promise<Ack<{ messages: ChatMessageView[]; rate: ChatRatingPrompt | null }> | Nack> {
     const session = socket.data.session as ChatSession | undefined;
     if (!session) return { ok: false, error: 'No session' };
-    return { ok: true, messages: await this.conversations.chatHistory(session.sid) };
+    const [messages, rate] = await Promise.all([
+      this.conversations.chatHistory(session.sid),
+      // A rating we asked for while the visitor was away.
+      this.csat.pendingChatPrompt(session.sid).catch(() => null),
+    ]);
+    return { ok: true, messages, rate };
+  }
+
+  /** The visitor answers the "How did we do?" question shown when their ticket was solved. */
+  @SubscribeMessage('rate')
+  async onRate(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: unknown,
+  ): Promise<Ack<{ rating: number }> | Nack> {
+    const session = socket.data.session as ChatSession | undefined;
+    if (!session) return { ok: false, error: 'No session' };
+    const parsed = chatRatingSchema.safeParse(body);
+    if (!parsed.success) return { ok: false, error: 'Choose a rating from 1 to 5' };
+    if (this.rateLimited(socket)) return { ok: false, error: 'Please try again in a moment' };
+    try {
+      const { token, ...input } = parsed.data;
+      const saved = await this.csat.submitWithToken(token, input, 'chat');
+      return { ok: true, rating: saved.rating };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
   }
 
   private rateLimited(socket: Socket): boolean {

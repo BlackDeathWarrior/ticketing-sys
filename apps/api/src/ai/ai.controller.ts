@@ -11,6 +11,7 @@ import { ZodPipe } from '../common/zod.pipe';
 import { AiBehaviourService } from '../settings/ai-behaviour.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { AiAgentService } from './ai-agent.service';
+import { AiAutoResolveService } from './ai-auto-resolve';
 import { AiCopilotService } from './ai-copilot.service';
 import { AiRunsService } from './ai-runs.service';
 
@@ -24,6 +25,7 @@ export class AiController {
     private readonly runs: AiRunsService,
     private readonly tickets: TicketsService,
     private readonly copilot: AiCopilotService,
+    private readonly autoResolve: AiAutoResolveService,
   ) {}
 
   /** A suggested reply for the agent to edit and send; nothing is stored. */
@@ -45,6 +47,17 @@ export class AiController {
   @RequirePermission('settings:ai')
   saveBehaviour(@Ctx() ctx: RequestCtx, @Body() body: unknown) {
     return this.behaviour.save(ctx, body);
+  }
+
+  /**
+   * Resolves, now, the tickets the AI answered that have been quiet long
+   * enough. The worker does the same on a timer.
+   */
+  @Post('ai/auto-resolve')
+  @HttpCode(200)
+  @RequirePermission('settings:ai')
+  runAutoResolve() {
+    return this.autoResolve.run();
   }
 
   /** Runs the agent on a made-up conversation; nothing is stored or sent. */

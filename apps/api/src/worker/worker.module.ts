@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AiAutoResolveWorker } from '../ai/ai-auto-resolve';
 import { AiDispatchHandler, AiWorker } from '../ai/ai.worker';
 import { AiModule } from '../ai/ai.module';
 import { AuditModule } from '../audit/audit.module';
@@ -6,6 +7,8 @@ import { ChannelsModule } from '../channels/channels.module';
 import { EmailPollerService } from '../channels/email/email-poller.service';
 import { loadEnv } from '../config/env';
 import { ConversationsModule } from '../conversations/conversations.module';
+import { CsatHandler } from '../csat/csat.handler';
+import { CsatModule } from '../csat/csat.module';
 import { DeliveryHandler } from '../delivery/delivery.handler';
 import { EmailSender } from '../delivery/email.sender';
 import { CHANNEL_SENDERS } from '../delivery/senders';
@@ -30,6 +33,7 @@ import { HandoverHandler, RoutingHandler } from '../handover/handover.handler';
 import { HandoverModule } from '../handover/handover.module';
 import { NotificationMailer, NotificationsHandler } from '../notifications/notifications.handler';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PortalMailHandler, PortalModule } from '../portal/portal.module';
 import { RoutingModule } from '../routing/routing.module';
 import { SlaModule } from '../sla/sla.module';
 import { SlaHandler, SlaSweepWorker } from '../sla/sla.worker';
@@ -70,6 +74,8 @@ const env = loadEnv();
     NotificationsModule,
     HandoverModule,
     UsersModule,
+    CsatModule,
+    PortalModule,
   ],
   providers: [
     emitterProvider,
@@ -94,6 +100,7 @@ const env = loadEnv();
     KbIngestHandler,
     AiWorker,
     AiDispatchHandler,
+    AiAutoResolveWorker,
     ApprovalExpiryWorker,
     ApprovalsHandler,
     SlaSweepWorker,
@@ -102,6 +109,7 @@ const env = loadEnv();
     NotificationMailer,
     HandoverHandler,
     RoutingHandler,
+    CsatHandler,
     {
       provide: DOMAIN_EVENT_HANDLERS,
       inject: [
@@ -117,6 +125,8 @@ const env = loadEnv();
         NotificationMailer,
         HandoverHandler,
         RoutingHandler,
+        CsatHandler,
+        PortalMailHandler,
       ],
       useFactory: (...handlers: unknown[]) => handlers,
     },

@@ -189,6 +189,18 @@ export class InboundService {
     let conversation: Conversation | null = null;
     let ticketId: string | undefined;
 
+    if (env.ticket?.id) {
+      // The portal names the ticket. The sender must still be its customer.
+      const pinned = await this.tickets.lockRow(tx, env.ticket.id);
+      if (pinned.customerId === customerId) {
+        return {
+          conversation: await this.conversations.findLatestForTicket(tx, pinned.id, EMAIL_THREADS),
+          ticket: pinned,
+        };
+      }
+      this.logger.warn(`ignoring ticket ${pinned.id}: the sender is not its customer`);
+    }
+
     if (env.channel === 'email') {
       // Replies to a web-form ticket's emails thread onto the form's conversation.
       conversation = await this.conversations.findByMessageIds(tx, EMAIL_THREADS, env.references);

@@ -1,5 +1,8 @@
 import type { WebFormConfig, WebFormReceipt } from '@tms/shared';
 import { useEffect, useRef, useState } from 'react';
+import { Portal } from './Portal';
+import { parseRoute, type Route } from './portal-logic';
+import { RatePage } from './RatePage';
 import { RequestForm } from './RequestForm';
 
 interface ChatHandle {
@@ -38,10 +41,26 @@ function useFormConfig() {
   return config;
 }
 
+/** The page named by the URL hash: links in our emails open the portal or the rating page. */
+function useRoute(): Route {
+  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
+  useEffect(() => {
+    const onChange = () => {
+      setRoute(parseRoute(window.location.hash));
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener('hashchange', onChange);
+    return () => window.removeEventListener('hashchange', onChange);
+  }, []);
+  return route;
+}
+
 export function App() {
   const chat = useChatWidget();
   const config = useFormConfig();
+  const route = useRoute();
   const [receipt, setReceipt] = useState<WebFormReceipt | null>(null);
+  const inPortal = route.page === 'portal' || route.page === 'verify' || route.page === 'ticket';
 
   return (
     <>
@@ -54,11 +73,23 @@ export function App() {
             Demo Store
           </span>
           <span className="site-header__section">Help center</span>
+          <nav className="site-nav" aria-label="Help center">
+            <a href="#/" aria-current={route.page === 'home' ? 'page' : undefined}>
+              Submit a request
+            </a>
+            <a href="#/portal" aria-current={inPortal ? 'page' : undefined}>
+              My requests
+            </a>
+          </nav>
         </div>
       </header>
 
       <main className="wrap" id="main">
-        {receipt ? (
+        {route.page === 'rate' ? (
+          <RatePage token={route.token} />
+        ) : route.page === 'portal' || route.page === 'verify' || route.page === 'ticket' ? (
+          <Portal route={route} />
+        ) : receipt ? (
           <Receipt receipt={receipt} onAnother={() => setReceipt(null)} />
         ) : (
           <>
@@ -97,6 +128,13 @@ export function App() {
                     <li>You'll get a reference by email; reply to it to add details.</li>
                   </ul>
                 </section>
+                <section className="card" aria-labelledby="mine-title">
+                  <h2 id="mine-title">Already wrote to us?</h2>
+                  <p className="muted">See your requests, add a reply or rate how we did.</p>
+                  <a className="button button--secondary" href="#/portal">
+                    My requests
+                  </a>
+                </section>
               </aside>
             </div>
           </>
@@ -126,7 +164,8 @@ function Receipt({ receipt, onAnother }: { receipt: WebFormReceipt; onAnother: (
       </p>
       <p>
         We've sent a confirmation to <strong>{receipt.email}</strong>. Our reply will come to the
-        same address. To add details or files, reply to that email.
+        same address. To add details or files, reply to that email, or follow it under{' '}
+        <a href="#/portal">My requests</a>.
       </p>
       <button type="button" className="button button--secondary" onClick={onAnother}>
         Submit another request

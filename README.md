@@ -8,27 +8,27 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 
 ## Status
 
-| Phase | Scope                                                                                                                                                                             | State   |
-| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| 0     | Monorepo, Docker Compose infra, API/worker skeletons, CI                                                                                                                          | Done    |
-| 1     | Auth + RBAC, customers, tickets + workflow, audit log, outbox events, barebones UI                                                                                                | Done    |
-| 2     | Channel gateway + orchestrator, web chat widget, email (IMAP/SMTP), agent replies, live updates                                                                                   | Done    |
-| —     | Orbit Desk console wired to the API (ADR 0005), reports overview (ADR 0006), sample data + Playwright E2E suite (ADR 0007)                                                        | Done    |
-| 3     | LLM platform on LiteLLM, Settings for AI and channel keys, cheapest-first routing with per-provider caps (ADR 0008, 0009)                                                         | Done    |
-| 4     | Knowledge base: uploads, URL and FAQ sources, review, pgvector hybrid search with citations (ADR 0010)                                                                            | Done    |
-| 5     | AI agent: answers chat, drafts email, hands over; confidence policy, classifier, AI marks in Orbit Desk (ADR 0011)                                                                | Done    |
-| 5b    | Help center: public request form (channel `web_form`) with attachments, email acknowledgement and replies (ADR 0012)                                                              | Done    |
-| 6     | Tools over MCP (Demo Store sample server), risk tiers, supervisor approvals, AI follow-ups (ADR 0013)                                                                             | Done    |
-| 7     | Handover with context packs, take-over/hand-back, routing (rules, skills, presence), SLA timers, notifications, copilot, AI-vs-human views (ADR 0014)                             | Done    |
-| 8     | WhatsApp on the Meta Cloud API (ported from whatsapp-crm): signed webhook, media, delivery and read reports, 24-hour window, templates (ADR 0015)                                 | Done    |
-| 8b    | Channel status lights (green, amber, red, grey) with per-channel checks, a connection monitor, and one-step "Connect WhatsApp" (ADR 0016)                                         | Done    |
-| 8c    | Custom tools: HTTP requests defined in Settings that the AI can use, through the same gateway as MCP tools; a `tool:create` permission admins can grant to other roles (ADR 0017) | Done    |
-| 9     | Voice calls in the browser on Sarvam speech: answered by the AI in 11 languages, barge-in, an agent can join by voice, transcripts and recordings on the ticket (ADR 0018)        | Done    |
-| 10    | Reporting (AI vs human, SLA, CSAT), admin settings, customer portal (sign-in link, my tickets, reply, rate)                                                                       | Planned |
-| 11    | Hardening for the demo                                                                                                                                                            | Planned |
-| 12    | AWS live demo                                                                                                                                                                     | Planned |
+| Phase | Scope                                                                                                                                                                                                                                                                               | State   |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 0     | Monorepo, Docker Compose infra, API/worker skeletons, CI                                                                                                                                                                                                                            | Done    |
+| 1     | Auth + RBAC, customers, tickets + workflow, audit log, outbox events, barebones UI                                                                                                                                                                                                  | Done    |
+| 2     | Channel gateway + orchestrator, web chat widget, email (IMAP/SMTP), agent replies, live updates                                                                                                                                                                                     | Done    |
+| —     | Orbit Desk console wired to the API (ADR 0005), reports overview (ADR 0006), sample data + Playwright E2E suite (ADR 0007)                                                                                                                                                          | Done    |
+| 3     | LLM platform on LiteLLM, Settings for AI and channel keys, cheapest-first routing with per-provider caps (ADR 0008, 0009)                                                                                                                                                           | Done    |
+| 4     | Knowledge base: uploads, URL and FAQ sources, review, pgvector hybrid search with citations (ADR 0010)                                                                                                                                                                              | Done    |
+| 5     | AI agent: answers chat, drafts email, hands over; confidence policy, classifier, AI marks in Orbit Desk (ADR 0011)                                                                                                                                                                  | Done    |
+| 5b    | Help center: public request form (channel `web_form`) with attachments, email acknowledgement and replies (ADR 0012)                                                                                                                                                                | Done    |
+| 6     | Tools over MCP (Demo Store sample server), risk tiers, supervisor approvals, AI follow-ups (ADR 0013)                                                                                                                                                                               | Done    |
+| 7     | Handover with context packs, take-over/hand-back, routing (rules, skills, presence), SLA timers, notifications, copilot, AI-vs-human views (ADR 0014)                                                                                                                               | Done    |
+| 8     | WhatsApp on the Meta Cloud API (ported from whatsapp-crm): signed webhook, media, delivery and read reports, 24-hour window, templates (ADR 0015)                                                                                                                                   | Done    |
+| 8b    | Channel status lights (green, amber, red, grey) with per-channel checks, a connection monitor, and one-step "Connect WhatsApp" (ADR 0016)                                                                                                                                           | Done    |
+| 8c    | Custom tools: HTTP requests defined in Settings that the AI can use, through the same gateway as MCP tools; a `tool:create` permission admins can grant to other roles (ADR 0017)                                                                                                   | Done    |
+| 9     | Voice calls in the browser on Sarvam speech: answered by the AI in 11 languages, barge-in, an agent can join by voice, transcripts and recordings on the ticket (ADR 0018)                                                                                                          | Done    |
+| 10    | Reports (the AI next to the team: resolution, handover, SLA, ratings, cost; CSV export), customer ratings, the customer portal (sign-in link, my requests, reply, rate), admin pages for people, teams, categories and the workflow; the AI resolves tickets it answered (ADR 0019) | Done    |
+| 11    | Hardening for the demo                                                                                                                                                                                                                                                              | Planned |
+| 12    | AWS live demo                                                                                                                                                                                                                                                                       | Planned |
 
-Not built yet, although the UI or schema hints at it: CSAT (Phase 10). WhatsApp and voice are built but switched off until you connect a Meta app and save a Sarvam key; neither has been run against the real service yet. The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
+WhatsApp and voice are built but switched off until you connect a Meta app and save a Sarvam key; neither has been run against the real service yet. The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
 
 ## Layout
 
@@ -159,6 +159,16 @@ See [`docs/runbooks/phase-6-demo.md`](docs/runbooks/phase-6-demo.md).
 - **Where to set it up:** Settings → Routing and Settings → SLA.
 
 See [`docs/runbooks/phase-7-demo.md`](docs/runbooks/phase-7-demo.md).
+
+## Reports, ratings and the customer portal
+
+- **Reports** (Orbit Desk → Reports, team leads and up): what the AI resolved alone, what it passed to a person, first reply and time to final answer, SLA, customer ratings and AI cost, for a period, a channel or a team. The ticket list behind the figures exports as CSV.
+- **The AI resolves what it answered:** a ticket the AI answered and the customer left alone for 72 hours is resolved by the AI (Settings → AI behaviour; 0 switches it off). A later reply reopens it.
+- **Ratings:** when a ticket is solved the customer is asked once to rate it from 1 to 5: in the chat window, or by email. Only customers can rate; agents see the rating on the ticket, and a 1 or 2 notifies the assignee and team leads.
+- **Customer portal:** http://localhost:8080/help/#/portal ("My requests"). A customer enters their email, opens the one-time link we send, and sees their own tickets from every channel, can reply and rate. In development the link arrives in Mailpit (http://localhost:8025).
+- **Admin pages:** Settings → People (users, teams), Tickets (categories, statuses, allowed moves) and Customers (portal, ratings, the time-saved estimate).
+
+`HELP_CENTER_URL` is the address used in emailed links. See ADR 0019 and [`docs/runbooks/phase-10-demo.md`](docs/runbooks/phase-10-demo.md).
 
 ## Knowledge base
 
