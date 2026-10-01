@@ -30,6 +30,7 @@ import { KbSearch } from '../kb/KbSearch';
 import { ControlBar } from '../handover/ControlBar';
 import { laneRows } from '../handover/logic';
 import { HandoverContext, History, RatingPanel, SlaPanel } from '../handover/Panels';
+import { TicketContext } from '../integrations/TicketContext';
 import { ToolCalls } from '../tools/ToolCalls';
 import { CallPanel } from '../voice/CallPanel';
 import { windowNote } from '../whatsapp/logic';
@@ -98,6 +99,7 @@ const REPLY_VIA: Record<string, string> = {
   webchat: 'web chat',
   web_form: 'email',
   whatsapp: 'WhatsApp',
+  api: 'a message in the app',
 };
 
 function withMentions(text: string) {
@@ -428,6 +430,7 @@ function DrawerContent({
           </dl>
         </section>
 
+        <TicketContext ticket={ticket} />
         <CallPanel ticketId={ticket.id} liveTick={liveTick} onChanged={() => void onChanged()} />
         <SlaPanel ticketId={ticket.id} liveTick={liveTick} />
         <RatingPanel ticketId={ticket.id} liveTick={liveTick} />

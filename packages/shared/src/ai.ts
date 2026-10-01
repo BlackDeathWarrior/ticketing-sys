@@ -10,7 +10,7 @@ export const aiChannelModeSchema = z.enum(AI_CHANNEL_MODES);
 export type AiChannelMode = z.infer<typeof aiChannelModeSchema>;
 
 /** Channels the AI can take conversations on. */
-export const AI_CHANNELS = ['webchat', 'whatsapp', 'voice', 'email', 'web_form'] as const;
+export const AI_CHANNELS = ['webchat', 'whatsapp', 'voice', 'email', 'web_form', 'api'] as const;
 export type AiChannel = (typeof AI_CHANNELS)[number];
 
 export const AI_BEHAVIOUR_KEY = 'ai.behaviour';
@@ -27,6 +27,8 @@ export const aiBehaviourSchema = z
         email: aiChannelModeSchema.default('draft'),
         /** The public request form; replies go out by email. */
         web_form: aiChannelModeSchema.default('draft'),
+        /** Tickets an integration creates through the API; the app shows the replies. */
+        api: aiChannelModeSchema.default('draft'),
       })
       .default({}),
     /** At or above: send on `auto` channels. */

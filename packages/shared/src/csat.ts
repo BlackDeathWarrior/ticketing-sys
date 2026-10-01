@@ -2,8 +2,9 @@ import { z } from 'zod';
 
 /**
  * Customer satisfaction (CSAT): one rating from 1 to 5 per ticket, given by
- * the customer after it is resolved: from the survey email, the chat widget
- * or the portal. Agents can read ratings but never give them.
+ * the customer after it is resolved: from the survey email, the chat widget,
+ * the portal, or the app of the integration that raised the ticket. Agents
+ * can read ratings but never give them.
  */
 export const CSAT_LABELS: Record<number, string> = {
   1: 'Very unhappy',
@@ -18,7 +19,8 @@ export const isSatisfied = (rating: number) => rating >= 4;
 /** Ratings of 1 and 2 are brought to the team's attention. */
 export const isLowRating = (rating: number) => rating <= 2;
 
-export const CSAT_SOURCES = ['email', 'chat', 'portal'] as const;
+/** `api`: given in an integration's own app and passed on with its API key (ADR 0023). */
+export const CSAT_SOURCES = ['email', 'chat', 'portal', 'api'] as const;
 export type CsatSource = (typeof CSAT_SOURCES)[number];
 
 /** A ticket can be rated for this long after it is resolved. */

@@ -11,6 +11,7 @@ import {
   customers,
   type Database,
   type DbOrTx,
+  integrations,
   internalNotes,
   teams,
   tickets,
@@ -107,6 +108,27 @@ export class TicketsService {
     return { items: items.map(present), total };
   }
 
+  /** Tickets an integration raised, newest first. It never sees any others (ADR 0023). */
+  async forIntegration(
+    integrationId: string,
+    q: { externalRef?: string; statuses?: string[]; limit: number; offset: number },
+  ) {
+    const cond = and(
+      eq(tickets.integrationId, integrationId),
+      q.externalRef ? eq(tickets.externalRef, q.externalRef) : undefined,
+      q.statuses ? inArray(tickets.status, q.statuses) : undefined,
+    );
+    const [items, total] = await Promise.all([
+      this.baseSelect()
+        .where(cond)
+        .orderBy(desc(tickets.createdAt))
+        .limit(q.limit)
+        .offset(q.offset),
+      this.db.$count(tickets, cond),
+    ]);
+    return { items: items.map(present), total };
+  }
+
   /** One customer's tickets, most recently updated first (the customer portal). */
   async forCustomer(customerId: string, limit = 100) {
     const rows = await this.baseSelect()
@@ -174,8 +196,15 @@ export class TicketsService {
     return this.get(ticket.id);
   }
 
-  /** Creates a ticket inside the caller's transaction (used by channel intake). */
-  async createInTx(tx: DbOrTx, ctx: RequestCtx, input: CreateTicketInput): Promise<Ticket> {
+  /**
+   * Creates a ticket inside the caller's transaction (used by channel intake).
+   * `integrationId` is set only by the integration API, never from a request body.
+   */
+  async createInTx(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    input: CreateTicketInput & { integrationId?: string },
+  ): Promise<Ticket> {
     const t = tx;
     const customer = await this.customers.findActive(t, input.customerId);
     await this.assertCategories(t, input.categoryId, input.subcategoryId);
@@ -193,6 +222,9 @@ export class TicketsService {
         teamId: input.teamId,
         tags: [...new Set(input.tags)],
         status: initial.key,
+        integrationId: input.integrationId,
+        externalRef: input.externalRef,
+        metadata: input.metadata ?? {},
       })
       .returning();
     const data = {
@@ -612,13 +644,15 @@ export class TicketsService {
         team: { id: teams.id, name: teams.name },
         category: { id: categories.id, name: categories.name },
         subcategory: { id: subcategories.id, name: subcategories.name },
+        integration: { id: integrations.id, slug: integrations.slug, name: integrations.name },
       })
       .from(tickets)
       .innerJoin(customers, eq(customers.id, tickets.customerId))
       .leftJoin(users, eq(users.id, tickets.assigneeId))
       .leftJoin(teams, eq(teams.id, tickets.teamId))
       .leftJoin(categories, eq(categories.id, tickets.categoryId))
-      .leftJoin(subcategories, eq(subcategories.id, tickets.subcategoryId));
+      .leftJoin(subcategories, eq(subcategories.id, tickets.subcategoryId))
+      .leftJoin(integrations, eq(integrations.id, tickets.integrationId));
   }
 }
 
@@ -633,6 +667,7 @@ function present(row: Row) {
     team: row.team,
     category: row.category,
     subcategory: row.subcategory,
+    integration: row.integration,
   };
 }
 

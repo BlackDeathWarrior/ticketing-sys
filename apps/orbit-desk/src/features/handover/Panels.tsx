@@ -55,7 +55,12 @@ export function SlaPanel({ ticketId, liveTick }: { ticketId: string; liveTick: n
   );
 }
 
-const RATED_IN = { email: 'from the survey email', chat: 'in the chat', portal: 'in the portal' };
+const RATED_IN = {
+  email: 'from the survey email',
+  chat: 'in the chat',
+  portal: 'in the portal',
+  api: 'in the app',
+};
 
 /** The customer's rating, once they have given one. Staff can read it, never set it. */
 export function RatingPanel({ ticketId, liveTick }: { ticketId: string; liveTick: number }) {

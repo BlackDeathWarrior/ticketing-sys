@@ -39,6 +39,14 @@
     decision: drafted
     rules: [draft_channel]
 
+- name: Tickets raised through the API are drafted for a human
+  channel: api
+  messages:
+    - customer: When will my refund reach my card?
+  expect:
+    decision: drafted
+    rules: [draft_channel]
+
 - name: Asking for a person hands over
   channel: webchat
   messages:

@@ -19,6 +19,7 @@ const CHANNEL_LABELS: Record<AiChannel, string> = {
   voice: 'Voice',
   email: 'Email',
   web_form: 'Web form (replies by email)',
+  api: 'Integrations (tickets raised through the API)',
 };
 
 const MODE_LABELS: Record<AiChannelMode, string> = {

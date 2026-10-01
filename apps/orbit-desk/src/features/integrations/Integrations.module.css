@@ -40,3 +40,27 @@
   font-size: var(--text-caption);
   color: var(--color-fog);
 }
+
+/* Context an app sent with a ticket, in the ticket drawer. */
+.context {
+  display: grid;
+  gap: var(--spacing-8);
+  margin: 0;
+}
+
+.context > div {
+  display: grid;
+  grid-template-columns: minmax(96px, 30%) minmax(0, 1fr);
+  gap: var(--spacing-12);
+  font-size: var(--text-body-sm);
+}
+
+.context dt {
+  color: var(--color-fog);
+}
+
+.context dd {
+  margin: 0;
+  color: var(--color-lilac-white);
+  overflow-wrap: anywhere;
+}

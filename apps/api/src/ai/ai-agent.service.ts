@@ -41,6 +41,7 @@ import {
   customerTurn,
   SUMMARY_PROMPT_VERSION,
   summarySystemPrompt,
+  ticketContext,
 } from './prompts';
 import {
   AGENT_TOOLS,
@@ -74,6 +75,8 @@ interface ThinkInput {
     category: string | null;
     /** The top-level category, for lessons and ratings that are about a topic. */
     categoryId?: string | null;
+    /** What the app that raised the ticket sent with it, for the prompt. */
+    context?: string | null;
   };
   customer: { name: string; type: string };
   language: string | null;
@@ -239,6 +242,7 @@ export class AiAgentService {
             status: ticket.status,
             category: ticket.category?.name ?? null,
             categoryId: ticket.category?.id ?? null,
+            context: ticketContext(ticket),
           },
           customer: { name: customer.displayName, type: customer.customerType },
           language,
@@ -371,6 +375,7 @@ export class AiAgentService {
           ? `${ticket.category.name}${ticket.subcategory?.id ? ` > ${ticket.subcategory.name}` : ''}`
           : null,
         categoryId: ticket.category?.id ?? null,
+        context: ticketContext(ticket),
       },
       customer: { name: customer.displayName, type: customer.customerType },
       language,

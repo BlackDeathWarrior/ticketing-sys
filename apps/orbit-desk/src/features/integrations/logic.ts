@@ -43,6 +43,37 @@ export function expiresAtFor(choice: ExpiryChoice, now = Date.now()): string | n
   return days === null ? null : new Date(now + days * 86_400_000).toISOString();
 }
 
+/** "price_current" and "priceCurrent" both read "Price current". */
+export function metadataLabel(key: string): string {
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_\-.]+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return words ? words[0]!.toUpperCase() + words.slice(1) : key;
+}
+
+const METADATA_VALUE_MAX = 300;
+
+/**
+ * A ticket's metadata as rows for the drawer. Values are shown as text:
+ * nested values as compact JSON, long ones cut, empty ones left out.
+ */
+export function metadataRows(
+  metadata: Record<string, unknown>,
+): Array<{ key: string; label: string; value: string }> {
+  return Object.entries(metadata)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([key, v]) => {
+      const text = typeof v === 'object' ? JSON.stringify(v) : String(v);
+      return {
+        key,
+        label: metadataLabel(key),
+        value: text.length > METADATA_VALUE_MAX ? `${text.slice(0, METADATA_VALUE_MAX)}…` : text,
+      };
+    });
+}
+
 export function toggle<T>(list: T[], item: T): T[] {
   return list.includes(item) ? list.filter((i) => i !== item) : [...list, item];
 }

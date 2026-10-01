@@ -10,6 +10,7 @@ import { ConversationsModule } from '../conversations/conversations.module';
 import { CsatHandler } from '../csat/csat.handler';
 import { CsatModule } from '../csat/csat.module';
 import { DeliveryHandler } from '../delivery/delivery.handler';
+import { ApiSender } from '../delivery/api.sender';
 import { EmailSender } from '../delivery/email.sender';
 import { CHANNEL_SENDERS } from '../delivery/senders';
 import { WebchatSender } from '../delivery/webchat.sender';
@@ -88,12 +89,13 @@ const env = loadEnv();
     WebchatSender,
     EmailSender,
     WhatsAppSender,
+    ApiSender,
     WhatsAppWebhookWorker,
     ChannelHealthMonitor,
     RetentionWorker,
     {
       provide: CHANNEL_SENDERS,
-      inject: [WebchatSender, EmailSender, WhatsAppSender],
+      inject: [WebchatSender, EmailSender, WhatsAppSender, ApiSender],
       useFactory: (...senders: unknown[]) => senders,
     },
     DeliveryHandler,

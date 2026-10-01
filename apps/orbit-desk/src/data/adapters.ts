@@ -49,6 +49,9 @@ export interface ApiTicket {
   handling?: string;
   slaState?: string | null;
   slaDueAt?: string | null;
+  integration?: { id: string; slug: string; name: string } | null;
+  externalRef?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ApiWorkflow {
@@ -207,6 +210,9 @@ export function toTicket(t: ApiTicket, workflow: Workflow | undefined): Ticket {
     aiClassification: t.aiClassification ?? null,
     handling: (t.handling ?? 'none') as TicketHandling,
     sla: toSla(t.slaState ?? null, t.slaDueAt ?? null),
+    integration: t.integration?.name ?? null,
+    externalRef: t.externalRef ?? null,
+    metadata: t.metadata ?? {},
   };
 }
 
@@ -351,6 +357,7 @@ export const channelLabels: Record<Channel, string> = {
   voice: 'Voice call',
   web_form: 'Web form',
   agent: 'Agent-created',
+  api: 'Integration',
 };
 
 export const channelIcons = {
@@ -360,6 +367,7 @@ export const channelIcons = {
   voice: 'phone',
   web_form: 'list',
   agent: 'user',
+  api: 'layers',
 } as const satisfies Record<Channel, string>;
 
 /**

@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { channelSchema } from './tickets';
+import {
+  channelSchema,
+  externalRefSchema,
+  prioritySchema,
+  ticketMetadataSchema,
+  ticketTagSchema,
+} from './tickets';
 import { identityTypeSchema } from './customers';
 import { sendTemplateSchema } from './whatsapp';
 
@@ -43,13 +49,25 @@ export const messageEnvelopeSchema = z.object({
   receivedAt: z.string().datetime(),
   metadata: z.record(z.unknown()).default({}),
   /**
-   * `categoryId`: what the customer chose, applied only when this message
-   * opens a new ticket. `id`: the ticket this message belongs to, set only by
-   * an adapter that has already checked the sender owns it (the portal).
+   * `id`: the ticket this message belongs to, set only by an adapter that has
+   * already checked the sender owns it (the portal, the integration API). The
+   * rest is applied only when this message opens a new ticket: `categoryId` is
+   * what the customer chose; priority, tags, `externalRef`, `metadata` and
+   * `integrationId` come from the integration that raised it.
    */
   ticket: z
-    .object({ categoryId: z.string().uuid().optional(), id: z.string().uuid().optional() })
+    .object({
+      categoryId: z.string().uuid().optional(),
+      id: z.string().uuid().optional(),
+      priority: prioritySchema.optional(),
+      tags: z.array(ticketTagSchema).max(20).optional(),
+      externalRef: externalRefSchema.optional(),
+      metadata: ticketMetadataSchema.optional(),
+      integrationId: z.string().uuid().optional(),
+    })
     .optional(),
+  /** `off`: the AI does not take the conversation this message opens, whatever the channel's mode. */
+  ai: z.enum(['default', 'off']).default('default'),
 });
 export type MessageEnvelope = z.input<typeof messageEnvelopeSchema>;
 export type ParsedEnvelope = z.output<typeof messageEnvelopeSchema>;

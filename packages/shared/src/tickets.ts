@@ -1,6 +1,15 @@
 import { z } from 'zod';
 
-export const CHANNELS = ['email', 'whatsapp', 'webchat', 'voice', 'web_form', 'agent'] as const;
+/** `api`: tickets an integration creates through the API (ADR 0023). */
+export const CHANNELS = [
+  'email',
+  'whatsapp',
+  'webchat',
+  'voice',
+  'web_form',
+  'agent',
+  'api',
+] as const;
 export const channelSchema = z.enum(CHANNELS);
 export type Channel = z.infer<typeof channelSchema>;
 
@@ -71,7 +80,19 @@ export function parseTicketNumber(ref: string): number | null {
 
 // ---- API contracts ----
 
-const tag = z.string().trim().min(1).max(50);
+export const ticketTagSchema = z.string().trim().min(1).max(50);
+const tag = ticketTagSchema;
+
+/** The other system's id for what the ticket is about (an order, a listing, a job). */
+export const externalRefSchema = z.string().trim().min(1).max(200);
+
+export const TICKET_METADATA_MAX_BYTES = 8192;
+/** Context from the system that raised the ticket: a small JSON object, shown to agents. */
+export const ticketMetadataSchema = z
+  .record(z.unknown())
+  .refine((m) => JSON.stringify(m).length <= TICKET_METADATA_MAX_BYTES, {
+    message: `Metadata must be at most ${TICKET_METADATA_MAX_BYTES} bytes of JSON`,
+  });
 
 export const createTicketSchema = z.object({
   customerId: z.string().uuid(),
@@ -83,6 +104,8 @@ export const createTicketSchema = z.object({
   priority: prioritySchema.default('normal'),
   teamId: z.string().uuid().optional(),
   tags: z.array(tag).max(20).default([]),
+  externalRef: externalRefSchema.optional(),
+  metadata: ticketMetadataSchema.optional(),
 });
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
 

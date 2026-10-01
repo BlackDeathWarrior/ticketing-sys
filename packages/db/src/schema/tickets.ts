@@ -15,6 +15,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { teams, timestamps, users } from './auth';
 import { customers } from './customers';
+import { integrations } from './integrations';
 import { slaPolicies } from './operations';
 
 export const ticketStatuses = pgTable('ticket_statuses', {
@@ -96,6 +97,14 @@ export const tickets = pgTable(
       .default(sql`'{}'::text[]`),
     /** What the AI classifier suggested (category, priority, language, intent, sentiment). */
     aiClassification: jsonb('ai_classification').$type<Record<string, unknown>>(),
+    /** The integration that raised the ticket through the API (ADR 0023). */
+    integrationId: uuid('integration_id').references(() => integrations.id, {
+      onDelete: 'set null',
+    }),
+    /** That system's id for what the ticket is about: an order, a listing, a job. */
+    externalRef: text('external_ref'),
+    /** Context it sent along, shown to agents and given to the AI as data. */
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
     firstResponseAt: timestamp('first_response_at', { withTimezone: true }),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     closedAt: timestamp('closed_at', { withTimezone: true }),
@@ -112,6 +121,7 @@ export const tickets = pgTable(
     index('tickets_resolved_idx').on(t.resolvedAt),
     index('tickets_tags_gin').using('gin', t.tags),
     index('tickets_subject_trgm').using('gin', sql`${t.subject} gin_trgm_ops`),
+    index('tickets_integration_idx').on(t.integrationId, t.externalRef),
   ],
 );
 
