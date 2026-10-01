@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Tabs } from '../../components/ui';
 import { useSession } from '../../lib/session';
 import { CustomersPanel } from '../admin/CustomersPanel';
+import { IntegrationsPanel } from '../integrations/IntegrationsPanel';
 import { PeoplePanel } from '../admin/PeoplePanel';
 import { SystemPanel } from '../admin/SystemPanel';
 import { TicketSetupPanel } from '../admin/TicketSetupPanel';
@@ -20,7 +21,7 @@ function tabFromHash(): string | undefined {
   return window.location.hash.replace(/^#\/?/, '').split('/')[1];
 }
 
-/** Settings (#/settings/<tab>): AI, channels, customers, tools, routing, SLA, ticket setup and people. Tabs are limited to what the user may manage. */
+/** Settings (#/settings/<tab>): AI, channels, customers, tools, integrations, routing, SLA, ticket setup and people. Tabs are limited to what the user may manage. */
 export function SettingsPage() {
   const { can } = useSession();
   const tabs = visibleTabs(can);
@@ -51,8 +52,9 @@ export function SettingsPage() {
         <p className={styles.eyebrow}>Settings</p>
         <h1 className={styles.heading}>Workspace settings</h1>
         <p className={styles.lede}>
-          The AI agent and its models, channels and tools, routing and SLA, ticket setup and people.
-          Keys are write-only: after saving, only their last four characters are shown.
+          The AI agent and its models, channels, tools and integrations, routing and SLA, ticket
+          setup and people. Keys are write-only: after saving, only their last four characters are
+          shown.
         </p>
       </header>
       <Tabs
@@ -71,6 +73,7 @@ export function SettingsPage() {
         {tab === 'ai' && <AiPanel />}
         {tab === 'channels' && <ChannelsPanel />}
         {tab === 'tools' && <ToolsPanel />}
+        {tab === 'integrations' && <IntegrationsPanel />}
         {tab === 'routing' && <RoutingPanel />}
         {tab === 'sla' && <SlaSettingsPanel />}
         {tab === 'customers' && <CustomersPanel />}

@@ -8,17 +8,24 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { Permission } from '@tms/shared';
 import type { FastifyRequest } from 'fastify';
-import { IS_PUBLIC, REQUIRED_PERMISSIONS } from '../common/request-context';
+import { API_KEY_AUTH, IS_PUBLIC, REQUIRED_PERMISSIONS } from '../common/request-context';
+import { looksLikeApiKey } from '../integrations/api-key.util';
+import { ApiKeysService } from '../integrations/api-keys.service';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 
-/** Global guard: every route needs a valid access token unless marked @Public(). */
+/**
+ * Global guard: every route needs a valid access token unless marked
+ * @Public(). Routes marked @ApiKeyAuth() take an integration's API key
+ * instead, and only that (ADR 0022).
+ */
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly auth: AuthService,
     private readonly users: UsersService,
+    private readonly apiKeys: ApiKeysService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -31,7 +38,19 @@ export class AuthGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<FastifyRequest>();
     const header = req.headers.authorization;
     const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
+
+    const forApiKeys = this.reflector.getAllAndOverride<boolean>(API_KEY_AUTH, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (forApiKeys) {
+      if (!token) throw new UnauthorizedException('Missing API key');
+      if (!looksLikeApiKey(token)) throw new UnauthorizedException('This route needs an API key');
+      req.apiKey = await this.apiKeys.authenticate(token, req.ip);
+      return true;
+    }
     if (!token) throw new UnauthorizedException('Missing access token');
+    if (looksLikeApiKey(token)) throw new ForbiddenException('API keys cannot call this route');
 
     const payload = await this.auth.verifyAccessToken(token);
     if (!payload) throw new UnauthorizedException('Invalid or expired access token');
@@ -43,7 +62,10 @@ export class AuthGuard implements CanActivate {
   }
 }
 
-/** Global guard: enforces @RequirePermission() after AuthGuard has loaded the user. */
+/**
+ * Global guard: enforces @RequirePermission() after AuthGuard has loaded the
+ * user, or the API key, whose scopes count as its permissions.
+ */
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
@@ -54,10 +76,12 @@ export class PermissionsGuard implements CanActivate {
       context.getClass(),
     ]);
     if (!required?.length) return true;
-    const user = context.switchToHttp().getRequest<FastifyRequest>().user;
-    const missing = required.filter((p) => !user?.permissions.includes(p));
+    const req = context.switchToHttp().getRequest<FastifyRequest>();
+    const held = req.user?.permissions ?? req.apiKey?.scopes ?? [];
+    const missing = required.filter((p) => !held.includes(p));
     if (missing.length) {
-      throw new ForbiddenException(`Missing permission: ${missing.join(', ')}`);
+      const what = req.apiKey ? 'This API key lacks the scope' : 'Missing permission';
+      throw new ForbiddenException(`${what}: ${missing.join(', ')}`);
     }
     return true;
   }

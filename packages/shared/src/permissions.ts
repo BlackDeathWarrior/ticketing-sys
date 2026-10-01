@@ -58,6 +58,14 @@ export const PERMISSIONS = [
   'settings:sla',
   /** Raise a ticket's priority and send it to a team lead. */
   'ticket:escalate',
+  /** Connect outside apps: integrations and their API keys. Admin only. */
+  'integration:manage',
+  /**
+   * Scopes of an integration's API key (ADR 0022). The routes that need them
+   * accept keys only, so holding one as a person opens nothing.
+   */
+  'integration:ticket',
+  'integration:event',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

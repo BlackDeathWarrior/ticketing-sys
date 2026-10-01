@@ -13,6 +13,7 @@ export type SettingsTab =
   | 'channels'
   | 'customers'
   | 'tools'
+  | 'integrations'
   | 'routing'
   | 'sla'
   | 'tickets'
@@ -33,6 +34,7 @@ export const SETTINGS_TABS: Array<{
   { value: 'channels', label: 'Channels', needs: ['settings:channels'] },
   { value: 'customers', label: 'Customers', needs: ['settings:channels'] },
   { value: 'tools', label: 'Tools & MCP', needs: ['tool:manage'], anyOf: ['tool:create'] },
+  { value: 'integrations', label: 'Integrations', needs: ['integration:manage'] },
   { value: 'routing', label: 'Routing', needs: ['settings:routing'] },
   { value: 'sla', label: 'SLA', needs: ['settings:sla'] },
   {

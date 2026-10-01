@@ -127,6 +127,13 @@
       "when": 1790861221183,
       "tag": "0017_outbox_trace",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790874351904,
+      "tag": "0018_integrations",
+      "breakpoints": true
     }
   ]
 }

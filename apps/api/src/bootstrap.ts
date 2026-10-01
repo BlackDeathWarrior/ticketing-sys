@@ -56,6 +56,11 @@ export async function createApp(): Promise<NestFastifyApplication> {
       .setDescription('Ticket Management System')
       .setVersion('0.1.0')
       .addBearerAuth()
+      // Integration routes take an API key the same way: `Authorization: Bearer tms_sk_…`.
+      .addBearerAuth(
+        { type: 'http', scheme: 'bearer', description: 'Integration API key' },
+        'apiKey',
+      )
       .build();
     SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, config));
   }

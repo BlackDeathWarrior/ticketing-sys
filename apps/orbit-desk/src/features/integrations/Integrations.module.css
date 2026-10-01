@@ -1,0 +1,42 @@
+/* The key, shown once after it is created. */
+.keyBox {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--spacing-8);
+  align-items: center;
+  /* Takes its own row of the banner. */
+  flex: 1 1 100%;
+  padding: var(--spacing-12) var(--spacing-16);
+  border-radius: var(--radius-inputs);
+  box-shadow: var(--shadow-rim);
+}
+
+.keyValue {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-ui);
+  color: var(--color-lilac-white);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.scopes {
+  display: grid;
+  gap: var(--spacing-8);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.scopes legend {
+  margin-bottom: var(--spacing-8);
+  padding: 0;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.scopeKey {
+  margin-left: var(--spacing-8);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
