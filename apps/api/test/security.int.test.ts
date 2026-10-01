@@ -148,6 +148,49 @@ describe('rate limits on public routes', () => {
   });
 });
 
+describe('rate limits on API keys', () => {
+  async function integrationWithKey(rateLimitPerMinute: number) {
+    const integration = await t.call<{ id: string }>('POST', '/integrations', {
+      token: admin,
+      body: { slug: uniq('limit-'), name: 'Limited app' },
+    });
+    const key = await t.call<{ key: string }>('POST', `/integrations/${integration.body.id}/keys`, {
+      token: admin,
+      body: { name: 'Small allowance', scopes: ['integration:event'], rateLimitPerMinute },
+    });
+    expect(key.status).toBe(201);
+    return key.body.key;
+  }
+  const whoAmI = (key: string, remoteAddress = '203.0.113.90') =>
+    t.app.inject({
+      method: 'GET',
+      url: '/api/v1/integration',
+      remoteAddress,
+      headers: { authorization: `Bearer ${key}` },
+    });
+
+  it('stops a key at its own allowance, wherever its requests come from', async () => {
+    const small = await integrationWithKey(5);
+    const other = await integrationWithKey(5);
+    for (let i = 0; i < 5; i++) {
+      expect((await whoAmI(small, `203.0.113.${100 + i}`)).statusCode).toBe(200);
+    }
+    const res = await whoAmI(small, '203.0.113.120');
+    expect(res.statusCode).toBe(429);
+    expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+    // Another key has its own count.
+    expect((await whoAmI(other)).statusCode).toBe(200);
+  });
+
+  it('slows down guessing at keys from one address', async () => {
+    const guess = (i: number, remoteAddress: string) =>
+      whoAmI(`tms_sk_${String(i).padStart(43, 'x')}`, remoteAddress);
+    for (let i = 0; i < 20; i++) expect((await guess(i, '203.0.113.130')).statusCode).toBe(401);
+    expect((await guess(99, '203.0.113.130')).statusCode).toBe(429);
+    expect((await guess(99, '203.0.113.131')).statusCode).toBe(401);
+  });
+});
+
 describe('rate limits on the public chat', () => {
   const sockets: Socket[] = [];
   afterAll(() => sockets.forEach((s) => s.disconnect()));

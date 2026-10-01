@@ -107,6 +107,8 @@ export const DOMAIN_EVENT_TYPES = [
   'portal.signed_in',
   /** WhatsApp templates were synced from Meta, or Meta changed a template's status. */
   'whatsapp.templates_changed',
+  /** An integration or one of its API keys was created, changed or revoked. Never the key. */
+  'integration.config_changed',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
@@ -130,7 +132,8 @@ export type AggregateType =
   | 'sla'
   | 'user_presence'
   | 'notification'
-  | 'learning';
+  | 'learning'
+  | 'integration';
 
 export interface DomainEvent<P = Record<string, unknown>> {
   id: string;
@@ -144,7 +147,8 @@ export interface DomainEvent<P = Record<string, unknown>> {
   trace?: string | null;
 }
 
-export type ActorType = 'user' | 'system' | 'ai' | 'customer';
+/** `integration`: an outside app acting with an API key; the id is the key's. */
+export type ActorType = 'user' | 'system' | 'ai' | 'customer' | 'integration';
 
 export interface Actor {
   type: ActorType;

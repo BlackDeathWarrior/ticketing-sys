@@ -13,16 +13,21 @@
 #   RUN='pnpm --filter @tms/api exec vitest run -c vitest.int.config.ts test/kb.int.test.ts' #     bash scripts/check-in-docker.sh build     # steps, then one custom command
 #
 # Env: TMS_NETWORK (compose network, default tms_default),
-#      NODE_IMAGE  (default mirror.gcr.io/library/node:22-bookworm-slim).
+#      NODE_IMAGE  (default mirror.gcr.io/library/node:22-bookworm-slim),
+#      TMS_TEST_DB and TMS_TEST_REDIS_DB (default tms_test and 15): set both to
+#      test a second checkout at the same time without the two runs wiping
+#      each other's database.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 NETWORK=${TMS_NETWORK:-tms_default}
 IMAGE=${NODE_IMAGE:-mirror.gcr.io/library/node:22-bookworm-slim}
 STEPS=${*:-format:check lint build typecheck test test:int}
+TEST_DB=${TMS_TEST_DB:-tms_test}
+TEST_REDIS_DB=${TMS_TEST_REDIS_DB:-15}
 
-docker compose -f infra/docker-compose.yml exec -T postgres \
-  sh -c 'psql -U tms -tc "select 1 from pg_database where datname = '"'"'tms_test'"'"'" | grep -q 1 || createdb -U tms tms_test'
+docker compose -f infra/docker-compose.yml exec -T -e TEST_DB="$TEST_DB" postgres \
+  sh -c 'psql -U tms -tc "select 1 from pg_database where datname = '"'"'$TEST_DB'"'"'" | grep -q 1 || createdb -U tms "$TEST_DB"'
 
 # Tracked files as they are in the working tree, via a throwaway stash commit
 # (git stores them with LF), plus untracked files that aren't ignored.
@@ -37,8 +42,8 @@ docker volume create tms-check-pnpm-store >/dev/null
 docker run --rm -i --network "$NETWORK" \
   -v tms-check-pnpm-store:/pnpm/store \
   -e CI=true \
-  -e TEST_DATABASE_URL=postgres://tms:tms@postgres:5432/tms_test \
-  -e TEST_REDIS_URL=redis://redis:6379/15 \
+  -e TEST_DATABASE_URL="postgres://tms:tms@postgres:5432/$TEST_DB" \
+  -e TEST_REDIS_URL="redis://redis:6379/$TEST_REDIS_DB" \
   -e TEST_S3_ENDPOINT=http://objectstore:8333 \
   -e TEST_MAIL_HOST=greenmail \
   -e TEST_LITELLM_URL=http://litellm:4000 \

@@ -13,6 +13,7 @@ import { CsatModule } from './csat/csat.module';
 import { CustomersModule } from './customers/customers.module';
 import { HealthController } from './health/health.controller';
 import { InfraModule } from './infra/infra.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 import { KbModule } from './kb/kb.module';
 import { LearningModule } from './learning/learning.module';
 import { LlmModule } from './llm/llm.module';
@@ -46,6 +47,7 @@ const env = loadEnv();
     StorageModule,
     UsersModule,
     AuthModule,
+    IntegrationsModule,
     WorkflowModule,
     OrgModule,
     CustomersModule,
