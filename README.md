@@ -1,6 +1,6 @@
 # ticketing-sys
 
-Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp, web chat, later voice) where an AI agent handles first-level support, calls company systems through governed MCP/API tools, and hands off to human agents in one workspace.
+Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp, web chat, voice calls in the browser) where an AI agent handles first-level support, calls company systems through governed MCP/API tools, and hands off to human agents in one workspace.
 
 - Architecture map (open in a browser): [`docs/architecture.html`](docs/architecture.html)
 - Phased build plan: [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
@@ -23,12 +23,12 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 | 8     | WhatsApp on the Meta Cloud API (ported from whatsapp-crm): signed webhook, media, delivery and read reports, 24-hour window, templates (ADR 0015)                                 | Done    |
 | 8b    | Channel status lights (green, amber, red, grey) with per-channel checks, a connection monitor, and one-step "Connect WhatsApp" (ADR 0016)                                         | Done    |
 | 8c    | Custom tools: HTTP requests defined in Settings that the AI can use, through the same gateway as MCP tools; a `tool:create` permission admins can grant to other roles (ADR 0017) | Done    |
-| 9     | Voice agent on Sarvam STT/TTS, in the browser (see `docs/research/voice-sarvam.md`)                                                                                               | Next    |
+| 9     | Voice calls in the browser on Sarvam speech: answered by the AI in 11 languages, barge-in, an agent can join by voice, transcripts and recordings on the ticket (ADR 0018)        | Done    |
 | 10    | Reporting (AI vs human, SLA, CSAT), admin settings, customer portal (sign-in link, my tickets, reply, rate)                                                                       | Planned |
 | 11    | Hardening for the demo                                                                                                                                                            | Planned |
 | 12    | AWS live demo                                                                                                                                                                     | Planned |
 
-Not built yet, although the UI or schema hints at them: CSAT (Phase 10) and voice (Phase 9). WhatsApp is built but switched off until you connect a Meta app. The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
+Not built yet, although the UI or schema hints at it: CSAT (Phase 10). WhatsApp and voice are built but switched off until you connect a Meta app and save a Sarvam key; neither has been run against the real service yet. The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
 
 ## Layout
 
@@ -182,6 +182,13 @@ Orbit Desk → **Knowledge base** (`#/kb`) searches approved documents with cita
 
   Setup steps are in [`docs/runbooks/phase-8-demo.md`](docs/runbooks/phase-8-demo.md); the design is ADR 0015.
 
+- **Voice:** it needs a Sarvam API key (Settings → Channels → Sarvam voice), and calls use Sarvam credits. Then http://localhost:8080/widget/voice.html calls support from the browser:
+  - the AI answers aloud in the caller's language (11 Indian languages and English) and stops when interrupted;
+  - when the caller asks for a person, an agent joins the call from the ticket and talks to them;
+  - the transcript lands on the ticket, with a recording supervisors can play for 30 days.
+
+  Steps are in [`docs/runbooks/phase-9-demo.md`](docs/runbooks/phase-9-demo.md); the design is ADR 0018. Real phone numbers are not built.
+
 - **Embedding the widget on a site:**
   ```html
   <script src="https://tms.example.com/widget/tms-chat.js"></script>
@@ -218,7 +225,7 @@ pnpm test:int            # integration tests against real Postgres, Redis, S3 an
 
 Integration tests need `pnpm infra:up` plus the fake LLM (`docker compose -f infra/docker-compose.yml --profile fake up -d fake-providers`), or at least `postgres redis objectstore greenmail litellm fake-providers`. They wipe and migrate the database at `TEST_DATABASE_URL` (default `postgres://tms:tms@localhost:5432/tms_test`) and use Redis db 15. Create the database once with `docker compose -f infra/docker-compose.yml exec postgres createdb -U tms tms_test`.
 
-WhatsApp is tested without a stand-in for Meta: the tests post signed webhooks to the real route, and the integration tests answer calls to `graph.facebook.com` inside the test process.
+WhatsApp is tested without a stand-in for Meta: the tests post signed webhooks to the real route, and the integration tests answer calls to `graph.facebook.com` inside the test process. Voice is tested without a stand-in for Sarvam: the Sarvam client runs against a WebSocket server inside its unit test, and the integration tests swap in a scripted speech provider and use the real sockets and routes.
 
 End-to-end tests (`e2e/`, Playwright) drive both consoles, the chat widget and the mailbox against a running stack loaded with sample data:
 

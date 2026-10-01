@@ -19,3 +19,4 @@ export * from './sla';
 export * from './notifications';
 export * from './whatsapp';
 export * from './channel-health';
+export * from './voice';

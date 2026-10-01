@@ -27,6 +27,7 @@ export class RealtimeFanoutHandler implements DomainEventHandler {
       type.startsWith('approval.') ||
       type.startsWith('handover.') ||
       type.startsWith('sla.') ||
+      type.startsWith('voice.') ||
       type === 'ticket.routed' ||
       type === 'presence.changed' ||
       type === 'notification.created' ||

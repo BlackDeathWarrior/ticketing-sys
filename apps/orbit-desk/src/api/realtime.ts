@@ -14,7 +14,7 @@ export interface AgentEvent {
 let socket: Socket | null = null;
 
 /** One shared /agent socket; authenticates with the current access token. */
-function agentSocket(): Socket {
+export function agentSocket(): Socket {
   socket ??= io(AGENT_NAMESPACE, {
     transports: ['websocket', 'polling'],
     auth: (cb) => cb({ token: accessToken() }),

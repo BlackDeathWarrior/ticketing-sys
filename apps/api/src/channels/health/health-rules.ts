@@ -390,16 +390,58 @@ export function webFormHealth(f: {
   );
 }
 
-export function voiceHealth(f: { keySaved: boolean }): ChannelHealth {
-  return off('voice', 'Arrives with Phase 9', [
-    {
+export interface VoiceFacts {
+  /** Null when voice was never set up; calls need it switched on and a key. */
+  enabled: boolean | null;
+  keySaved: boolean;
+  /** The last "Test connection": the check is a paid call, so it never runs by itself. */
+  probe?: ProbeResult;
+  /** Calls in progress on this server, and how many it takes at once. */
+  lines: { active: number; max: number } | null;
+  activity: ChannelActivity;
+}
+
+export function voiceHealth(f: VoiceFacts): ChannelHealth {
+  if (f.enabled === null && !f.keySaved) return off('voice', 'Not set up');
+  if (f.enabled === false) return off('voice', 'Switched off', [], f.activity);
+
+  const checks: HealthCheck[] = [];
+  if (!f.keySaved) {
+    checks.push({
       key: 'key',
       label: 'Sarvam key',
-      state: f.keySaved ? 'ok' : 'off',
-      detail: f.keySaved ? 'Saved' : 'Not saved',
-    },
-    { key: 'calls', label: 'Voice calls', state: 'off', detail: 'Not built yet (Phase 9)' },
-  ]);
+      state: 'down',
+      detail: 'Not saved. Calls cannot start.',
+    });
+  } else if (!f.probe) {
+    checks.push({
+      key: 'sarvam',
+      label: 'Connection to Sarvam',
+      state: 'warning',
+      detail: 'Not checked yet. Click Test connection.',
+    });
+  } else {
+    checks.push({
+      key: 'sarvam',
+      label: 'Connection to Sarvam',
+      state: f.probe.ok ? 'ok' : 'down',
+      detail: f.probe.ok
+        ? 'Sarvam accepts the key'
+        : (f.probe.error ?? 'Sarvam refused the connection'),
+    });
+  }
+  if (f.lines) {
+    const busy = f.lines.active >= f.lines.max;
+    checks.push({
+      key: 'lines',
+      label: 'Lines',
+      state: busy ? 'warning' : 'ok',
+      detail: busy
+        ? `All ${f.lines.max} lines are in use: new callers are asked to try again`
+        : `${f.lines.active} of ${f.lines.max} in use`,
+    });
+  }
+  return build('voice', checks, f.activity, 'Ready for calls', f.probe?.at ?? null);
 }
 
 /** Adds up activity across channels that share one way out (email and the help-center form). */

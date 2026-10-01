@@ -37,7 +37,8 @@ test.describe('channel status lights', () => {
     await expect(tile('Web chat')).toHaveAttribute('data-state', 'ok');
     await expect(tile('Web chat')).toContainText('Working');
     await expect(tile('WhatsApp')).toHaveAttribute('data-state', 'off');
-    await expect(tile('Voice')).toContainText('Arrives with Phase 9');
+    // Voice needs a Sarvam key; without one it is off or missing its key, never green.
+    await expect(tile('Voice')).toHaveAttribute('data-state', /off|down/);
     await shot(page, 'orbit-channel-status');
 
     // The email card explains its light, check by check.

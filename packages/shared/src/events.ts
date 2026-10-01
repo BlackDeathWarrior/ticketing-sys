@@ -77,6 +77,12 @@ export const DOMAIN_EVENT_TYPES = [
   'notification.created',
   /** A team lead escalated a ticket. */
   'ticket.escalated',
+  /** A voice call started, changed hands or ended; the payload has the ticket once there is one. */
+  'voice.call_started',
+  'voice.call_updated',
+  'voice.call_ended',
+  /** A reply that was spoken on a call: stored as sent, never queued for delivery. */
+  'message.spoken',
   /** An admin granted a role a permission, or took it back. */
   'role.permissions_changed',
   /** WhatsApp templates were synced from Meta, or Meta changed a template's status. */
@@ -90,6 +96,7 @@ export type AggregateType =
   | 'customer'
   | 'user'
   | 'role'
+  | 'voice_call'
   | 'conversation'
   | 'team'
   | 'category'

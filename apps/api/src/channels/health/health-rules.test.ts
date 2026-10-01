@@ -249,11 +249,31 @@ describe('web chat, form and voice lights', () => {
     expect(form('off').summary).toMatch(/Email is off/);
   });
 
-  it('voice stays off until it is built', () => {
-    expect(voiceHealth({ keySaved: true })).toMatchObject({
+  it('voice is off until it is set up, then follows the key, the last test and the lines', () => {
+    const voice = (over: Partial<Parameters<typeof voiceHealth>[0]> = {}) =>
+      voiceHealth({
+        enabled: true,
+        keySaved: true,
+        probe: { ok: true, at: at(3) },
+        lines: { active: 1, max: 5 },
+        activity: NO_ACTIVITY,
+        ...over,
+      });
+    expect(voice({ enabled: null, keySaved: false })).toMatchObject({
       state: 'off',
-      summary: 'Arrives with Phase 9',
+      summary: 'Not set up',
     });
+    expect(voice({ enabled: false }).state).toBe('off');
+    expect(voice()).toMatchObject({ state: 'ok', summary: 'Ready for calls' });
+    expect(check(voice(), 'lines')?.detail).toBe('1 of 5 in use');
+
+    const noKey = voice({ keySaved: false });
+    expect(noKey).toMatchObject({ state: 'down', summary: 'Not saved. Calls cannot start.' });
+    expect(voice({ probe: undefined }).state).toBe('warning');
+    expect(
+      voice({ probe: { ok: false, at: at(1), error: 'Sarvam answered HTTP 403' } }),
+    ).toMatchObject({ state: 'down', summary: 'Sarvam answered HTTP 403' });
+    expect(voice({ lines: { active: 5, max: 5 } })).toMatchObject({ state: 'warning' });
   });
 });
 

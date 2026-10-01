@@ -44,6 +44,12 @@ export class OutboundService {
   async reply(ctx: RequestCtx, conversationId: string, body: string) {
     return this.db.transaction(async (tx) => {
       const conv = await this.conversations.lock(tx, conversationId);
+      if (conv.channel === 'voice') {
+        // A typed reply can't be heard: on a call, people talk.
+        throw new BadRequestException(
+          'This is a voice call. Join the call to talk to the caller, or add an internal note.',
+        );
+      }
       if (conv.channel === 'whatsapp') await this.checkWhatsAppText(conv, body);
       return this.replyInTx(tx, ctx, conv, body);
     });
@@ -93,6 +99,18 @@ export class OutboundService {
         metadata: { ...meta },
       });
       return this.replyInTx(tx, ctx, conv, preview, { metadata: { waTemplate: send } });
+    });
+  }
+
+  /**
+   * What an agent said on a voice call, as transcribed. It was already heard,
+   * so it is stored as sent and never queued for delivery.
+   */
+  async agentSpoke(ctx: RequestCtx, conversationId: string, body: string) {
+    return this.db.transaction(async (tx) => {
+      const conv = await this.conversations.lock(tx, conversationId);
+      if (conv.channel !== 'voice') throw new BadRequestException('Not a voice conversation');
+      return this.replyInTx(tx, ctx, conv, body);
     });
   }
 
@@ -262,6 +280,8 @@ export class OutboundService {
   ) {
     const author = opts.author ?? 'agent';
     const byAi = author === 'ai';
+    // On a voice call a reply is spoken as it is stored: there is nothing left to deliver.
+    const spoken = conv.channel === 'voice' && !opts.draft;
     const ourAddress = repliesByEmail(conv.channel) ? await this.emailAddress() : null;
     const ticket = await this.tickets.lockRow(tx, conv.ticketId);
     const email = ourAddress
@@ -276,8 +296,8 @@ export class OutboundService {
       authorUserId: author === 'agent' ? (ctx.user?.id ?? null) : null,
       body,
       channelMessageId: email?.messageId ?? null,
-      deliveryStatus: opts.draft ? 'draft' : 'pending',
-      metadata: { ...(email ?? {}), ...(opts.metadata ?? {}) },
+      deliveryStatus: opts.draft ? 'draft' : spoken ? 'sent' : 'pending',
+      metadata: { ...(email ?? {}), ...(opts.metadata ?? {}), ...(spoken ? { spoken: true } : {}) },
     });
     if (!conv.externalThreadId && email) {
       // A thread we started: its first Message-ID is the thread key.
@@ -329,7 +349,7 @@ export class OutboundService {
       data,
     });
     await this.outbox.publish(tx, ctx, {
-      type: opts.draft ? 'message.drafted' : 'message.outbound',
+      type: opts.draft ? 'message.drafted' : spoken ? 'message.spoken' : 'message.outbound',
       aggregateType: 'ticket',
       aggregateId: ticket.id,
       payload: data,

@@ -144,7 +144,7 @@ describe('channel status lights', () => {
     expect((await t.call('GET', '/channels/health')).status).toBe(401);
   });
 
-  it('show every channel, with web chat working and voice not built yet', async () => {
+  it('show every channel, with web chat working', async () => {
     const all = await waitFor(async () => {
       const list = await health();
       return list.find((h) => h.channel === 'webchat')?.state === 'ok' ? list : undefined;
@@ -161,10 +161,8 @@ describe('channel status lights', () => {
     expect(chat.summary).toMatch(/^Accepting chats/);
     expect(checkOf(chat, 'worker')).toMatchObject({ state: 'ok', detail: 'Running' });
 
-    expect(all.find((h) => h.channel === 'voice')).toMatchObject({
-      state: 'off',
-      summary: 'Arrives with Phase 9',
-    });
+    // Voice has no key in this test, so it is off (or says the key is missing).
+    expect(['off', 'down']).toContain(all.find((h) => h.channel === 'voice')!.state);
     expect(all.find((h) => h.channel === 'whatsapp')!.state).toBe('off');
   });
 

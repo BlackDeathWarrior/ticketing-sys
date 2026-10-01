@@ -34,17 +34,22 @@ export class ChannelHealthService {
     private readonly conversations: ConversationsService,
   ) {}
 
-  /** `visitors` is the number of open chat sockets, known only to the API process. */
-  async all(opts: { visitors?: number | null } = {}): Promise<ChannelHealth[]> {
+  /** `visitors` and `lines` are what only the API process knows: open chats and live calls. */
+  async all(
+    opts: { visitors?: number | null; lines?: { active: number; max: number } | null } = {},
+  ): Promise<ChannelHealth[]> {
     const now = new Date();
-    const [email, whatsapp, activity, workerUp, emailSignals, waSignals] = await Promise.all([
-      this.channels.email(),
-      this.channels.whatsapp(),
-      this.conversations.channelActivity(),
-      this.workerUp(now),
-      this.signals.get('email'),
-      this.signals.get('whatsapp'),
-    ]);
+    const [email, whatsapp, sarvam, activity, workerUp, emailSignals, waSignals, voiceSignals] =
+      await Promise.all([
+        this.channels.email(),
+        this.channels.whatsapp(),
+        this.channels.sarvam(),
+        this.conversations.channelActivity(),
+        this.workerUp(now),
+        this.signals.get('email'),
+        this.signals.get('whatsapp'),
+        this.signals.get('sarvam'),
+      ]);
     const has = async (key: string) => (await this.secrets.has(key)).set;
     const [accessToken, appSecret, verifyToken, sarvamKey] = await Promise.all([
       has('whatsapp.access_token'),
@@ -98,7 +103,13 @@ export class ChannelHealthService {
           lastFailure: null,
         },
       }),
-      voiceHealth({ keySaved: sarvamKey }),
+      voiceHealth({
+        enabled: sarvam ? sarvam.enabled : null,
+        keySaved: sarvamKey,
+        probe: voiceSignals.probe,
+        lines: opts.lines ?? null,
+        activity: activity.voice ?? NO_ACTIVITY,
+      }),
     ];
   }
 

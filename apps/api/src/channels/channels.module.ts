@@ -9,6 +9,7 @@ import { ChannelsController } from './channels.controller';
 import { InboundService } from './inbound.service';
 import { OutboundService } from './outbound.service';
 import { ChannelHealthService } from './health/channel-health.service';
+import { VoiceCallsService } from './voice/voice-calls.service';
 import { WhatsAppConnectService } from './whatsapp/whatsapp-connect.service';
 import { WhatsAppTemplatesService } from './whatsapp/whatsapp-templates.service';
 import { WhatsAppWebhookQueue } from './whatsapp/whatsapp-webhook.queue';
@@ -31,6 +32,7 @@ import { WhatsAppService } from './whatsapp/whatsapp.service';
     WhatsAppWebhookQueue,
     WhatsAppConnectService,
     ChannelHealthService,
+    VoiceCallsService,
   ],
   exports: [
     InboundService,
@@ -40,6 +42,7 @@ import { WhatsAppService } from './whatsapp/whatsapp.service';
     WhatsAppService,
     WhatsAppTemplatesService,
     ChannelHealthService,
+    VoiceCallsService,
   ],
 })
 export class ChannelsModule {}

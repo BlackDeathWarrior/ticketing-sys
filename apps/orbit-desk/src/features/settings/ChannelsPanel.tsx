@@ -1,12 +1,21 @@
-import type {
-  ChannelHealth,
-  ChannelKind,
-  ChannelSettingsView,
-  ConnectionTestResult,
+import {
+  type ChannelHealth,
+  type ChannelKind,
+  type ChannelSettingsView,
+  type ConnectionTestResult,
+  VOICE_DEFAULT_GREETING,
 } from '@tms/shared';
 import { type FormEvent, useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import { Button, Card, CardHeader, Input, Select, StatusLight } from '../../components/ui';
+import {
+  Button,
+  Card,
+  CardHeader,
+  Input,
+  Select,
+  StatusLight,
+  Textarea,
+} from '../../components/ui';
 import { useSession } from '../../lib/session';
 import { useGet } from '../../lib/useGet';
 import { WhatsAppConnect } from '../whatsapp/WhatsAppConnect';
@@ -23,7 +32,7 @@ import { maskedKey } from './logic';
 import styles from './Settings.module.css';
 import { TestResult } from './TestResult';
 
-type FieldKind = 'text' | 'number' | 'bool' | 'email';
+type FieldKind = 'text' | 'number' | 'bool' | 'email' | 'longtext';
 interface Field {
   name: string;
   label: string;
@@ -85,18 +94,24 @@ const CHANNELS: Record<
   sarvam: {
     title: 'Sarvam voice',
     subtitle:
-      'Speech-to-text and text-to-speech for the voice agent (Phase 9), and language detection.',
+      'Voice calls in the browser: Sarvam turns speech into text and text into speech, in 11 languages. Calls use Sarvam credits.',
     fields: [
       { name: 'enabled', label: 'Voice on', kind: 'bool' },
+      { name: 'defaultSpeaker', label: 'Voice', kind: 'text' },
       { name: 'sttModel', label: 'Speech-to-text model', kind: 'text' },
       { name: 'ttsModel', label: 'Text-to-speech model', kind: 'text' },
-      { name: 'defaultSpeaker', label: 'Default voice', kind: 'text' },
+      { name: 'greeting', label: 'Greeting (must say the call is recorded)', kind: 'longtext' },
+      { name: 'maxCallMinutes', label: 'Longest call (minutes)', kind: 'number' },
+      { name: 'recordCalls', label: 'Record calls (kept 30 days)', kind: 'bool' },
     ],
     defaults: {
       enabled: true,
       sttModel: 'saaras:v4',
       ttsModel: 'bulbul:v3',
       defaultSpeaker: 'shubh',
+      greeting: VOICE_DEFAULT_GREETING,
+      maxCallMinutes: 10,
+      recordCalls: true,
     },
   },
 };
@@ -265,6 +280,17 @@ function ChannelForm({ view, onChanged }: { view: ChannelSettingsView; onChanged
                   { value: 'no', label: 'No' },
                 ]}
               />
+            ) : f.kind === 'longtext' ? (
+              <div key={f.name} className={styles.wide}>
+                <Textarea
+                  id={`${view.kind}-${f.name}`}
+                  label={f.label}
+                  rows={2}
+                  value={typeof values[f.name] === 'string' ? (values[f.name] as string) : ''}
+                  onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
+                  required={!f.optional}
+                />
+              </div>
             ) : (
               <Input
                 key={f.name}

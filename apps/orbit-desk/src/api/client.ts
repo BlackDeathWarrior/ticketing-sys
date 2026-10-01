@@ -112,12 +112,17 @@ export async function openFile(apiPath: string): Promise<void> {
 }
 
 /** Downloads an authenticated file (e.g. a message attachment) under its own name. */
-export async function downloadFile(apiPath: string, filename: string): Promise<void> {
+/** A file behind the API, fetched with the agent's token (for players and downloads). */
+export async function fetchBlob(apiPath: string): Promise<Blob> {
   let res = await raw('GET', apiPath);
   if (res.status === 401 && (await refresh())) res = await raw('GET', apiPath);
   if (!res.ok)
     throw new ApiError(res.status, { message: `Could not download the file (${res.status})` });
-  const url = URL.createObjectURL(await res.blob());
+  return res.blob();
+}
+
+export async function downloadFile(apiPath: string, filename: string): Promise<void> {
+  const url = URL.createObjectURL(await fetchBlob(apiPath));
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;

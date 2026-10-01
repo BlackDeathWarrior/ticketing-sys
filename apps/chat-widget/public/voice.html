@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Demo store: talk to support</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 42rem;
+        margin: 3rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+      pre {
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Demo store</h1>
+    <p>
+      Talk to support from your browser. Speak in English, Hindi, Bengali, Tamil, Telugu, Gujarati,
+      Kannada, Malayalam, Marathi, Punjabi or Odia. You can interrupt the assistant at any time, and
+      ask for a person.
+    </p>
+    <div id="call"></div>
+    <p>
+      Calls open a ticket in the TMS console (channel <code>voice</code>) with the transcript.
+      Prefer typing? <a href="./demo.html">Chat with us</a> or
+      <a href="../help/">submit a request</a>.
+    </p>
+    <pre><code>&lt;div id="call"&gt;&lt;/div&gt;
+&lt;script src="https://tms.example.com/widget/tms-voice.js"&gt;&lt;/script&gt;
+&lt;script&gt;TMSVoice.init({ server: 'https://tms.example.com', mount: '#call' });&lt;/script&gt;</code></pre>
+
+    <script src="./tms-voice.js"></script>
+    <script>
+      TMSVoice.init({ mount: '#call' });
+    </script>
+  </body>
+</html>
