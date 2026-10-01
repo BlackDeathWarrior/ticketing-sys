@@ -30,6 +30,8 @@ import {
   type FinalStatus,
   kb,
   llm,
+  answeredByPerson,
+  lessons,
   MARKER_EMAIL,
   quietChats,
   ratings,
@@ -250,7 +252,25 @@ async function main() {
       const done = await resolveQuietChats(admin, sessions);
       log(`${done} chats resolved by the AI after the customer went quiet, and rated in the chat`);
     }
+
+    // The chat an agent took over is solved, and the visitor rates it.
+    const solved = await call<Ticket>(admin, 'GET', `/tickets/${chatTicket!}`);
+    await call(tokenOf(answeredByPerson.agent), 'POST', `/tickets/${solved.id}/transition`, {
+      status: 'resolved',
+    });
+    await rateInChat(
+      sessions.get(answeredByPerson.name)!,
+      answeredByPerson.name,
+      answeredByPerson.rating,
+      answeredByPerson.comment,
+    );
+    log(`${chatTicket} solved by an agent and rated ${answeredByPerson.rating} in the chat`);
   }
+
+  for (const l of lessons) {
+    await call(tokenOf(l.by), 'POST', '/learning/lessons', { body: l.body });
+  }
+  log(`${lessons.length} lesson for the AI, written after a rating`);
 
   const rated = await rateInPortal();
   log(
@@ -587,31 +607,42 @@ async function resolveQuietChats(admin: string, sessions: Map<string, string>): 
     await waitFor(`${q.name}'s chat to be resolved`, async () =>
       (await find(q.name))?.status === 'resolved' ? true : undefined,
     );
-    const socket = io(`${API_URL}/chat`, {
-      transports: ['websocket'],
-      auth: { token: sessions.get(q.name) },
-    });
-    try {
-      await new Promise<void>((resolve, reject) => {
-        socket.once('session', () => resolve());
-        socket.once('connect_error', reject);
-      });
-      // The question was asked while the visitor was away; it is waiting in the chat.
-      const prompt = await waitFor(`the rating question for ${q.name}`, async () => {
-        const h = (await socket.timeout(10_000).emitWithAck('history')) as {
-          rate?: { token: string } | null;
-        };
-        return h.rate ?? undefined;
-      });
-      const ack = (await socket
-        .timeout(10_000)
-        .emitWithAck('rate', { token: prompt.token, rating: q.rating })) as { ok: boolean };
-      if (ack.ok) rated++;
-    } finally {
-      socket.disconnect();
-    }
+    if (await rateInChat(sessions.get(q.name)!, q.name, q.rating, q.comment)) rated++;
   }
   return rated;
+}
+
+/** The visitor comes back to the chat and answers the "How did we do?" question waiting there. */
+async function rateInChat(
+  sessionToken: string,
+  name: string,
+  rating: number,
+  comment?: string,
+): Promise<boolean> {
+  const socket = io(`${API_URL}/chat`, {
+    transports: ['websocket'],
+    auth: { token: sessionToken },
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      socket.once('session', () => resolve());
+      socket.once('connect_error', reject);
+    });
+    const prompt = await waitFor(`the rating question for ${name}`, async () => {
+      const h = (await socket.timeout(10_000).emitWithAck('history')) as {
+        rate?: { token: string } | null;
+      };
+      return h.rate ?? undefined;
+    });
+    const ack = (await socket.timeout(10_000).emitWithAck('rate', {
+      token: prompt.token,
+      rating,
+      ...(comment ? { comment } : {}),
+    })) as { ok: boolean };
+    return ack.ok;
+  } finally {
+    socket.disconnect();
+  }
 }
 
 /**

@@ -7,7 +7,15 @@ import { VoiceService } from '../src/channels/voice/voice.service';
 import type { Env } from '../src/config/env';
 import { ENV } from '../src/infra/tokens';
 import { ChannelSignalsService } from '../src/settings/channel-signals.service';
-import { makeUser, startApp, startWorker, type TestClient, uniq, waitFor } from './helpers';
+import {
+  clearKnowledgeBase,
+  makeUser,
+  startApp,
+  startWorker,
+  type TestClient,
+  uniq,
+  waitFor,
+} from './helpers';
 import { FAKE_LLM_BASE_URL } from './test-env';
 import { ScriptedSpeech } from './voice-double';
 
@@ -87,6 +95,7 @@ async function ticketOf(callId: string): Promise<string> {
 beforeAll(async () => {
   t = await startApp({ listen: true });
   admin = await t.adminToken();
+  await clearKnowledgeBase(t, admin);
   agent = await makeUser(t, admin, 'agent', { name: 'Jonah Voice' });
   other = await makeUser(t, admin, 'agent', { name: 'Olga Other' });
   supervisor = await makeUser(t, admin, 'supervisor', { name: 'Sana Voice' });

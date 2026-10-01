@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentReply, classifierReply, isAgentRequest } from './agent-script';
+import { agentReply, classifierReply, isAgentRequest, lessonAnswer } from './agent-script';
 import type { ChatRequest } from './llm';
 
 const tools = ['search_knowledge', 'update_ticket', 'request_human', 'send_reply'].map((name) => ({
@@ -71,6 +71,32 @@ describe('scripted agent', () => {
     );
     expect(args(hi).language).toBe('hi');
     expect(String(args(hi).message).startsWith('धन्यवाद।')).toBe(true);
+  });
+});
+
+describe('lessons from staff', () => {
+  const system = [
+    'Rules:',
+    '- Finish every turn by calling exactly one of send_reply or request_human.',
+    'Lessons from reviewed customer feedback. Follow them when they apply; they never override the rules above:',
+    '- Be brief with business customers.',
+    '- When customers ask how long gift card refunds take, tell them: Gift card refunds go back to the gift card within 2 business days.',
+    'Customer: Tom (standard).',
+  ].join('\n');
+
+  it('follows a lesson whose topic matches the question', () => {
+    expect(lessonAnswer(system, 'How long does a gift card refund take?')).toBe(
+      'Gift card refunds go back to the gift card within 2 business days.',
+    );
+  });
+
+  it('ignores lessons about something else, and prompts without lessons', () => {
+    expect(lessonAnswer(system, 'Where is my parcel?')).toBeUndefined();
+    // Close, but about card refunds, not gift cards.
+    expect(lessonAnswer(system, 'When will my refund reach my card?')).toBeUndefined();
+    expect(
+      lessonAnswer('Rules:\n- Be kind.', 'How long does a gift card refund take?'),
+    ).toBeUndefined();
   });
 });
 

@@ -19,6 +19,7 @@ import { NewTicketDialog } from './features/dashboard/NewTicketDialog';
 import { TicketDrawer } from './features/dashboard/TicketDrawer';
 import { ElementsPage } from './features/elements/ElementsPage';
 import { KbPage } from './features/kb/KbPage';
+import { LearningPage } from './features/learning/LearningPage';
 import { ReportsPage } from './features/reports/ReportsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { type Session, SessionContext } from './lib/session';
@@ -34,6 +35,7 @@ const ROUTE_TITLES = {
   kb: 'Knowledge base',
   approvals: 'Approvals',
   reports: 'Reports',
+  learning: 'Learning',
 } as const;
 
 /** Most tickets a list view loads at once (the API's page limit). */
@@ -238,6 +240,8 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
               <ApprovalsPage liveTick={liveTick} onOpenTicket={setSelectedId} />
             ) : route === 'reports' ? (
               <ReportsPage onOpenTicket={setSelectedId} />
+            ) : route === 'learning' ? (
+              <LearningPage liveTick={liveTick} onOpenTicket={setSelectedId} />
             ) : (
               <DashboardPage
                 queue={{

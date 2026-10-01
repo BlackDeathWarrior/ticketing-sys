@@ -6,7 +6,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { InboundService } from '../src/channels/inbound.service';
 import { ConversationsService } from '../src/conversations/conversations.service';
-import { startApp, startWorker, type TestClient, uniq, waitFor } from './helpers';
+import {
+  clearKnowledgeBase,
+  startApp,
+  startWorker,
+  type TestClient,
+  uniq,
+  waitFor,
+} from './helpers';
 import { applyEmailEnv, FAKE_LLM_BASE_URL } from './test-env';
 
 applyEmailEnv();
@@ -17,6 +24,7 @@ let admin: string;
 let agent: string;
 let providerId: string;
 let chatModelId: string;
+let lessonId: string;
 
 const KB_DIR = path.resolve(__dirname, '../../../scripts/sample-data/kb');
 
@@ -116,6 +124,7 @@ async function upload(file: string) {
 beforeAll(async () => {
   t = await startApp();
   admin = await t.adminToken();
+  await clearKnowledgeBase(t, admin);
 
   const email = `${uniq('ai-agent')}@test.local`;
   await t.call('POST', '/users', {
@@ -157,6 +166,15 @@ beforeAll(async () => {
     body: { mode: 'ordered', modelIds: [embed.body.id] },
   });
 
+  // The lesson the golden conversations expect (the sample data has the same one).
+  const lesson = await t.call('POST', '/learning/lessons', {
+    token: admin,
+    body: {
+      body: 'When customers ask how long gift card refunds take, tell them: Gift card refunds go back to the gift card within 2 business days.',
+    },
+  });
+  lessonId = lesson.body.id;
+
   worker = await startWorker();
   for (const f of ['returns-policy.md', 'billing-faq.md', 'shipping-faq.md']) {
     const id = await upload(f);
@@ -177,6 +195,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await worker?.close();
+  if (lessonId) await t.call('DELETE', `/learning/lessons/${lessonId}`, { token: admin });
   if (providerId) await t.call('DELETE', `/settings/llm/providers/${providerId}`, { token: admin });
   await t?.close();
 });
@@ -194,7 +213,7 @@ describe('AI agent on web chat', () => {
     expect(run).toMatchObject({
       decision: 'sent',
       model: 'openai/scripted-cheap',
-      promptVersion: 'agent-v2',
+      promptVersion: 'agent-v3',
     });
     expect(run.sources.length).toBeGreaterThan(0);
     const reply = await waitFor(async () => {

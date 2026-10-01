@@ -964,10 +964,40 @@ export const chats = [
  * them back in time, lets the AI resolve them (quiet for more than 72 hours),
  * and then answers the "How did we do?" question as the visitor would.
  */
-export const quietChats = [
+export const quietChats: Array<{
+  name: string;
+  quietHours: number;
+  rating: number;
+  comment?: string;
+}> = [
   { name: 'Tom Whitaker', quietHours: 96, rating: 5 },
-  { name: 'Aarav Kulkarni', quietHours: 110, rating: 4 },
+  // A low rating of the AI's own answer: it shows up under Learning → To review.
+  {
+    name: 'Aarav Kulkarni',
+    quietHours: 110,
+    rating: 2,
+    comment: 'I asked about a gift card refund, not a card refund.',
+  },
   { name: 'María López', quietHours: 80, rating: 5 },
+];
+
+/**
+ * A chat the AI passed to a person, who solved it. The visitor rates it 5:
+ * under Learning it is offered as knowledge the AI could have had.
+ */
+export const answeredByPerson = {
+  name: 'Bea Sandoval',
+  agent: 'jonah',
+  rating: 5,
+  comment: 'Jonah fixed it straight away.',
+};
+
+/** Lessons staff wrote for the AI after reading ratings (ADR 0020). */
+export const lessons = [
+  {
+    by: 'priya',
+    body: 'When customers ask how long gift card refunds take, tell them: Gift card refunds go back to the gift card within 2 business days.',
+  },
 ];
 
 /**

@@ -26,6 +26,7 @@ import { OutboxService } from '../audit/outbox.service';
 import { AiPolicyService } from '../channels/ai-policy.service';
 import { type RequestCtx, SYSTEM_CTX } from '../common/request-context';
 import { type Conversation, ConversationsService } from '../conversations/conversations.service';
+import { lockTicketThenConversation } from '../channels/lock-order';
 import { CustomersService } from '../customers/customers.service';
 import { DB } from '../infra/tokens';
 import { LlmClientService } from '../llm/llm-client.service';
@@ -65,7 +66,12 @@ export class HandoverService {
   async takeOver(ctx: RequestCtx, conversationId: string) {
     const me = ctx.user!.id;
     await this.db.transaction(async (tx) => {
-      const conv = await this.conversations.lock(tx, conversationId);
+      const conv = await lockTicketThenConversation(
+        tx,
+        this.tickets,
+        this.conversations,
+        conversationId,
+      );
       await this.assertNotSomeoneElses(conv, me);
       const ticket = await this.tickets.lockRow(tx, conv.ticketId);
       await this.conversations.setController(tx, ctx, conv, 'human', me);
@@ -91,7 +97,12 @@ export class HandoverService {
       throw new BadRequestException('The AI is off for this channel or has no model to use');
     }
     await this.db.transaction(async (tx) => {
-      const conv = await this.conversations.lock(tx, conversationId);
+      const conv = await lockTicketThenConversation(
+        tx,
+        this.tickets,
+        this.conversations,
+        conversationId,
+      );
       if (conv.controller === 'ai') throw new ConflictException('The AI is already answering');
       await this.assertNotSomeoneElses(conv, ctx.user!.id);
       const ticket = await this.tickets.lockRow(tx, conv.ticketId);

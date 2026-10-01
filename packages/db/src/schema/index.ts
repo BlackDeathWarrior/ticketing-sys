@@ -11,3 +11,4 @@ export * from './operations';
 export * from './whatsapp';
 export * from './voice';
 export * from './customer-experience';
+export * from './learning';

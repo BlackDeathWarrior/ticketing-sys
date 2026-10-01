@@ -6,6 +6,7 @@ import { LlmModule } from '../llm/llm.module';
 import { OrgModule } from '../org/org.module';
 import { TicketsModule } from '../tickets/tickets.module';
 import { HandoverModule } from '../handover/handover.module';
+import { LearningModule } from '../learning/learning.module';
 import { ToolsModule } from '../tools/tools.module';
 import { AiAgentService } from './ai-agent.service';
 import { AiAutoResolveService } from './ai-auto-resolve';
@@ -31,6 +32,7 @@ import { LanguageService } from './language.service';
     ToolsModule,
     AiRunsModule,
     HandoverModule,
+    LearningModule,
   ],
   controllers: [AiController],
   providers: [

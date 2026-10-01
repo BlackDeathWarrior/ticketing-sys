@@ -2,6 +2,7 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { InboundService } from '../src/channels/inbound.service';
 import {
+  clearKnowledgeBase,
   makeTeam,
   makeUser,
   startApp,
@@ -71,6 +72,7 @@ const handovers = async (ticketId: string) =>
 beforeAll(async () => {
   t = await startApp();
   admin = await t.adminToken();
+  await clearKnowledgeBase(t, admin);
   teamId = await makeTeam(t, admin, uniq('Support desk'));
   otherTeamId = await makeTeam(t, admin, uniq('Billing desk'));
   hindi = await makeUser(t, admin, 'agent', { name: 'Hema Hindi', teamIds: [teamId] });

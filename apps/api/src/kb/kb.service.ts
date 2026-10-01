@@ -300,6 +300,26 @@ export class KbService {
 
   // ---- worker side ----
 
+  /** The document each chunk belongs to. Chunks replaced by a re-index are simply missing. */
+  async documentsOfChunks(chunkIds: string[]): Promise<Map<string, { id: string; title: string }>> {
+    if (!chunkIds.length) return new Map();
+    const rows = await this.db
+      .select({ chunkId: kbChunks.id, id: kbDocuments.id, title: kbDocuments.title })
+      .from(kbChunks)
+      .innerJoin(kbDocuments, eq(kbDocuments.id, kbChunks.documentId))
+      .where(inArray(kbChunks.id, chunkIds));
+    return new Map(rows.map((r) => [r.chunkId, { id: r.id, title: r.title }]));
+  }
+
+  async titles(ids: string[]): Promise<Map<string, string>> {
+    if (!ids.length) return new Map();
+    const rows = await this.db
+      .select({ id: kbDocuments.id, title: kbDocuments.title })
+      .from(kbDocuments)
+      .where(inArray(kbDocuments.id, ids));
+    return new Map(rows.map((r) => [r.id, r.title]));
+  }
+
   async row(id: string): Promise<DocRow> {
     const [row] = await this.db.select().from(kbDocuments).where(eq(kbDocuments.id, id));
     if (!row) throw new NotFoundException('Document not found');

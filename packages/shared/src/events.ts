@@ -92,6 +92,11 @@ export const DOMAIN_EVENT_TYPES = [
   'csat.requested',
   /** A customer rated a ticket, or changed their rating. */
   'csat.submitted',
+  /** A rated ticket was put in front of a reviewer, or the reviewer decided. */
+  'learning.review_opened',
+  'learning.review_closed',
+  /** A lesson for the AI was added, changed, switched on or off, or deleted. */
+  'learning.lesson_changed',
   /** A customer asked for a sign-in link to the portal; the worker emails it. */
   'portal.link_requested',
   'portal.signed_in',
@@ -119,7 +124,8 @@ export type AggregateType =
   | 'routing'
   | 'sla'
   | 'user_presence'
-  | 'notification';
+  | 'notification'
+  | 'learning';
 
 export interface DomainEvent<P = Record<string, unknown>> {
   id: string;

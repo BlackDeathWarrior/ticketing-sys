@@ -124,3 +124,16 @@ export async function makeUser(
   const token = (await t.login(email, password)).accessToken;
   return { id: res.body.id, email, token, name: opts.name };
 }
+
+/**
+ * Empties the knowledge base. Test files share one database, and what the AI
+ * answers depends on which documents exist: a file that relies on its own
+ * documents starts from none.
+ */
+export async function clearKnowledgeBase(t: TestClient, admin: string): Promise<void> {
+  const res = await t.call('GET', '/kb/documents', { token: admin, query: { limit: '200' } });
+  const docs = (Array.isArray(res.body) ? res.body : (res.body?.items ?? [])) as Array<{
+    id: string;
+  }>;
+  for (const d of docs) await t.call('DELETE', `/kb/documents/${d.id}`, { token: admin });
+}

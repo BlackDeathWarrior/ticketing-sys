@@ -211,6 +211,11 @@ export interface PerformanceReport {
     all: CsatSummary;
     /** Surveys sent or shown in the period. */
     asked: number;
+    /**
+     * Ratings of tickets people handled, by the assignee at the time of the
+     * rating, most rated first. For coaching, next to the AI's own figures.
+     */
+    byAgent: Array<{ agent: string } & CsatSummary>;
   };
   cost: {
     totalUsd: number;

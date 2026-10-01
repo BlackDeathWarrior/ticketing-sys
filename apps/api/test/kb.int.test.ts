@@ -5,7 +5,14 @@ import { type Database, kbChunks } from '@tms/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DB } from '../src/infra/tokens';
-import { startApp, startWorker, type TestClient, uniq, waitFor } from './helpers';
+import {
+  clearKnowledgeBase,
+  startApp,
+  startWorker,
+  type TestClient,
+  uniq,
+  waitFor,
+} from './helpers';
 import { makePdf } from './pdf-fixture';
 import { FAKE_LLM_BASE_URL } from './test-env';
 
@@ -90,6 +97,7 @@ async function approve(id: string) {
 beforeAll(async () => {
   t = await startApp();
   admin = await t.adminToken();
+  await clearKnowledgeBase(t, admin);
 
   const p = await t.call('POST', '/settings/llm/providers', {
     token: admin,
@@ -114,10 +122,20 @@ beforeAll(async () => {
   });
   expect(embed.status).toBe(201);
   embedModelId = embed.body.id;
-  await t.call('PUT', '/settings/llm/roles/embedding', {
+  const role = await t.call('PUT', '/settings/llm/roles/embedding', {
     token: admin,
     body: { mode: 'ordered', modelIds: [embedModelId] },
   });
+  expect(role.status, JSON.stringify(role.body)).toBe(200);
+  // Indexing falls back to keyword search without an embedding model, so make
+  // sure the router can use this one before any document is uploaded.
+  await waitFor(async () => {
+    const roles = (await t.call('GET', '/settings/llm/roles', { token: admin })).body as Array<{
+      role: string;
+      candidates: Array<{ skipped?: string | null }>;
+    }>;
+    return roles.find((r) => r.role === 'embedding')?.candidates.some((c) => !c.skipped);
+  }, 'a usable embedding model');
 
   const team = await t.call('POST', '/teams', {
     token: admin,

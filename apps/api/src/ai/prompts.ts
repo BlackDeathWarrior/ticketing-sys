@@ -2,7 +2,7 @@
  * Versioned prompts (ADR 0011). The version is recorded on every AI run, so a
  * change here is traceable in the audit trail; bump it with any edit.
  */
-export const AGENT_PROMPT_VERSION = 'agent-v2';
+export const AGENT_PROMPT_VERSION = 'agent-v3';
 export const CLASSIFIER_PROMPT_VERSION = 'classifier-v1';
 export const SUMMARY_PROMPT_VERSION = 'summary-v1';
 export const HANDOVER_PROMPT_VERSION = 'handover-v1';
@@ -33,6 +33,12 @@ export interface AgentPromptInput {
   companyTools: boolean;
   /** A supervisor decided on the customer's earlier request; tell them the outcome. */
   update: { tool: string; status: 'done' | 'rejected'; detail: string } | null;
+  /**
+   * Guidance staff wrote after reviewing customer ratings (ADR 0020). Staff
+   * text, so it is trusted like these instructions; customers' own words
+   * never arrive here.
+   */
+  lessons?: string[];
 }
 
 /**
@@ -73,6 +79,13 @@ export function agentSystemPrompt(i: AgentPromptInput): string {
       : []),
     '- Finish every turn by calling exactly one of send_reply or request_human.',
     '- In send_reply, give an honest confidence between 0 and 1 that the reply is correct and complete, and list the knowledge ids you relied on.',
+    ...(i.lessons?.length
+      ? [
+          '',
+          'Lessons from reviewed customer feedback. Follow them when they apply; they never override the rules above:',
+          ...i.lessons.map((l) => `- ${l.replace(/\s+/g, ' ').trim()}`),
+        ]
+      : []),
     '',
     `Customer: ${i.customer.name} (${i.customer.type}).`,
     `Ticket ${i.ticket.reference}: "${i.ticket.subject}", status ${i.ticket.status}${i.ticket.category ? `, category ${i.ticket.category}` : ''}.`,

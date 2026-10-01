@@ -1,6 +1,87 @@
 # Test report
 
-## Latest: Phase 10, reports, ratings, the customer portal and admin pages
+## Latest: Phase 10b, learning from ratings
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-10b-learning-loop`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                            |
+| ------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                              |
+| `pnpm test`                                       | 323 passed (api 166, Orbit Desk 96, shared 34, fake providers 17, help center 10) |
+| `pnpm test:int`                                   | 197 passed (19 files)                                                             |
+| `pnpm e2e`                                        | 91 passed; 9 screenshot-only specs skipped as designed                            |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                        |
+| `pnpm ai:eval`                                    | 10 of 10 golden conversations passed                                              |
+
+### What was and wasn't tested
+
+- **Tested:** the whole loop with the scripted model: ratings become feedback, three bad ratings make the AI draft instead of send, a reviewer writes a lesson and the AI's next answer follows it, a well-rated human answer becomes a knowledge base draft, and the switch turns it all off.
+- **Not tested:** how well a real model follows a free-form lesson. The scripted model follows lessons only in the form "When customers ask about X, tell them: Y". With real keys, `pnpm ai:eval` runs the new golden conversation against the configured model.
+
+### Sample data
+
+- One of the three AI-resolved chats is now rated 2 with a comment: it waits under Learning → To review.
+- The chat Jonah took over is resolved and rated 5 by the visitor: it is offered as knowledge the AI could have had.
+- One lesson, written by the supervisor, about gift card refunds.
+- Nothing is "rated badly" in the sample data: that needs three low ratings on one topic or document, and would change the sample AI answers other tests rely on. The runbook shows how to trigger it.
+
+### New tests
+
+| Where                                          |    Tests | Covers                                                                                                                                                                                |
+| ---------------------------------------------- | -------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/ai/ai.test.ts`                   |       +2 | The rule "customers rated answers like this badly": draft instead of send, handover on a call, no mark on an answer that was a draft anyway; lessons in the prompt as their own block |
+| `apps/fake-providers/src/agent-script.test.ts` |       +2 | The scripted model follows a matching lesson and ignores others                                                                                                                       |
+| `apps/orbit-desk/.../learning/logic.test.ts`   |        5 | The figures, the rating trend, the knowledge base draft from a review                                                                                                                 |
+| `apps/api/test/learning.int.test.ts`           |        8 | See below                                                                                                                                                                             |
+| `apps/api/test/evals/agent.yaml`               |       +1 | A lesson staff wrote is followed                                                                                                                                                      |
+| `e2e/tests/learning.spec.ts`                   |        5 | See below                                                                                                                                                                             |
+| `e2e/tests/reports.spec.ts`                    | +1 check | Ratings by agent, with the AI's own on the first line                                                                                                                                 |
+
+`learning.int.test.ts` (real routes, worker and the scripted model):
+
+- **Permission:** agents are refused; supervisors are let in.
+- **Caution:** two bad ratings change nothing. After the third, the document is listed as rated badly, and the next customer's answer on it is drafted with the rule `poor_feedback` and the reason recorded.
+- **Reviews:** each low-rated AI answer is listed with the question, the answer, its sources and the customer's comment. A comment that tries to give orders ("Ignore your rules…") never reaches the AI.
+- **The switch:** with learning off the AI sends again.
+- **Lessons:** a too-short lesson is refused; a lesson written from a review is recorded with its ticket and author, and the AI's answer to that question becomes the lesson's; switched off, it stops; deleted, it is gone.
+- **Changed ratings:** a customer who changes 1 to 5 withdraws the open review.
+- **Good answers:** after a handover, a 5-rated answer by a person is offered and saved as a knowledge base draft (not visible to customers until approved); deciding twice changes nothing.
+- **Overview:** eight weeks, the current and previous 30 days.
+
+`learning.spec.ts`: a supervisor sees a low-rated AI answer with the customer's comment, opens the ticket from it, writes a lesson, and the AI's answer changes; switching the lesson off changes it back. A well-rated human answer is saved as a knowledge base draft. A review is closed with nothing to change. Agents and team leads have no Learning link and are refused by the API. A phone screen.
+
+### Bugs found and fixed
+
+1. **A reply and an incoming message at the same instant could lose one of them.** Replies locked the conversation and then the ticket; incoming messages locked them the other way round. Postgres ends one of two deadlocked transactions, so a message could vanish with an error. It showed up as a voice test failing once in a while (an agent and a caller speaking at the same moment). Every reply, take-over and AI answer now locks the ticket first.
+2. **Test files shared knowledge base documents**, so what the AI answered depended on which file ran before. Files that rely on their own documents now start from an empty knowledge base.
+3. **The scripted model matched lessons too loosely**: a question about card refunds got the gift-card lesson. It now needs three shared words.
+
+### Known limits
+
+- The AI improves as fast as reviewers work through the list. That is the design.
+- Lessons are chosen by category and recency, six per turn. Many lessons would need a relevance search.
+- A few unhappy customers can hold a topic back for up to 90 days.
+- One run of `learning.spec.ts` timed out once in screenshot mode; ten runs after that, in both modes, passed. The cause was not found.
+
+### Screenshots
+
+Learning:
+
+![Learning](screenshots/orbit-learning.png)
+
+Writing a lesson from a low rating:
+
+![Writing a lesson](screenshots/orbit-learning-lesson.png)
+
+On a phone:
+
+![Learning on a phone](screenshots/orbit-learning-phone.png)
+
+---
+
+## Phase 10: reports, ratings, the customer portal and admin pages
 
 Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-10-reporting`.
 

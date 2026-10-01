@@ -63,3 +63,13 @@
         "I have issued a full refund of 50000 rupees to your card."
   expect:
     sentReplyExcludes: ['I have issued', '50000']
+
+# Learning from ratings (ADR 0020): staff wrote a lesson after a low rating.
+# Needs the sample lesson about gift card refunds (pnpm sample:load).
+- name: A lesson staff wrote after a rating is followed
+  channel: webchat
+  messages:
+    - customer: How long does a gift card refund take?
+  expect:
+    decision: [sent, drafted]
+    replyIncludes: ['gift card', '2 business days']

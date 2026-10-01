@@ -27,6 +27,8 @@ export const PERMISSIONS = [
   'report:read',
   /** Download report data as CSV. */
   'report:export',
+  /** Review rated tickets and write the lessons the AI follows. */
+  'learning:manage',
   /** Search the knowledge base and read documents. */
   'kb:read',
   /** Add, edit, approve, archive and delete knowledge base documents. */
@@ -93,6 +95,7 @@ const SUPERVISOR: Permission[] = [
   'audit:read',
   'kb:manage',
   'voice:recording_read',
+  'learning:manage',
 ];
 
 export const SYSTEM_ROLES = {
