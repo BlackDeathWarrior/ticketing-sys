@@ -1,4 +1,10 @@
-import { API_KEY_SCOPE_LABELS, type ApiKeyScope, type ApiKeyStatus } from '@tms/shared';
+import {
+  API_KEY_SCOPE_LABELS,
+  type ApiKeyScope,
+  type ApiKeyStatus,
+  type IncidentView,
+} from '@tms/shared';
+import { relativeFromIso } from '../settings/logic';
 
 /** A slug suggested from the name: "Ethnic Threads (web)" → "ethnic-threads-web". */
 export function slugFromName(name: string): string {
@@ -72,6 +78,18 @@ export function metadataRows(
         value: text.length > METADATA_VALUE_MAX ? `${text.slice(0, METADATA_VALUE_MAX)}…` : text,
       };
     });
+}
+
+/** One line on an incident for the ticket drawer: is it still happening, how often, since when. */
+export function incidentLine(i: IncidentView, now = Date.now()): string {
+  const times = `reported ${i.occurrences === 1 ? 'once' : `${i.occurrences} times`}`;
+  if (i.status === 'resolved') {
+    return `Recovered ${relativeFromIso(i.resolvedAt, now)} · ${times}`;
+  }
+  const first = `first ${relativeFromIso(i.firstSeenAt, now)}`;
+  return i.occurrences === 1
+    ? `Still happening · ${times} · ${first}`
+    : `Still happening · ${times} · ${first} · last ${relativeFromIso(i.lastSeenAt, now)}`;
 }
 
 export function toggle<T>(list: T[], item: T): T[] {

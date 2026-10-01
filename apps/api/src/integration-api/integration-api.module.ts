@@ -5,7 +5,12 @@ import { CustomersModule } from '../customers/customers.module';
 import { OrgModule } from '../org/org.module';
 import { TicketsModule } from '../tickets/tickets.module';
 import { WorkflowModule } from '../workflow/workflow.module';
+import { IncidentsService } from './incidents.service';
 import { IntegrationApiController } from './integration-api.controller';
+import {
+  IntegrationEventsController,
+  TicketIncidentsController,
+} from './integration-events.controller';
 import { IntegrationTicketsService } from './integration-tickets.service';
 
 /**
@@ -14,8 +19,8 @@ import { IntegrationTicketsService } from './integration-tickets.service';
  */
 @Module({
   imports: [ChannelsModule, TicketsModule, CustomersModule, WorkflowModule, OrgModule, CsatModule],
-  controllers: [IntegrationApiController],
-  providers: [IntegrationTicketsService],
-  exports: [IntegrationTicketsService],
+  controllers: [IntegrationApiController, IntegrationEventsController, TicketIncidentsController],
+  providers: [IntegrationTicketsService, IncidentsService],
+  exports: [IntegrationTicketsService, IncidentsService],
 })
 export class IntegrationApiModule {}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   expiresAtFor,
+  incidentLine,
   isValidSlug,
   keyStatusLabel,
   metadataLabel,
@@ -57,6 +58,36 @@ describe('ticket context', () => {
     expect(rows[2]!.value).toBe('false');
     expect(rows[3]!.value).toBe('[{"source":"Amazon","price":1399}]');
     expect(rows[4]!.value).toHaveLength(301);
+  });
+});
+
+describe('incidents on a ticket', () => {
+  const now = Date.parse('2026-10-01T12:00:00.000Z');
+  const base = {
+    id: 'i1',
+    fingerprint: 'scraper.run_failed',
+    severity: 'error' as const,
+    title: 'Scraper exited with code 1',
+    source: null,
+    ticket: 'TMS-7',
+    firstSeenAt: '2026-10-01T10:00:00.000Z',
+    lastSeenAt: '2026-10-01T11:57:00.000Z',
+    resolvedAt: null,
+  };
+
+  it('says whether it is still happening, how often and since when', () => {
+    expect(incidentLine({ ...base, status: 'open', occurrences: 10 }, now)).toBe(
+      'Still happening · reported 10 times · first 2h ago · last 3m ago',
+    );
+    expect(incidentLine({ ...base, status: 'open', occurrences: 1 }, now)).toBe(
+      'Still happening · reported once · first 2h ago',
+    );
+    expect(
+      incidentLine(
+        { ...base, status: 'resolved', occurrences: 4, resolvedAt: '2026-10-01T11:55:00.000Z' },
+        now,
+      ),
+    ).toBe('Recovered 5m ago · reported 4 times');
   });
 });
 

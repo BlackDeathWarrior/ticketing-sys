@@ -129,6 +129,16 @@ export class TicketsService {
     return { items: items.map(present), total };
   }
 
+  /** Ticket numbers by id, for modules that show a reference next to their own records. */
+  async numbersFor(db: DbOrTx, ids: string[]): Promise<Map<string, number>> {
+    if (!ids.length) return new Map();
+    const rows = await db
+      .select({ id: tickets.id, number: tickets.number })
+      .from(tickets)
+      .where(inArray(tickets.id, ids));
+    return new Map(rows.map((r) => [r.id, r.number]));
+  }
+
   /** One customer's tickets, most recently updated first (the customer portal). */
   async forCustomer(customerId: string, limit = 100) {
     const rows = await this.baseSelect()
@@ -170,6 +180,25 @@ export class TicketsService {
     const current = await this.lock(tx, ticketId);
     if (current.handling !== 'ai') return false;
     if ((await this.workflow.status(current.status)).category !== 'pending') return false;
+    const { statuses } = await this.workflow.load();
+    for (const s of statuses.filter((x) => x.category === 'resolved' && x.isActive)) {
+      if ((await this.workflow.check(current.status, s.key)).ok) {
+        await this.applyTransition(tx, ctx, current, s.key, resolution);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Moves an open or pending ticket to the first resolved status the workflow
+   * allows from where it is. False when it is already resolved or closed, or
+   * the workflow has no such move.
+   */
+  async resolveOpenInTx(tx: DbOrTx, ctx: RequestCtx, ticketId: string, resolution: string) {
+    const current = await this.lock(tx, ticketId);
+    const { category } = await this.workflow.status(current.status);
+    if (category === 'resolved' || category === 'closed') return false;
     const { statuses } = await this.workflow.load();
     for (const s of statuses.filter((x) => x.category === 'resolved' && x.isActive)) {
       if ((await this.workflow.check(current.status, s.key)).ok) {
@@ -250,31 +279,34 @@ export class TicketsService {
   }
 
   async update(ctx: RequestCtx, id: string, input: UpdateTicketInput) {
-    await this.db.transaction(async (tx) => {
-      const current = await this.lock(tx, id);
-      await this.assertCategories(
-        tx,
-        input.categoryId === undefined ? current.categoryId : input.categoryId,
-        input.subcategoryId === undefined ? current.subcategoryId : input.subcategoryId,
-      );
-      const patch = { ...input, ...(input.tags ? { tags: [...new Set(input.tags)] } : {}) };
-      const changes = diff(current, patch);
-      if (!Object.keys(changes).length) return;
-      await tx.update(tickets).set(patch).where(eq(tickets.id, id));
-      await this.audit.record(tx, ctx, {
-        action: 'ticket.updated',
-        targetType: 'ticket',
-        targetId: id,
-        data: { changes },
-      });
-      await this.outbox.publish(tx, ctx, {
-        type: 'ticket.updated',
-        aggregateType: 'ticket',
-        aggregateId: id,
-        payload: { changes },
-      });
-    });
+    await this.db.transaction((tx) => this.updateInTx(tx, ctx, id, input));
     return this.get(id);
+  }
+
+  /** Changes ticket fields inside the caller's transaction. Nothing is written when nothing changes. */
+  async updateInTx(tx: DbOrTx, ctx: RequestCtx, id: string, input: UpdateTicketInput) {
+    const current = await this.lock(tx, id);
+    await this.assertCategories(
+      tx,
+      input.categoryId === undefined ? current.categoryId : input.categoryId,
+      input.subcategoryId === undefined ? current.subcategoryId : input.subcategoryId,
+    );
+    const patch = { ...input, ...(input.tags ? { tags: [...new Set(input.tags)] } : {}) };
+    const changes = diff(current, patch);
+    if (!Object.keys(changes).length) return;
+    await tx.update(tickets).set(patch).where(eq(tickets.id, id));
+    await this.audit.record(tx, ctx, {
+      action: 'ticket.updated',
+      targetType: 'ticket',
+      targetId: id,
+      data: { changes },
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'ticket.updated',
+      aggregateType: 'ticket',
+      aggregateId: id,
+      payload: { changes },
+    });
   }
 
   async transition(ctx: RequestCtx, id: string, input: TransitionTicketInput, tx?: DbOrTx) {

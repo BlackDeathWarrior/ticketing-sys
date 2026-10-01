@@ -203,3 +203,90 @@ export interface IntegrationTicketList {
  * integration, so two apps that both have a user "42" get two customers.
  */
 export const integrationExternalId = (slug: string, externalId: string) => `${slug}:${externalId}`;
+
+// ---- The integration API: incidents (ADR 0024) ----
+
+/**
+ * How bad a problem the app reports is. It sets the ticket's priority:
+ * critical → urgent, error → high, warning → normal, info → low.
+ */
+export const INCIDENT_SEVERITIES = ['info', 'warning', 'error', 'critical'] as const;
+export const incidentSeveritySchema = z.enum(INCIDENT_SEVERITIES);
+export type IncidentSeverity = z.infer<typeof incidentSeveritySchema>;
+
+export const INCIDENT_PRIORITY: Record<IncidentSeverity, Priority> = {
+  critical: 'urgent',
+  error: 'high',
+  warning: 'normal',
+  info: 'low',
+};
+
+/** `metadata.kind` of a ticket that tracks an incident. Such tickets are not classified by the AI. */
+export const INCIDENT_TICKET_KIND = 'incident';
+export const INCIDENT_TAG = 'incident';
+
+/** Occurrence counts at which a repeat is noted on the ticket. */
+export const INCIDENT_NOTE_AT = [2, 10, 100, 1000] as const;
+
+export const reportEventSchema = z
+  .object({
+    /**
+     * What makes two reports "the same problem", chosen by the app, e.g.
+     * `scraper.source_failed:myntra`. Reports with one fingerprint share one ticket.
+     */
+    fingerprint: z
+      .string()
+      .trim()
+      .regex(/^[\x21-\x7e]{1,200}$/, 'Use 1 to 200 printable characters without spaces'),
+    /** `firing`: it is happening. `resolved`: it has recovered. */
+    status: z.enum(['firing', 'resolved']).default('firing'),
+    /** One line saying what is wrong; the ticket's subject. Needed when firing. */
+    title: z.string().trim().min(1).max(300).optional(),
+    severity: incidentSeveritySchema.default('error'),
+    /** The part of the app that reported it, e.g. `scraper/myntra`. */
+    source: z.string().trim().min(1).max(200).optional(),
+    message: z.string().trim().max(5000).optional(),
+    /** Extra facts for whoever picks it up; kept on the ticket's metadata. */
+    details: ticketMetadataSchema.default({}),
+  })
+  .refine((e) => e.status === 'resolved' || !!e.title, {
+    message: 'A firing event needs a title',
+    path: ['title'],
+  });
+export type ReportEventInput = z.output<typeof reportEventSchema>;
+
+export type IncidentStatus = 'open' | 'resolved';
+
+export interface IncidentView {
+  id: string;
+  fingerprint: string;
+  status: IncidentStatus;
+  severity: IncidentSeverity;
+  title: string;
+  source: string | null;
+  /** How many times it was reported while open. */
+  occurrences: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
+  /** The ticket that tracks it. */
+  ticket: string | null;
+}
+
+/**
+ * What a report did. `opened`: a new incident and ticket (or a reopened
+ * ticket). `updated`: counted on the open incident. `resolved`: the incident
+ * is closed. `ignored`: a recovery for something that was not open.
+ */
+export type EventAction = 'opened' | 'updated' | 'resolved' | 'ignored';
+
+export interface ReportEventResult {
+  action: EventAction;
+  incident: IncidentView | null;
+}
+
+export const listIncidentsQuerySchema = z.object({
+  status: z.enum(['open', 'resolved']).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+});
+export type ListIncidentsQuery = z.output<typeof listIncidentsQuerySchema>;

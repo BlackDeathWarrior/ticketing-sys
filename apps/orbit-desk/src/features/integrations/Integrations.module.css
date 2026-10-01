@@ -64,3 +64,18 @@
   color: var(--color-lilac-white);
   overflow-wrap: anywhere;
 }
+
+/* An incident ticket's episodes: the open one stands out, earlier ones recede. */
+.incidents {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 var(--spacing-12);
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-body-sm);
+  color: var(--color-fog);
+}
+
+.incidents [data-status='open'] {
+  color: var(--color-lilac-white);
+}
