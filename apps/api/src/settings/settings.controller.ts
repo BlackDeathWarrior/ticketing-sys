@@ -13,6 +13,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CHANNEL_KINDS, type ChannelKind, secretKeySchema, setSecretSchema } from '@tms/shared';
 import { Ctx, type RequestCtx, RequirePermission } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
+import { BrandingService } from './branding.service';
 import { ChannelConfigService } from './channel-config.service';
 import { SecretsService } from './secrets.service';
 
@@ -26,7 +27,21 @@ export class SettingsController {
   constructor(
     private readonly secrets: SecretsService,
     private readonly channels: ChannelConfigService,
+    private readonly branding: BrandingService,
   ) {}
+
+  /** Who the helpdesk speaks for: the company name, the sign-off, the help center's wording. */
+  @Get('branding')
+  @RequirePermission('settings:channels')
+  getBranding() {
+    return this.branding.get();
+  }
+
+  @Put('branding')
+  @RequirePermission('settings:channels')
+  saveBranding(@Ctx() ctx: RequestCtx, @Body() body: unknown) {
+    return this.branding.save(ctx, body);
+  }
 
   /** Masked list: key, scope, last four characters, who changed it. Never values. */
   @Get('secrets')

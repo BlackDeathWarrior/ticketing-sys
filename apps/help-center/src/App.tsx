@@ -1,4 +1,9 @@
-import type { WebFormConfig, WebFormReceipt } from '@tms/shared';
+import {
+  brandInitials,
+  DEFAULT_BRANDING,
+  type WebFormConfig,
+  type WebFormReceipt,
+} from '@tms/shared';
 import { useEffect, useRef, useState } from 'react';
 import { Portal } from './Portal';
 import { parseRoute, type Route } from './portal-logic';
@@ -61,6 +66,16 @@ export function App() {
   const route = useRoute();
   const [receipt, setReceipt] = useState<WebFormReceipt | null>(null);
   const inPortal = route.page === 'portal' || route.page === 'verify' || route.page === 'ticket';
+  // Who this help center speaks for (Settings → Customers). The page's own
+  // title and description follow, once the setting has loaded.
+  const branding = config?.branding ?? DEFAULT_BRANDING;
+  useEffect(() => {
+    if (!config) return;
+    document.title = `${branding.companyName} Help`;
+    document
+      .querySelector('meta[name="description"]')
+      ?.setAttribute('content', `Get help from the ${branding.companyName} support team.`);
+  }, [config, branding.companyName]);
 
   return (
     <>
@@ -68,9 +83,9 @@ export function App() {
         <div className="wrap site-header__inner">
           <span className="brand">
             <span className="brand__mark" aria-hidden="true">
-              DS
+              {brandInitials(branding.companyName)}
             </span>
-            Demo Store
+            {branding.companyName}
           </span>
           <span className="site-header__section">Help center</span>
           <nav className="site-nav" aria-label="Help center">
@@ -123,7 +138,12 @@ export function App() {
                 <section className="card" aria-labelledby="tips-title">
                   <h2 id="tips-title">Before you write</h2>
                   <ul className="tips">
-                    <li>Include your order number if the request is about an order.</li>
+                    {branding.referenceLabel && (
+                      <li>
+                        Include your {branding.referenceLabel.toLowerCase()} if the request is about
+                        one.
+                      </li>
+                    )}
                     <li>Photos or screenshots help us sort things out faster.</li>
                     <li>You'll get a reference by email; reply to it to add details.</li>
                   </ul>
@@ -141,9 +161,11 @@ export function App() {
         )}
       </main>
 
-      <footer className="site-footer">
-        <div className="wrap">Demo Store is a fictional shop used to demonstrate TMS.</div>
-      </footer>
+      {branding.helpCenterNote && (
+        <footer className="site-footer">
+          <div className="wrap">{branding.helpCenterNote}</div>
+        </footer>
+      )}
     </>
   );
 }

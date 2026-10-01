@@ -226,3 +226,164 @@ describe('web chat', () => {
     await waitFor(() => intruder.disconnected && !intruder.active, 'intruder disconnect');
   });
 });
+
+describe("web chat on an integration's site (ADR 0026)", () => {
+  /** An integration with an API key and its own chat identity secret. */
+  async function site(name: string) {
+    const integration = await t.call('POST', '/integrations', {
+      token: admin,
+      body: { slug: uniq('site-'), name },
+    });
+    const key = await t.call('POST', `/integrations/${integration.body.id}/keys`, {
+      token: admin,
+      body: { name: 'Backend', scopes: ['integration:ticket'] },
+    });
+    const secret = await t.call(
+      'POST',
+      `/integrations/${integration.body.id}/chat-identity-secret`,
+      {
+        token: admin,
+      },
+    );
+    expect(secret.status).toBe(201);
+    return {
+      ...(integration.body as { id: string; slug: string }),
+      key: key.body.key as string,
+      identitySecret: secret.body.secret as string,
+    };
+  }
+  const sign = (claims: Record<string, unknown>, secret: string) =>
+    new JwtService().signAsync(claims, { secret, expiresIn: '5m' });
+  const staffTicket = async (reference: string) =>
+    (await t.call('GET', `/tickets/${reference}`, { token: admin })).body;
+
+  it('makes the chat one of the integration’s own tickets, with what the page showed', async () => {
+    const shop = await site('Ethnic Threads');
+    const other = await site('Another shop');
+    const { chat } = await startChat({
+      integration: shop.slug,
+      name: 'Asha',
+      context: { product_id: 'MYN-48213', title: 'Cotton straight kurta', kind: 'incident' },
+    });
+    const first = await chat.emitWithAck('message', {
+      text: 'Is this kurta available in medium?',
+      clientMessageId: uniq('client-msg-'),
+    });
+    expect(first).toMatchObject({
+      ok: true,
+      ticket: { reference: expect.stringMatching(/^TMS-\d+$/), created: true },
+    });
+    const again = await chat.emitWithAck('message', {
+      text: 'And in large?',
+      clientMessageId: uniq('client-msg-'),
+    });
+    expect(again.ticket).toEqual({ reference: first.ticket.reference, created: false });
+
+    // Agents see which site it came from and what was on screen; `kind` is not the page's to set.
+    const ticket = await staffTicket(first.ticket.reference);
+    expect(ticket).toMatchObject({
+      channel: 'webchat',
+      integration: { slug: shop.slug },
+      metadata: { product_id: 'MYN-48213', title: 'Cotton straight kurta' },
+    });
+    expect(ticket.metadata.kind).toBeUndefined();
+
+    // The site's backend can read it with its key; another integration cannot.
+    const read = (key: string) =>
+      t.call('GET', `/integration/tickets/${first.ticket.reference}/messages`, { token: key });
+    expect((await read(shop.key)).body.map((m: { body: string }) => m.body)).toEqual([
+      'Is this kurta available in medium?',
+      'And in large?',
+    ]);
+    expect((await read(other.key)).status).toBe(404);
+
+    // The page moves on: the next ticket carries the new context.
+    await t.call('POST', `/tickets/${ticket.id}/transition`, {
+      token: admin,
+      body: { status: 'closed' },
+    });
+    expect(await chat.emitWithAck('context', { product_id: 'AMZ-1002' })).toEqual({ ok: true });
+    expect((await chat.emitWithAck('context', { blob: 'x'.repeat(3000) })).ok).toBe(false);
+    const later = await chat.emitWithAck('message', {
+      text: 'A question about another listing',
+      clientMessageId: uniq('client-msg-'),
+    });
+    expect(later.ticket.created).toBe(true);
+    expect((await staffTicket(later.ticket.reference)).metadata).toEqual({
+      product_id: 'AMZ-1002',
+    });
+  });
+
+  it('knows a signed-in visitor as the customer the integration names through its API', async () => {
+    const shop = await site('Ethnic Threads');
+    const shopper = uniq('shopper-');
+    const raised = await t.call('POST', '/integration/tickets', {
+      token: shop.key,
+      body: {
+        customer: { externalId: shopper, name: 'Asha Verma' },
+        subject: 'Earlier request',
+        body: 'Raised by the site’s backend.',
+        ai: 'off',
+      },
+    });
+    const viaApi = await staffTicket(raised.body.reference);
+
+    const { chat } = await startChat({
+      integration: shop.slug,
+      identityToken: await sign({ sub: shopper, name: 'Asha Verma' }, shop.identitySecret),
+    });
+    const sent = await chat.emitWithAck('message', {
+      text: 'Following up from my account page',
+      clientMessageId: uniq('client-msg-'),
+    });
+    const viaChat = await staffTicket(sent.ticket.reference);
+    expect(viaChat.customer.id).toBe(viaApi.customer.id);
+  });
+
+  it('ignores an identity signed with anything but this integration’s secret', async () => {
+    const shop = await site('Ethnic Threads');
+    const other = await site('Another shop');
+    const shopper = uniq('shopper-');
+    for (const secret of [other.identitySecret, IDENTITY_SECRET]) {
+      const { chat } = await startChat({
+        integration: shop.slug,
+        identityToken: await sign({ sub: shopper, name: 'Someone else' }, secret),
+      });
+      const sent = await chat.emitWithAck('message', {
+        text: 'Let me into that account',
+        clientMessageId: uniq('client-msg-'),
+      });
+      const ticket = await staffTicket(sent.ticket.reference);
+      const customer = await t.call('GET', `/customers/${ticket.customer.id}`, { token: admin });
+      // An anonymous visitor: no identity of the shop's customer.
+      expect(
+        customer.body.identities.map((i: { type: string }) => i.type),
+        'identity types',
+      ).toEqual(['webchat_session']);
+    }
+  });
+
+  it('refuses a widget that names an unknown or switched-off integration', async () => {
+    const shop = await site('Ethnic Threads');
+    await t.call('PATCH', `/integrations/${shop.id}`, { token: admin, body: { isActive: false } });
+    for (const integration of ['no-such-site', shop.slug]) {
+      const chat = connect('/chat', { integration });
+      const refused = await next<{ message: string }>(chat, 'error');
+      expect(refused.message).toBe('This chat is not set up correctly: unknown integration');
+      await waitFor(() => chat.disconnected, 'the socket to be closed');
+    }
+  });
+
+  it('shows the identity secret once, to administrators', async () => {
+    const shop = await site('Ethnic Threads');
+    expect(shop.identitySecret).toMatch(/^chid_[A-Za-z0-9_-]{43}$/);
+    const listed = await t.call('GET', '/integrations', { token: admin });
+    const mine = listed.body.find((i: { id: string }) => i.id === shop.id);
+    expect(mine.chatIdentityLast4).toBe(shop.identitySecret.slice(-4));
+    expect(JSON.stringify(listed.body)).not.toContain(shop.identitySecret);
+    expect(
+      (await t.call('POST', `/integrations/${shop.id}/chat-identity-secret`, { token: shop.key }))
+        .status,
+    ).toBe(403);
+  });
+});

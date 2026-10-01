@@ -122,12 +122,33 @@ export interface AgentEvent {
   documentId?: string;
 }
 
+export const CHAT_CONTEXT_MAX_BYTES = 2048;
+/**
+ * What the page says the visitor is looking at (a product, an order). It
+ * comes from a browser, so it is small, shown as text and never trusted.
+ */
+export const chatContextSchema = z
+  .record(z.unknown())
+  .refine((c) => JSON.stringify(c).length <= CHAT_CONTEXT_MAX_BYTES, {
+    message: `Context must be at most ${CHAT_CONTEXT_MAX_BYTES} bytes of JSON`,
+  });
+
 /** Handshake auth the chat widget sends. */
 export const chatHandshakeSchema = z.object({
   /** Session token from a previous connection, to resume the same conversation. */
   token: z.string().optional(),
-  /** Signed by the host website (CHAT_IDENTITY_SECRET) for logged-in visitors. */
+  /**
+   * Signed by the host website for logged-in visitors: with the integration's
+   * chat identity secret when `integration` is given, else CHAT_IDENTITY_SECRET.
+   */
   identityToken: z.string().optional(),
+  /** The integration (its slug) whose site the widget is on (ADR 0026). */
+  integration: z
+    .string()
+    .trim()
+    .regex(/^[a-z][a-z0-9-]{1,39}$/)
+    .optional(),
+  context: chatContextSchema.optional(),
   name: z.string().trim().max(200).optional(),
   email: z
     .string()

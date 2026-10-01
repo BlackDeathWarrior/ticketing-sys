@@ -29,6 +29,19 @@ export const API_KEY_SCOPE_LABELS: Record<ApiKeyScope, string> = {
   'kb:read': 'Search the knowledge base',
 };
 
+/** The secret an integration's site signs chat identity tokens with (ADR 0026). */
+export const chatIdentitySecretKey = (slug: string) => `integration.${slug}.chat_identity`;
+
+/** Where the chat widget is served from, for the snippet shown in Settings. */
+export interface WidgetHost {
+  origin: string;
+}
+
+/** The answer to generating a chat identity secret: the only time it is returned. */
+export interface ChatIdentitySecret {
+  secret: string;
+}
+
 /** Every key starts with this, so a leaked one is easy to recognise. */
 export const API_KEY_PREFIX = 'tms_sk_';
 
@@ -75,6 +88,8 @@ export interface IntegrationView {
   isActive: boolean;
   /** Keys that still work. */
   activeKeys: number;
+  /** Last four characters of the secret its site signs chat identities with, when one is set. */
+  chatIdentityLast4: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -5,6 +5,7 @@ import { Button, Card, CardHeader, Dialog, Input } from '../../components/ui';
 import { useGet } from '../../lib/useGet';
 import settings from '../settings/Settings.module.css';
 import { ApiKeys } from './ApiKeys';
+import { ChatWidget } from './ChatWidget';
 import { isValidSlug, slugFromName } from './logic';
 import { Webhooks } from './Webhooks';
 
@@ -114,6 +115,13 @@ export function IntegrationsPanel() {
         <ApiKeys key={open.id} integration={open} onChanged={() => void integrations.reload()} />
       )}
       {open && <Webhooks key={`hooks-${open.id}`} integration={open} />}
+      {open && (
+        <ChatWidget
+          key={`widget-${open.id}`}
+          integration={open}
+          onChanged={() => void integrations.reload()}
+        />
+      )}
 
       <Dialog open={adding} onClose={() => setAdding(false)} labelledBy="integration-dialog-title">
         {adding && (

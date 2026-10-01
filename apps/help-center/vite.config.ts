@@ -4,6 +4,9 @@ import { defineConfig } from 'vite';
 
 // Served under /help/ by the web container, next to the chat widget (/widget/).
 // `pnpm dev` serves it on http://localhost:5176/help/.
+// Where the dev server sends API calls; set it to run against an API on another port.
+const apiTarget = process.env.VITE_API_TARGET ?? 'http://localhost:3000';
+
 export default defineConfig({
   base: '/help/',
   plugins: [react()],
@@ -16,9 +19,9 @@ export default defineConfig({
   server: {
     port: 5176,
     proxy: {
-      '/api': 'http://localhost:3000',
-      '/widget': 'http://localhost:8080',
-      '/socket.io': { target: 'http://localhost:3000', ws: true },
+      '/api': apiTarget,
+      '/widget': process.env.VITE_WIDGET_TARGET ?? 'http://localhost:8080',
+      '/socket.io': { target: apiTarget, ws: true },
     },
   },
 });

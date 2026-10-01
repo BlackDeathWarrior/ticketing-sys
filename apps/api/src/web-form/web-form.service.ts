@@ -10,6 +10,7 @@ import {
 } from '@tms/shared';
 import { InboundService } from '../channels/inbound.service';
 import { OrgService } from '../org/org.service';
+import { BrandingService } from '../settings/branding.service';
 import { StorageService } from '../storage/storage.service';
 import { TicketsService } from '../tickets/tickets.service';
 
@@ -32,15 +33,17 @@ export class WebFormService {
     private readonly org: OrgService,
     private readonly tickets: TicketsService,
     private readonly storage: StorageService,
+    private readonly branding: BrandingService,
   ) {}
 
-  /** What the form offers: top-level categories as topics, and the upload limits. */
+  /** What the form offers: top-level categories as topics, the upload limits, and whose form it is. */
   async config(): Promise<WebFormConfig> {
     const categories = await this.org.activeCategories();
     return {
       categories: categories.map((c) => ({ id: c.id, name: c.name })),
       maxFiles: WEB_FORM_MAX_FILES,
       maxFileBytes: WEB_FORM_MAX_FILE_BYTES,
+      branding: await this.branding.get(),
     };
   }
 
@@ -59,8 +62,10 @@ export class WebFormService {
     const attachments: AttachmentRef[] = [];
     for (const f of files) attachments.push(await this.storage.putAttachment(f));
 
+    // A reference typed while the field was shown is kept even if the field has been hidden since.
+    const label = (await this.branding.get()).referenceLabel ?? 'Reference';
     const text = form.orderNumber
-      ? `${form.description}\n\nOrder number: ${form.orderNumber}`
+      ? `${form.description}\n\n${label}: ${form.orderNumber}`
       : form.description;
     const result = await this.inbound.handle({
       channel: 'web_form',

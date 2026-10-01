@@ -114,3 +114,17 @@
   gap: var(--spacing-8);
   margin-top: var(--spacing-12);
 }
+
+/* The embed snippet for a site. */
+.snippet {
+  margin: 0 0 var(--spacing-16);
+  padding: var(--spacing-12) var(--spacing-16);
+  border-radius: var(--radius-inputs);
+  box-shadow: var(--shadow-rim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-ui);
+  line-height: 1.6;
+  color: var(--color-ash);
+  overflow-x: auto;
+  white-space: pre;
+}
