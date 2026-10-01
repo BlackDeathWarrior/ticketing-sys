@@ -15,6 +15,7 @@ import { useGet } from '../../lib/useGet';
 import { relativeFromIso } from '../settings/logic';
 import settings from '../settings/Settings.module.css';
 import styles from './Integrations.module.css';
+import { SecretOnce } from './SecretOnce';
 import {
   EXPIRY_CHOICES,
   type ExpiryChoice,
@@ -81,7 +82,15 @@ export function ApiKeys({
           )
         }
       />
-      {created && <NewKey created={created} onDone={() => setCreated(null)} />}
+      {created && (
+        <SecretOnce
+          title={`New key “${created.name}”`}
+          label="New API key"
+          value={created.key}
+          testId="new-api-key"
+          onDone={() => setCreated(null)}
+        />
+      )}
       {message && (
         <p className={settings.error} role="alert">
           {message}
@@ -159,40 +168,6 @@ export function ApiKeys({
         )}
       </Dialog>
     </Card>
-  );
-}
-
-/** The one time the key is on screen. */
-function NewKey({ created, onDone }: { created: CreatedApiKey; onDone: () => void }) {
-  const [note, setNote] = useState('Copy it now. It will not be shown again.');
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(created.key);
-      setNote('Copied. Store it where the app keeps its secrets.');
-    } catch {
-      setNote('Select the key and copy it by hand.');
-    }
-  };
-  return (
-    <div className={settings.banner} role="status" aria-label="New API key">
-      <div>
-        <div>New key “{created.name}”</div>
-        <div className={settings.keyState}>{note}</div>
-      </div>
-      <div className={styles.keyBox}>
-        <code className={styles.keyValue} data-testid="new-api-key">
-          {created.key}
-        </code>
-        <div className={settings.actions}>
-          <Button size="sm" onClick={() => void copy()}>
-            Copy
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onDone}>
-            Done
-          </Button>
-        </div>
-      </div>
-    </div>
   );
 }
 

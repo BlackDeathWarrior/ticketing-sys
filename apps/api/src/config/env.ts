@@ -83,6 +83,27 @@ const envSchema = z
           .map((h) => h.trim().toLowerCase())
           .filter(Boolean),
       ),
+    /**
+     * Webhooks to integrations (ADR 0025). Hosts that may be private or use
+     * plain http (a local demo, a compose service); everything else must be a
+     * public https address. Comma-separated.
+     */
+    WEBHOOK_PRIVATE_HOSTS: z
+      .string()
+      .default('')
+      .transform((v) =>
+        v
+          .split(',')
+          .map((h) => h.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    /** How long a receiver has to answer. */
+    WEBHOOK_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(5000),
+    /** Attempts per delivery, and the first wait between them (doubling each time). */
+    WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(8),
+    WEBHOOK_BACKOFF_MS: z.coerce.number().int().min(50).max(600_000).default(5000),
+    /** Deliveries in a row that must fail for good before a subscription is switched off. */
+    WEBHOOK_DISABLE_AFTER: z.coerce.number().int().min(1).max(1000).default(15),
     /** How often the worker resolves tickets the AI answered and the customer left alone. 0 = off. */
     AI_AUTO_RESOLVE_SWEEP_SECONDS: z.coerce.number().int().min(0).max(86_400).default(600),
     /** How often the worker deletes operational data past its retention period. 0 = off. */

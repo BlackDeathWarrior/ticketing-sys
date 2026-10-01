@@ -6,6 +6,7 @@ import { useGet } from '../../lib/useGet';
 import settings from '../settings/Settings.module.css';
 import { ApiKeys } from './ApiKeys';
 import { isValidSlug, slugFromName } from './logic';
+import { Webhooks } from './Webhooks';
 
 /** Settings → Integrations: outside apps connected to TMS, and the API keys they call with. */
 export function IntegrationsPanel() {
@@ -42,7 +43,7 @@ export function IntegrationsPanel() {
       <Card padding="md">
         <CardHeader
           title="Integrations"
-          subtitle="An integration is an outside app that creates tickets and reports incidents through the API. Each one has its own keys."
+          subtitle="An integration is an outside app that creates tickets and reports incidents through the API. Each one has its own keys and webhooks."
           actions={
             <Button variant="secondary" icon="plus" onClick={() => setAdding(true)}>
               Add integration
@@ -89,7 +90,7 @@ export function IntegrationsPanel() {
                           aria-expanded={openId === i.id}
                           onClick={() => setOpenId(openId === i.id ? null : i.id)}
                         >
-                          {openId === i.id ? 'Hide keys' : 'API keys'}
+                          {openId === i.id ? 'Hide details' : 'Keys and webhooks'}
                         </Button>
                         <Button
                           size="sm"
@@ -112,6 +113,7 @@ export function IntegrationsPanel() {
       {open && (
         <ApiKeys key={open.id} integration={open} onChanged={() => void integrations.reload()} />
       )}
+      {open && <Webhooks key={`hooks-${open.id}`} integration={open} />}
 
       <Dialog open={adding} onClose={() => setAdding(false)} labelledBy="integration-dialog-title">
         {adding && (

@@ -119,7 +119,14 @@ describe('settings tabs for the new admin pages', () => {
 });
 
 describe('retention', () => {
-  const none = { llmCalls: 0, notifications: 0, events: 0, signInLinks: 0, recordings: 0 };
+  const none = {
+    llmCalls: 0,
+    notifications: 0,
+    events: 0,
+    signInLinks: 0,
+    recordings: 0,
+    webhookDeliveries: 0,
+  };
 
   it('says what a run deleted, in words', () => {
     expect(deletedText(none)).toBe('nothing was old enough to delete');

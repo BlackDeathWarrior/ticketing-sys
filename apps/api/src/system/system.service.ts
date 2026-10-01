@@ -25,6 +25,7 @@ import Redis from 'ioredis';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import { VoiceCallsService } from '../channels/voice/voice-calls.service';
+import { WebhooksService } from '../webhooks/webhooks.service';
 import { type RequestCtx, SYSTEM_CTX } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
 import type { Env } from '../config/env';
@@ -58,6 +59,7 @@ export class RetentionService {
     private readonly notifications: NotificationsService,
     private readonly portal: PortalService,
     private readonly calls: VoiceCallsService,
+    private readonly webhooks: WebhooksService,
   ) {}
 
   async get(): Promise<Retention> {
@@ -90,6 +92,7 @@ export class RetentionService {
       events: await this.outbox.purgePublished(this.db, before(s.eventsDays)),
       signInLinks: await this.portal.purgeLogins(before(s.signInLinksDays)),
       recordings: await this.calls.purgeRecordings(VOICE_RECORDING_DAYS, now),
+      webhookDeliveries: await this.webhooks.purgeDeliveries(before(s.webhookDeliveriesDays)),
     };
     await this.db.transaction(async (tx) => {
       await this.audit.record(tx, ctx, {

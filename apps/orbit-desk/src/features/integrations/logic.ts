@@ -3,6 +3,10 @@ import {
   type ApiKeyScope,
   type ApiKeyStatus,
   type IncidentView,
+  type WebhookDeliveryView,
+  type WebhookEvent,
+  type WebhookScope,
+  type WebhookTestResult,
 } from '@tms/shared';
 import { relativeFromIso } from '../settings/logic';
 
@@ -90,6 +94,39 @@ export function incidentLine(i: IncidentView, now = Date.now()): string {
   return i.occurrences === 1
     ? `Still happening · ${times} · ${first}`
     : `Still happening · ${times} · ${first} · last ${relativeFromIso(i.lastSeenAt, now)}`;
+}
+
+export const SCOPE_LABELS: Record<WebhookScope, string> = {
+  own: 'This integration’s tickets and incidents',
+  all: 'Every ticket in the workspace',
+};
+
+/** "ticket.created, message.created", or a count once the list is long. */
+export function eventSummary(events: WebhookEvent[]): string {
+  return events.length <= 3 ? events.join(', ') : `${events.length} events`;
+}
+
+const attempts = (n: number) => `${n} ${n === 1 ? 'attempt' : 'attempts'}`;
+
+/** One line on a delivery: what happened, and how hard it was. */
+export function deliveryLine(d: WebhookDeliveryView): string {
+  if (d.status === 'delivered') {
+    const tries = d.attempts > 1 ? ` · ${attempts(d.attempts)}` : '';
+    return `Delivered · ${d.httpStatus ?? 200}${d.durationMs !== null ? ` · ${d.durationMs} ms` : ''}${tries}`;
+  }
+  if (d.status === 'failed') {
+    return `Failed after ${attempts(d.attempts)}${d.error ? ` · ${d.error}` : ''}`;
+  }
+  return d.attempts === 0
+    ? 'Waiting to be sent'
+    : `Trying again · ${attempts(d.attempts)} so far${d.error ? ` · ${d.error}` : ''}`;
+}
+
+/** What "Send a test" came back with, in words. */
+export function testLine(r: WebhookTestResult): string {
+  return r.ok
+    ? `The test was delivered: the receiver answered ${r.httpStatus} in ${r.durationMs} ms.`
+    : `The test failed: ${r.error ?? 'no answer'}.`;
 }
 
 export function toggle<T>(list: T[], item: T): T[] {

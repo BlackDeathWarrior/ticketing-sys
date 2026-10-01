@@ -10,6 +10,13 @@ export const env = {
   smtpPort: Number(process.env.SMTP_PORT ?? 3025),
   /** The stack's Redis: one spec queues a job that fails, to show it in Settings → System. */
   redis: process.env.REDIS_URL ?? 'redis://localhost:6379',
+  /**
+   * How the API and worker reach a server started by a test on this machine
+   * (a webhook receiver). From Docker that is `host.docker.internal`; for a
+   * stack run on the host, set it to 127.0.0.1. The host must be listed in
+   * the stack's WEBHOOK_PRIVATE_HOSTS.
+   */
+  hostFromStack: process.env.HOST_FROM_STACK ?? 'host.docker.internal',
 };
 
 export const ADMIN = {

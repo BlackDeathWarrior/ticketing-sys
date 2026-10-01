@@ -19,6 +19,8 @@ export const retentionSchema = z.object({
   eventsDays: days(1, 365, 30),
   /** Used and expired portal sign-in links. */
   signInLinksDays: days(1, 90, 7),
+  /** The log of webhook deliveries to integrations. */
+  webhookDeliveriesDays: days(1, 365, 30),
 });
 export type Retention = z.output<typeof retentionSchema>;
 export const DEFAULT_RETENTION: Retention = retentionSchema.parse({});
@@ -30,6 +32,7 @@ export interface RetentionCounts {
   events: number;
   signInLinks: number;
   recordings: number;
+  webhookDeliveries: number;
 }
 
 export interface RetentionView {
@@ -72,4 +75,5 @@ export const QUEUE_LABELS: Record<string, string> = {
   'channel-health': 'Channel connection checks',
   'ai-auto-resolve': 'Resolving tickets the AI answered',
   retention: 'Deleting old operational data and call recordings',
+  'webhook-deliveries': 'Webhooks to integrations',
 };

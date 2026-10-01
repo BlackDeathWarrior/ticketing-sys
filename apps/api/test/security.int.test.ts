@@ -270,6 +270,7 @@ describe('retention', () => {
       notificationsDays: 90,
       eventsDays: 30,
       signInLinksDays: 7,
+      webhookDeliveriesDays: 30,
     });
     expect(res.body.recordingsDays).toBe(30);
     const bad = await t.call('PUT', '/settings/retention', {

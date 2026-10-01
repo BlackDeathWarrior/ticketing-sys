@@ -157,6 +157,7 @@ export const RETENTION_FIELDS: Array<{
   { key: 'notificationsDays', label: 'Agents’ notifications (days)', min: 7, max: 3650 },
   { key: 'eventsDays', label: 'Delivered internal events (days)', min: 1, max: 365 },
   { key: 'signInLinksDays', label: 'Used portal sign-in links (days)', min: 1, max: 90 },
+  { key: 'webhookDeliveriesDays', label: 'Log of webhook deliveries (days)', min: 1, max: 365 },
 ];
 
 const COUNT_LABELS: Array<[keyof RetentionCounts, string, string]> = [
@@ -165,6 +166,7 @@ const COUNT_LABELS: Array<[keyof RetentionCounts, string, string]> = [
   ['events', 'event', 'events'],
   ['signInLinks', 'sign-in link', 'sign-in links'],
   ['recordings', 'recording', 'recordings'],
+  ['webhookDeliveries', 'webhook delivery', 'webhook deliveries'],
 ];
 
 /** "12 model calls, 3 events deleted", or that there was nothing to delete. */
