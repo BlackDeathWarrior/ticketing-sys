@@ -9,5 +9,6 @@ import { ChatSessionService } from './chat-session.service';
   // Secrets are passed per call: session tokens use JWT_SECRET, identity tokens CHAT_IDENTITY_SECRET.
   imports: [ChannelsModule, JwtModule.register({})],
   providers: [ChatGateway, ChatSessionService],
+  exports: [ChatGateway],
 })
 export class ChatModule {}

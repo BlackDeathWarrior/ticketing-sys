@@ -41,6 +41,16 @@
   --accent-wash-strong: rgba(147, 130, 255, 0.2);
   --hover-wash: rgba(244, 240, 255, 0.04);
 
+  /* Connection lights: the only semantic colours, used by StatusLight alone
+     (DESIGN.md › Connection lights). Always shown with a label. */
+  --signal-ok: #3ddc97;
+  --signal-ok-wash: rgba(61, 220, 151, 0.18);
+  --signal-warn: #f5b84a;
+  --signal-warn-wash: rgba(245, 184, 74, 0.18);
+  --signal-down: #ff6b6b;
+  --signal-down-wash: rgba(255, 107, 107, 0.18);
+  --signal-off: #54525f;
+
   /* Typography — families (AeonikPro → DM Sans substitute, Inter V → Inter) */
   --font-display:
     'AeonikPro', 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;

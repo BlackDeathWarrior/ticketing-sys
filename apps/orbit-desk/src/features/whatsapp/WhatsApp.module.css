@@ -111,3 +111,39 @@
     align-items: stretch;
   }
 }
+
+/* Settings: the connect form */
+.connect {
+  display: grid;
+  gap: var(--spacing-16);
+  margin-bottom: var(--spacing-16);
+}
+
+.connect > * {
+  min-width: 0;
+}
+
+.tokenRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-8);
+}
+
+.tokenRow > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.tokenRow > button {
+  margin-top: 22px;
+}
+
+.advanced > summary {
+  cursor: pointer;
+  font-size: var(--text-ui);
+  color: var(--color-fog);
+}
+
+.advanced[open] > summary {
+  margin-bottom: var(--spacing-12);
+}

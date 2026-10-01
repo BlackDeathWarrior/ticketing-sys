@@ -16,13 +16,14 @@ import {
 import { ImapFlow } from 'imapflow';
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
-import { verifyPhoneNumber } from '../channels/whatsapp/meta-api';
+import { getSubscribedApps, verifyPhoneNumber } from '../channels/whatsapp/meta-api';
 import { explainMetaError } from '../channels/whatsapp/meta-errors';
 import type { RequestCtx } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
 import type { Env } from '../config/env';
 import { ENV } from '../infra/tokens';
 import { AppSettingsService } from './app-settings.service';
+import { ChannelSignalsService, type ProbeResult } from './channel-signals.service';
 import { SecretsService } from './secrets.service';
 
 export interface ResolvedWhatsappConfig extends WhatsappChannelConfig {
@@ -55,6 +56,7 @@ export class ChannelConfigService {
     @Inject(ENV) private readonly env: Env,
     private readonly settings: AppSettingsService,
     private readonly secrets: SecretsService,
+    private readonly signals: ChannelSignalsService,
   ) {}
 
   async email(): Promise<ResolvedEmailConfig | null> {
@@ -102,6 +104,11 @@ export class ChannelConfigService {
       accessToken: await this.secrets.get('whatsapp.access_token'),
       graph: { baseUrl: this.env.WHATSAPP_GRAPH_URL, version: saved.graphVersion },
     };
+  }
+
+  /** Where the Graph API lives (only different behind a proxy). */
+  get graphBaseUrl(): string {
+    return this.env.WHATSAPP_GRAPH_URL;
   }
 
   /** What the public webhook checks requests against. Null values mean "reject everything". */
@@ -153,55 +160,51 @@ export class ChannelConfigService {
     return this.view(kind);
   }
 
-  /** Checks the saved credentials against the real service. Audited through the settings write. */
+  /**
+   * Checks the saved credentials against the real service and remembers the
+   * outcome for the status lights. Changes nothing, so it is not audited; the
+   * worker runs it on a timer and "Check now" runs it on demand.
+   */
+  async probe(kind: ChannelKind): Promise<ProbeResult> {
+    let result: ProbeResult;
+    try {
+      const { detail, facts } = await withTimeout(this.runTest(kind), TEST_TIMEOUT_MS);
+      result = { ok: true, at: new Date().toISOString(), detail, facts };
+    } catch (err) {
+      result = {
+        ok: false,
+        at: new Date().toISOString(),
+        error: (err as Error).message.slice(0, 500),
+        facts: err instanceof ProbeError ? err.facts : undefined,
+      };
+    }
+    await this.signals.set(kind, 'probe', result);
+    return result;
+  }
+
+  /** "Test connection": a probe an admin asked for, recorded in the audit log. */
   async test(ctx: RequestCtx, kind: ChannelKind): Promise<ConnectionTestResult> {
     const started = Date.now();
-    let result: ConnectionTestResult;
-    try {
-      const detail = await withTimeout(this.runTest(kind), TEST_TIMEOUT_MS);
-      result = { ok: true, latencyMs: Date.now() - started, detail };
-    } catch (err) {
-      result = { ok: false, latencyMs: Date.now() - started, error: (err as Error).message };
-    }
+    const probe = await this.probe(kind);
     const lastTest = {
-      ok: result.ok,
-      at: new Date().toISOString(),
-      ...(result.error ? { error: result.error.slice(0, 300) } : {}),
+      ok: probe.ok,
+      at: probe.at,
+      ...(probe.error ? { error: probe.error.slice(0, 300) } : {}),
     };
     await this.settings.set(ctx, lastTestKey(kind), lastTest, {
       action: 'channel_tested',
       kind,
-      ok: result.ok,
+      ok: probe.ok,
     });
-    return result;
+    return {
+      ok: probe.ok,
+      latencyMs: Date.now() - started,
+      ...(probe.ok ? { detail: probe.detail } : { error: probe.error }),
+    };
   }
 
-  private async runTest(kind: ChannelKind): Promise<string> {
-    if (kind === 'email') {
-      const c = await this.email();
-      if (!c) throw new Error('Email is not configured');
-      const imap = new ImapFlow({
-        host: c.imapHost,
-        port: c.imapPort,
-        secure: c.imapSecure,
-        auth: { user: c.imapUser, pass: c.imapPassword },
-        logger: false,
-      });
-      await imap.connect();
-      await imap.logout().catch(() => undefined);
-      const smtp = nodemailer.createTransport({
-        host: c.smtpHost,
-        port: c.smtpPort,
-        secure: c.smtpSecure,
-        auth: c.smtpUser ? { user: c.smtpUser, pass: c.smtpPassword ?? '' } : undefined,
-      });
-      try {
-        await smtp.verify();
-      } finally {
-        smtp.close();
-      }
-      return `IMAP ${c.imapHost}:${c.imapPort} and SMTP ${c.smtpHost}:${c.smtpPort} accepted the login`;
-    }
+  private async runTest(kind: ChannelKind): Promise<{ detail: string; facts: Facts }> {
+    if (kind === 'email') return this.testEmail();
     if (kind === 'sarvam') {
       const c = await this.sarvam();
       if (!c?.apiKey) throw new Error('The Sarvam API key is not set');
@@ -212,34 +215,112 @@ export class ChannelConfigService {
       });
       if (!res.ok) throw new Error(`Sarvam answered HTTP ${res.status}`);
       const body = (await res.json()) as { language_code?: string };
-      return `Sarvam detected ${body.language_code ?? 'a language'}`;
+      return { detail: `Sarvam detected ${body.language_code ?? 'a language'}`, facts: {} };
     }
+    return this.testWhatsapp();
+  }
+
+  /** Reading (IMAP) and sending (SMTP) are checked separately, so a failure names its half. */
+  private async testEmail(): Promise<{ detail: string; facts: Facts }> {
+    const c = await this.email();
+    if (!c) throw new Error('Email is not configured');
+    const attempt = async (fn: () => Promise<void>) => {
+      try {
+        await fn();
+        return 'ok';
+      } catch (err) {
+        return (err as Error).message || 'failed';
+      }
+    };
+    const imap = await attempt(async () => {
+      const client = new ImapFlow({
+        host: c.imapHost,
+        port: c.imapPort,
+        secure: c.imapSecure,
+        auth: { user: c.imapUser, pass: c.imapPassword },
+        logger: false,
+      });
+      await client.connect();
+      await client.logout().catch(() => undefined);
+    });
+    const smtp = await attempt(async () => {
+      const transport = nodemailer.createTransport({
+        host: c.smtpHost,
+        port: c.smtpPort,
+        secure: c.smtpSecure,
+        auth: c.smtpUser ? { user: c.smtpUser, pass: c.smtpPassword ?? '' } : undefined,
+      });
+      try {
+        await transport.verify();
+      } finally {
+        transport.close();
+      }
+    });
+    const facts = { imap, smtp };
+    if (imap !== 'ok' || smtp !== 'ok') {
+      const parts = [
+        ...(imap !== 'ok' ? [`IMAP ${c.imapHost}:${c.imapPort}: ${imap}`] : []),
+        ...(smtp !== 'ok' ? [`SMTP ${c.smtpHost}:${c.smtpPort}: ${smtp}`] : []),
+      ];
+      throw new ProbeError(parts.join('. '), facts);
+    }
+    return {
+      detail: `IMAP ${c.imapHost}:${c.imapPort} and SMTP ${c.smtpHost}:${c.smtpPort} accepted the login`,
+      facts,
+    };
+  }
+
+  private async testWhatsapp(): Promise<{ detail: string; facts: Facts }> {
     const c = await this.whatsapp();
     if (!c) throw new Error('WhatsApp is not configured');
     if (!c.accessToken) throw new Error('The WhatsApp access token is not set');
+    const credentials = { graph: c.graph, accessToken: c.accessToken };
     let info: Awaited<ReturnType<typeof verifyPhoneNumber>>;
     try {
-      info = await verifyPhoneNumber({
-        graph: c.graph,
-        accessToken: c.accessToken,
-        phoneNumberId: c.phoneNumberId,
-      });
+      info = await verifyPhoneNumber({ ...credentials, phoneNumberId: c.phoneNumberId });
     } catch (err) {
       throw new Error(explainMetaError(err).summary);
+    }
+    // Whether Meta sends this account's webhooks to an app at all. Not knowing is not a failure.
+    let subscribed: boolean | null = null;
+    if (c.wabaId) {
+      subscribed = await getSubscribedApps({ ...credentials, wabaId: c.wabaId })
+        .then((apps) => apps.length > 0)
+        .catch(() => null);
     }
     const hook = await this.whatsappWebhook();
     const missing = [
       ...(hook.appSecret ? [] : ['app secret']),
       ...(hook.verifyToken ? [] : ['webhook verify token']),
     ];
-    return [
-      `Connected to ${info.display_phone_number ?? c.phoneNumberId}`,
-      info.verified_name ? ` (${info.verified_name})` : '',
-      info.quality_rating ? `, quality ${info.quality_rating.toLowerCase()}` : '',
-      missing.length
-        ? `. Incoming messages are rejected until you set the ${missing.join(' and ')}.`
-        : '',
-    ].join('');
+    return {
+      detail: [
+        `Connected to ${info.display_phone_number ?? c.phoneNumberId}`,
+        info.verified_name ? ` (${info.verified_name})` : '',
+        info.quality_rating ? `, quality ${info.quality_rating.toLowerCase()}` : '',
+        missing.length
+          ? `. Incoming messages are rejected until you set the ${missing.join(' and ')}.`
+          : '',
+      ].join(''),
+      facts: {
+        displayPhoneNumber: info.display_phone_number ?? null,
+        verifiedName: info.verified_name ?? null,
+        quality: info.quality_rating ?? null,
+        subscribed,
+      },
+    };
+  }
+}
+
+type Facts = Record<string, unknown>;
+
+/** A failed check that still learned something (which half of email failed). */
+class ProbeError extends Error {
+  constructor(
+    message: string,
+    readonly facts: Facts,
+  ) {
+    super(message);
   }
 }
 

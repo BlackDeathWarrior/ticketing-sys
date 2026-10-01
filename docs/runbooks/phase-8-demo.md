@@ -7,13 +7,13 @@ WhatsApp ships switched off. It works once you connect a Meta app, and there is 
 Prerequisites: `pnpm docker:up && pnpm sample:load`.
 
 1. Sign in to Orbit Desk (http://localhost:8081) as `admin@example.com`.
-2. Open **Settings → Channels → WhatsApp**. The card shows:
-   - the settings (channel on/off, phone number ID, business account ID, Graph API version);
-   - the three secrets (access token, app secret, webhook verify token);
+2. Open **Settings → Channels**. **Channel status** at the top has a light for every channel: email, web chat and the help-center form are green, WhatsApp and voice are grey (off).
+3. The **WhatsApp** card shows:
+   - its light and what it means;
+   - the **Connect WhatsApp** form (IDs, access token, app secret, verify token, optional PIN);
    - the **webhook address** to paste into Meta;
-   - **Still to do**, listing what is missing;
    - the template list, empty until the first sync.
-3. The browser tests show the rest. They post signed webhooks the way Meta does:
+4. The browser tests show the rest. They post signed webhooks the way Meta does:
 
    ```bash
    pnpm --filter @tms/e2e exec playwright test tests/whatsapp.spec.ts
@@ -49,12 +49,18 @@ On the AWS demo (Phase 12) the address shown in Settings works as it is.
 
 ### 3. Enter the details in Orbit Desk
 
-In **Settings → Channels → WhatsApp**:
+In **Settings → Channels → WhatsApp**, fill in the **Connect WhatsApp** form:
 
-1. Set **WhatsApp channel on** to Yes, enter both IDs, and **Save settings**.
-2. Save the **Access token** and the **App secret**.
-3. Make up a **Webhook verify token** (any long random string) and save it.
-4. **Test connection** should answer "Connected to +1 555 … (name), quality green".
+1. Enter the **Phone number ID** and the **WhatsApp Business account ID**.
+2. Paste the **Access token** and the **App secret**.
+3. Click **Generate** next to **Webhook verify token**, and copy the token: Meta needs the same one in step 4. It is not shown again after you leave the page.
+4. Leave the PIN empty for Meta's test number. A real number needs its two-step verification PIN the first time.
+5. Click **Connect WhatsApp**. TMS checks the values with Meta, and saves them only if Meta accepts them. The result lists each step:
+   - Token and phone number;
+   - Business account (the number must belong to it);
+   - Webhook subscription;
+   - Webhook security.
+6. The light turns amber, "Meta has not called the webhook yet", until step 4 below is done. Then it turns green: "Connected to +1 555 … (name)".
 
 Enter keys yourself in the Settings page. Don't paste them into chat, commits or files.
 
@@ -64,7 +70,9 @@ Enter keys yourself in the Settings page. Don't paste them into chat, commits or
    - Callback URL: the webhook address from step 1;
    - Verify token: the one you saved in Orbit Desk.
 2. Subscribe to the **messages** field. Add **message_template_status_update** to follow template approvals.
-3. In Orbit Desk, click **Subscribe to webhooks** once. It links the business account to the app.
+3. Back in Orbit Desk, click **Check now**. "Messages from Meta" turns green once Meta has verified the address.
+
+Connecting already subscribed the business account to the app. **Subscribe to webhooks** repeats that if the light says Meta is not sending the account's messages anywhere.
 
 ### 5. Try it
 
@@ -79,14 +87,20 @@ Enter keys yourself in the Settings page. Don't paste them into chat, commits or
 
 ## When something fails
 
-| What you see                                    | What it means                                                                                      |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| "Not delivered: WhatsApp is not connected"      | No access token is saved, or the channel is off                                                    |
-| "The WhatsApp access token has expired"         | Temporary tokens last 24 hours. Save a new one                                                     |
-| "not on the allowed list of Meta's test number" | Add the customer's number under **To** in Meta's API setup                                         |
-| "More than 24 hours have passed"                | Send an approved template                                                                          |
-| Messages don't arrive                           | Check **Still to do** in Settings, the tunnel, and that Meta's webhook is subscribed to `messages` |
-| Meta's webhook verification fails               | The verify token in Meta and in Orbit Desk differ, or the address is not reachable over HTTPS      |
+Start with the light. **Settings → Channels** lists every check for WhatsApp with its own light and the reason, and **Check now** repeats the checks.
+
+| What you see                                                        | What it means                                                                                      |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Red light, "Access token: Not saved"                                | Paste the token into the Connect form and reconnect                                                |
+| Red light, "Meta is not sending this account's messages to any app" | Click **Subscribe to webhooks**                                                                    |
+| Amber light, "Meta has not called the webhook yet"                  | Meta's webhook is not set, not verified, or not reachable (step 4)                                 |
+| Amber light, "messages could not be delivered"                      | Open the ticket: each failed message shows Meta's reason                                           |
+| "Not delivered: WhatsApp is not connected"                          | No access token is saved, or the channel is off                                                    |
+| "The WhatsApp access token has expired"                             | Temporary tokens last 24 hours. Save a new one                                                     |
+| "not on the allowed list of Meta's test number"                     | Add the customer's number under **To** in Meta's API setup                                         |
+| "More than 24 hours have passed"                                    | Send an approved template                                                                          |
+| Messages don't arrive                                               | Check **Still to do** in Settings, the tunnel, and that Meta's webhook is subscribed to `messages` |
+| Meta's webhook verification fails                                   | The verify token in Meta and in Orbit Desk differ, or the address is not reachable over HTTPS      |
 
 Failed webhooks are retried six times and then logged by the worker (`docker logs tms-worker-1`).
 

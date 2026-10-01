@@ -1,10 +1,24 @@
-import type { ChannelKind, ChannelSettingsView, ConnectionTestResult } from '@tms/shared';
+import type {
+  ChannelHealth,
+  ChannelKind,
+  ChannelSettingsView,
+  ConnectionTestResult,
+} from '@tms/shared';
 import { type FormEvent, useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import { Button, Card, CardHeader, Input, Select } from '../../components/ui';
+import { Button, Card, CardHeader, Input, Select, StatusLight } from '../../components/ui';
 import { useSession } from '../../lib/session';
 import { useGet } from '../../lib/useGet';
+import { WhatsAppConnect } from '../whatsapp/WhatsAppConnect';
 import { WhatsAppSetup } from '../whatsapp/WhatsAppSetup';
+import {
+  cardId,
+  HealthBanner,
+  HealthCard,
+  HealthChecks,
+  HealthOverview,
+  useChannelHealth,
+} from './ChannelHealth';
 import { maskedKey } from './logic';
 import styles from './Settings.module.css';
 import { TestResult } from './TestResult';
@@ -89,17 +103,94 @@ const CHANNELS: Record<
 
 export function ChannelsPanel() {
   const channels = useGet<ChannelSettingsView[]>('/settings/channels');
+  const health = useChannelHealth();
+  const light = (channel: ChannelHealth['channel']) =>
+    health.data?.find((h) => h.channel === channel);
+  const view = (kind: ChannelKind) => channels.data?.find((v) => v.kind === kind);
+  const changed = () => {
+    void channels.reload();
+    void health.refresh();
+  };
+  const email = view('email');
+  const whatsapp = view('whatsapp');
+  const sarvam = view('sarvam');
+  const webchat = light('webchat');
+  const webForm = light('web_form');
+
   return (
     <div className={styles.stack}>
       {channels.error && <p className={styles.error}>{channels.error}</p>}
-      {(channels.data ?? []).map((view) => (
-        <ChannelCard key={view.kind} view={view} onChanged={() => void channels.reload()} />
-      ))}
+      {health.error && <p className={styles.error}>{health.error}</p>}
+      {health.data && (
+        <HealthOverview
+          health={health.data}
+          checking={health.checking}
+          onCheck={() => void health.check()}
+        />
+      )}
+      {email && <ChannelCard view={email} health={light('email')} onChanged={changed} />}
+      {whatsapp && <ChannelCard view={whatsapp} health={light('whatsapp')} onChanged={changed} />}
+      {webchat && (
+        <HealthCard
+          health={webchat}
+          subtitle="The chat widget on your website. There is nothing to connect: it works whenever the API and the worker run."
+        />
+      )}
+      {webForm && (
+        <HealthCard
+          health={webForm}
+          subtitle="The “Submit a request” page. Acknowledgements and replies go out through the email channel."
+        />
+      )}
+      {sarvam && <ChannelCard view={sarvam} health={light('voice')} onChanged={changed} />}
     </div>
   );
 }
 
-function ChannelCard({ view, onChanged }: { view: ChannelSettingsView; onChanged: () => void }) {
+function ChannelCard({
+  view,
+  health,
+  onChanged,
+}: {
+  view: ChannelSettingsView;
+  health: ChannelHealth | undefined;
+  onChanged: () => void;
+}) {
+  const def = CHANNELS[view.kind];
+
+  return (
+    <Card
+      padding="md"
+      id={health ? cardId(health.channel) : undefined}
+      aria-labelledby={`channel-${view.kind}`}
+    >
+      <CardHeader
+        id={`channel-${view.kind}`}
+        title={def.title}
+        subtitle={def.subtitle}
+        actions={
+          health ? <StatusLight state={health.state} /> : <TestResult result={view.lastTest} />
+        }
+      />
+      {view.kind === 'whatsapp' ? (
+        <>
+          {health && <HealthBanner health={health} />}
+          {health && <HealthChecks health={health} />}
+          <WhatsAppConnect view={view} onChanged={onChanged} />
+          <WhatsAppSetup />
+        </>
+      ) : (
+        <>
+          {health && <HealthChecks health={health} />}
+          <ChannelForm view={view} onChanged={onChanged} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+/** The generic settings form and its keys (email, Sarvam). */
+function ChannelForm({ view, onChanged }: { view: ChannelSettingsView; onChanged: () => void }) {
   const def = CHANNELS[view.kind];
   const { can } = useSession();
   const [values, setValues] = useState<Record<string, unknown>>({
@@ -157,78 +248,69 @@ function ChannelCard({ view, onChanged }: { view: ChannelSettingsView; onChanged
         : null;
 
   return (
-    <Card padding="md" aria-labelledby={`channel-${view.kind}`}>
-      <CardHeader
-        id={`channel-${view.kind}`}
-        title={def.title}
-        subtitle={def.subtitle}
-        actions={<TestResult result={view.lastTest} />}
-      />
-      <div className={styles.grid2}>
-        <form className={styles.form} onSubmit={save} aria-label={`${def.title} settings`}>
-          {sourceNote && <p className={styles.note}>{sourceNote}</p>}
-          <div className={styles.formRow}>
-            {def.fields.map((f) =>
-              f.kind === 'bool' ? (
-                <Select
-                  key={f.name}
-                  id={`${view.kind}-${f.name}`}
-                  label={f.label}
-                  value={values[f.name] ? 'yes' : 'no'}
-                  onChange={(e) => setValues({ ...values, [f.name]: e.target.value === 'yes' })}
-                  options={[
-                    { value: 'yes', label: 'Yes' },
-                    { value: 'no', label: 'No' },
-                  ]}
-                />
-              ) : (
-                <Input
-                  key={f.name}
-                  id={`${view.kind}-${f.name}`}
-                  label={f.label}
-                  type={f.kind === 'number' ? 'number' : f.kind === 'email' ? 'email' : 'text'}
-                  placeholder={f.placeholder}
-                  value={
-                    values[f.name] === null || values[f.name] === undefined
-                      ? ''
-                      : String(values[f.name])
-                  }
-                  onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
-                  required={!f.optional}
-                />
-              ),
-            )}
-          </div>
-          <div className={styles.formActions}>
-            <Button onClick={test} disabled={testing}>
-              Test connection
-            </Button>
-            <Button type="submit" disabled={saving}>
-              Save settings
-            </Button>
-          </div>
-          {message && (
-            <p className={styles.note} role="status">
-              {message}
-            </p>
+    <div className={styles.grid2}>
+      <form className={styles.form} onSubmit={save} aria-label={`${def.title} settings`}>
+        {sourceNote && <p className={styles.note}>{sourceNote}</p>}
+        <div className={styles.formRow}>
+          {def.fields.map((f) =>
+            f.kind === 'bool' ? (
+              <Select
+                key={f.name}
+                id={`${view.kind}-${f.name}`}
+                label={f.label}
+                value={values[f.name] ? 'yes' : 'no'}
+                onChange={(e) => setValues({ ...values, [f.name]: e.target.value === 'yes' })}
+                options={[
+                  { value: 'yes', label: 'Yes' },
+                  { value: 'no', label: 'No' },
+                ]}
+              />
+            ) : (
+              <Input
+                key={f.name}
+                id={`${view.kind}-${f.name}`}
+                label={f.label}
+                type={f.kind === 'number' ? 'number' : f.kind === 'email' ? 'email' : 'text'}
+                placeholder={f.placeholder}
+                value={
+                  values[f.name] === null || values[f.name] === undefined
+                    ? ''
+                    : String(values[f.name])
+                }
+                onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
+                required={!f.optional}
+              />
+            ),
           )}
-        </form>
-        <div className={styles.form}>
-          <p className={styles.note}>
-            Credentials are encrypted and write-only: only the last four characters show.
-          </p>
-          {view.secrets.map((s) => (
-            <SecretField
-              key={s.key}
-              secret={s}
-              canEdit={can('settings:secrets')}
-              onChanged={onChanged}
-            />
-          ))}
         </div>
+        <div className={styles.formActions}>
+          <Button onClick={test} disabled={testing}>
+            Test connection
+          </Button>
+          <Button type="submit" disabled={saving}>
+            Save settings
+          </Button>
+        </div>
+        {message && (
+          <p className={styles.note} role="status">
+            {message}
+          </p>
+        )}
+      </form>
+      <div className={styles.form}>
+        <p className={styles.note}>
+          Credentials are encrypted and write-only: only the last four characters show.
+        </p>
+        {view.secrets.map((s) => (
+          <SecretField
+            key={s.key}
+            secret={s}
+            canEdit={can('settings:secrets')}
+            onChanged={onChanged}
+          />
+        ))}
       </div>
-      {view.kind === 'whatsapp' && <WhatsAppSetup view={view} />}
-    </Card>
+    </div>
   );
 }
 

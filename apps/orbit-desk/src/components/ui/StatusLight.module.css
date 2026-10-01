@@ -1,0 +1,53 @@
+.light {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  font-size: var(--text-ui);
+  color: var(--color-ash);
+  white-space: nowrap;
+}
+
+.dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--signal-off);
+}
+
+.label {
+  color: var(--color-lilac-white);
+}
+
+.light[data-state='ok'] .dot {
+  background: var(--signal-ok);
+  box-shadow: 0 0 0 3px var(--signal-ok-wash);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+.light[data-state='warning'] .dot {
+  background: var(--signal-warn);
+  box-shadow: 0 0 0 3px var(--signal-warn-wash);
+}
+
+.light[data-state='down'] .dot {
+  background: var(--signal-down);
+  box-shadow: 0 0 0 3px var(--signal-down-wash);
+}
+
+.light[data-state='off'] .label {
+  color: var(--color-fog);
+}
+
+/* A working connection breathes, so "live" reads at a glance. */
+@keyframes breathe {
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .light[data-state='ok'] .dot {
+    animation: none;
+  }
+}

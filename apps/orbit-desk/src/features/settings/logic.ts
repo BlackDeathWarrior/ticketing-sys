@@ -1,4 +1,10 @@
-import type { LlmRoleCandidate, Permission } from '@tms/shared';
+import type {
+  ChannelActivity,
+  ChannelHealth,
+  HealthState,
+  LlmRoleCandidate,
+  Permission,
+} from '@tms/shared';
 
 export type SettingsTab =
   'providers' | 'models' | 'ai' | 'channels' | 'tools' | 'routing' | 'sla' | 'usage';
@@ -79,4 +85,40 @@ export function move<T>(list: T[], index: number, dir: -1 | 1): T[] {
   const next = [...list];
   [next[index], next[target]] = [next[target]!, next[index]!];
   return next;
+}
+
+// ---- Channel status lights ----
+
+/** "Last message in 5m ago · last sent 2h ago", or nothing when the channel has been quiet. */
+export function activityLine(a: ChannelActivity, now = Date.now()): string {
+  return [
+    a.lastInboundAt ? `Last message received ${relativeFromIso(a.lastInboundAt, now)}` : null,
+    a.lastOutboundAt ? `last sent ${relativeFromIso(a.lastOutboundAt, now)}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** One sentence for all channels: what is broken first, then what needs a look. */
+export function overallLine(health: Array<Pick<ChannelHealth, 'label' | 'state'>>): string {
+  const names = (state: HealthState) => health.filter((h) => h.state === state).map((h) => h.label);
+  const list = (items: string[]) =>
+    items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items.at(-1)}` : (items[0] ?? '');
+  const down = names('down');
+  const warning = names('warning');
+  const on = health.filter((h) => h.state !== 'off').length;
+  if (down.length) {
+    return `${list(down)} ${down.length === 1 ? 'is' : 'are'} not working.`;
+  }
+  if (warning.length) {
+    return `${list(warning)} ${warning.length === 1 ? 'needs' : 'need'} attention.`;
+  }
+  return on ? 'Every channel that is switched on is working.' : 'No channel is switched on yet.';
+}
+
+/** A random webhook verify token: any long string works, as long as Meta gets the same one. */
+export function newVerifyToken(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }

@@ -1,6 +1,98 @@
 # Test report
 
-## Latest: Phase 8, WhatsApp
+## Latest: Phase 8b, channel status lights and one-step WhatsApp connect
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-8b-channel-health`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                           |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                             |
+| `pnpm test`                                       | 237 passed (api 127, Orbit Desk 67, shared 23, fake providers 15, help center 5) |
+| `pnpm test:int`                                   | 147 passed (14 files)                                                            |
+| `pnpm e2e`                                        | 59 passed; 9 screenshot-only specs skipped as designed                           |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                       |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed                                               |
+
+### What was and wasn't tested
+
+- **Tested for real:** the email light against GreenMail (reading and sending, and a refused SMTP login), web chat and the help-center form, the worker check, the monitor and its notification, and every screen.
+- **Answered inside the test process:** Meta's replies during the connect flow and the WhatsApp checks, as in Phase 8.
+- **Not tested:** a green WhatsApp light against Meta's servers. That needs a Meta app.
+
+### What the sample stack shows
+
+Settings → Channels on the Docker stack: email, web chat and the help-center form are green; WhatsApp and voice are grey (off). The sample data is unchanged.
+
+### New tests
+
+| Where                                                  | Tests | Covers                                                                                                       |
+| ------------------------------------------------------ | ----: | ------------------------------------------------------------------------------------------------------------ |
+| `apps/api/src/channels/health/health-rules.test.ts`    |    17 | Every rule behind the lights, for each channel: green, amber, red and grey, and the sentence shown for each  |
+| `packages/shared/src/channel-health.test.ts`           |     5 | Worst-check state, labels, the connect form's validation                                                     |
+| `apps/orbit-desk/.../settings/channel-health.test.tsx` |     8 | Overview wording, the light always saying its state in words, tiles, check lists, the verify-token generator |
+| `apps/api/test/channel-health.int.test.ts`             |    13 | See below                                                                                                    |
+| `e2e/tests/channel-health.spec.ts`                     |     4 | See below                                                                                                    |
+
+`channel-health.int.test.ts` covers:
+
+- **Access:** the lights and the connect form are refused for agents and for anonymous calls.
+- **All channels:** five lights; web chat green with the worker running; voice off.
+- **Email:** green once the mailbox is watched and the mail server answers. With a wrong SMTP port it turns red, names sending as the failing half while reading stays green, and the help-center form turns red with it.
+- **Connect WhatsApp:**
+  - invalid IDs and a missing token are refused before Meta is called;
+  - a rejected token saves nothing and explains why;
+  - a number that is not under the business account saves nothing and lists the numbers Meta does see;
+  - a good form connects: it checks, saves, subscribes, and no key appears in any response;
+  - the light is amber until Meta verifies or calls the webhook, then green;
+  - reconnecting without keys keeps the saved ones; a PIN registers the number; a wrong PIN is reported without undoing the connection.
+- **Monitor:** when Meta stops accepting the token the light turns red and admins get one notification; agents get none; a second failed check sends nothing more.
+- **Subscription:** the light is red when Meta sends the account's messages to no app.
+- **Off and missing token:** grey when switched off, red when the token is removed.
+
+`channel-health.spec.ts` covers:
+
+- The overview shows five lights; after **Check now** email and web chat are working, WhatsApp is off, and the email card explains each check. A tile scrolls to its card.
+- The Connect WhatsApp form asks for the token and rejects a phone number typed as an ID, without calling Meta. **Generate** fills a 48-character verify token and shows it.
+- Agents are refused by the API.
+- The page fits a phone screen.
+
+`whatsapp.spec.ts` now also checks the red light and its reason when WhatsApp is switched on without a token.
+
+### Bugs found and fixed
+
+1. **Tiles that jumped to a channel's card left the Settings page.** They were links to `#channel-card-…`, and Orbit Desk uses the address after `#` as its route. They are now buttons that scroll. Found by the browser test.
+2. **A test locator matched two rows**, because the "Deliveries" reason also contained the words "access token". The tests now match a check by its exact label.
+
+### Known limits
+
+- A light can be up to five minutes old between checks; **Check now** refreshes it.
+- A green WhatsApp light proves the token, the number and the subscription. Only a call from Meta proves the webhook address is right, which is why the light stays amber until Meta has called once.
+- The web chat visitor count is for one API instance.
+- Voice shows grey until Phase 9.
+
+### Screenshots
+
+Channel status, with the email card's checks:
+
+![Channel status](screenshots/orbit-channel-status.png)
+
+The Connect WhatsApp form. The API has just rejected a phone number typed as an ID:
+
+![Connect WhatsApp](screenshots/orbit-settings-whatsapp.png)
+
+WhatsApp switched on without an access token: a red light and the reason:
+
+![WhatsApp not working](screenshots/orbit-settings-whatsapp-red.png)
+
+Channel status at phone width:
+
+![Channel status on a phone](screenshots/orbit-channel-status-phone.png)
+
+---
+
+## Phase 8: WhatsApp
 
 Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-8-whatsapp`.
 
@@ -88,9 +180,9 @@ Unchanged. The four sample WhatsApp tickets are still tickets with the WhatsApp 
 
 ### Screenshots
 
-Settings → Channels → WhatsApp, with the webhook address and what is still missing:
+Settings → Channels → WhatsApp (as rebuilt in Phase 8b: switched on without an access token, so the light is red):
 
-![WhatsApp settings](screenshots/orbit-settings-whatsapp.png)
+![WhatsApp settings](screenshots/orbit-settings-whatsapp-red.png)
 
 A WhatsApp ticket. The AI's answer could not be sent, and the reason is shown under it:
 

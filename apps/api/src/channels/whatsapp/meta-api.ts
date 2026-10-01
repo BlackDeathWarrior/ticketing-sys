@@ -1,6 +1,6 @@
 /*
  * Ported from whatsapp-crm (a fork of ArnasDon/wacrm), src/lib/whatsapp/meta-api.ts and
- * src/app/api/whatsapp/templates/sync/route.ts at commit 47100ad.
+ * src/app/api/whatsapp/templates/sync/route.ts and src/lib/whatsapp/waba-pairing.ts at commit 47100ad.
  * MIT License, Copyright (c) 2026 Arnas Donauskas. See THIRD_PARTY_NOTICES.md.
  *
  * Changed for TMS: the Graph base URL and version come from settings (the
@@ -145,6 +145,94 @@ export async function subscribeWabaToApp(args: Credentials & { wabaId: string })
   await graphFetch(endpoint(args.graph, `${args.wabaId}/subscribed_apps`), args.accessToken, {
     method: 'POST',
   });
+}
+
+export interface SubscribedApp {
+  whatsapp_business_api_data?: { id?: string; name?: string; link?: string };
+}
+
+/** The apps Meta sends this account's webhooks to. Empty means nothing arrives anywhere. */
+export async function getSubscribedApps(
+  args: Credentials & { wabaId: string },
+): Promise<SubscribedApp[]> {
+  const response = await graphFetch(
+    endpoint(args.graph, `${args.wabaId}/subscribed_apps`),
+    args.accessToken,
+  );
+  return ((await response.json()) as { data?: SubscribedApp[] }).data ?? [];
+}
+
+export interface WabaPhoneNumber {
+  id: string;
+  display_phone_number?: string;
+  verified_name?: string;
+}
+
+/**
+ * The phone numbers under a WhatsApp Business Account. Used to prove the
+ * Phone Number ID belongs to the account ID that was typed: a mismatch saves
+ * fine and shows up later as a webhook that never fires.
+ */
+export async function listWabaPhoneNumbers(
+  args: Credentials & { wabaId: string },
+): Promise<WabaPhoneNumber[]> {
+  const out: WabaPhoneNumber[] = [];
+  const graphOrigin = new URL(args.graph.baseUrl).origin;
+  let next: string | undefined = endpoint(
+    args.graph,
+    `${args.wabaId}/phone_numbers?fields=id,display_phone_number,verified_name&limit=100`,
+  );
+  for (let page = 0; next && page < 5; page++) {
+    if (new URL(next).origin !== graphOrigin) break;
+    const response = await graphFetch(next, args.accessToken);
+    const data = (await response.json()) as {
+      data?: WabaPhoneNumber[];
+      paging?: { next?: string };
+    };
+    out.push(...(data.data ?? []));
+    next = data.paging?.next;
+  }
+  return out;
+}
+
+/**
+ * Registers a phone number with the Cloud API, using the 6-digit two-step
+ * verification PIN set in WhatsApp Manager. Meta's test numbers come
+ * registered; real numbers need this once. Already registered counts as done.
+ */
+export async function registerPhoneNumber(
+  args: Credentials & { phoneNumberId: string; pin: string },
+): Promise<{ alreadyRegistered: boolean }> {
+  try {
+    await graphFetch(endpoint(args.graph, `${args.phoneNumberId}/register`), args.accessToken, {
+      method: 'POST',
+      body: { messaging_product: 'whatsapp', pin: args.pin },
+    });
+    return { alreadyRegistered: false };
+  } catch (err) {
+    if (err instanceof MetaApiError && /already.*registered/i.test(err.message)) {
+      return { alreadyRegistered: true };
+    }
+    throw err;
+  }
+}
+
+/** Why a number is not under an account, naming the numbers Meta does list there. */
+export function describeWabaPhoneMismatch(
+  numbers: readonly WabaPhoneNumber[],
+  phoneNumberId: string,
+  wabaId: string,
+): string {
+  const head = `Phone number ID ${phoneNumberId} does not belong to WhatsApp Business account ${wabaId}.`;
+  const tail =
+    ' Check both values in Meta → WhatsApp → API setup: the account ID shown there must be the one that lists this number.';
+  if (numbers.length === 0) return `${head} Meta lists no phone numbers under that account.${tail}`;
+  const listed = numbers
+    .slice(0, 5)
+    .map((n) => (n.display_phone_number ? `${n.display_phone_number} (${n.id})` : n.id))
+    .join(', ');
+  const more = numbers.length > 5 ? ` and ${numbers.length - 5} more` : '';
+  return `${head} Meta lists these numbers under it: ${listed}${more}.${tail}`;
 }
 
 // ---- Sending ----

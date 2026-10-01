@@ -130,24 +130,38 @@ test.describe('WhatsApp', () => {
     expect(await webhook(forged, 'sha256=00')).toBe(401);
   });
 
-  test('settings show the webhook address, what is missing, and the templates', async ({
+  test('settings show a red light, what is missing, the webhook address and the templates', async ({
     page,
   }) => {
     await signInOrbit(page);
     await page.goto(`${env.orbit}/#/settings/channels`);
+    // Switched on without an access token: the light is red and says why.
+    const overview = page.getByRole('region', { name: 'Channel status' });
+    await expect(overview.getByRole('button', { name: /^WhatsApp/ })).toHaveAttribute(
+      'data-state',
+      'down',
+    );
+    const card = page.getByRole('region', { name: 'WhatsApp', exact: true });
+    await expect(card.getByRole('status').first()).toContainText(
+      'Not working' + 'Not saved. Messages cannot be sent.',
+    );
+    const checks = card.getByRole('list', { name: 'WhatsApp checks' });
+    await expect(
+      checks.locator('li', { has: page.getByText('Access token', { exact: true }) }),
+    ).toHaveAttribute('data-state', 'down');
+    await expect(
+      checks.locator('li', { has: page.getByText('Webhook security', { exact: true }) }),
+    ).toHaveAttribute('data-state', 'ok');
+
     const setup = page.getByRole('region', { name: 'WhatsApp setup' });
     await expect(setup.getByLabel('Webhook address for Meta')).toHaveValue(
       /\/api\/v1\/channels\/whatsapp\/webhook$/,
     );
-    const gaps = setup.getByRole('list', { name: 'Missing WhatsApp settings' });
-    await expect(gaps).toContainText('Add the access token (needed to send)');
-    await expect(gaps).not.toContainText('app secret');
     await expect(setup.getByText('No templates synced yet.')).toBeVisible();
-
     await setup.getByRole('button', { name: 'Sync templates' }).click();
     await expect(setup.getByRole('status')).toContainText('Set the WhatsApp access token first');
-    await page.getByRole('region', { name: 'WhatsApp', exact: true }).scrollIntoViewIfNeeded();
-    await shot(page, 'orbit-settings-whatsapp');
+    await card.evaluate((el) => el.scrollIntoView({ block: 'start' }));
+    await shot(page, 'orbit-settings-whatsapp-red');
   });
 
   test.describe('conversations', () => {

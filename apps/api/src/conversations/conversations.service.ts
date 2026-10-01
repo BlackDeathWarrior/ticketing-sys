@@ -497,6 +497,64 @@ export class ConversationsService {
     });
   }
 
+  /**
+   * Per channel: when a customer last wrote, when we last got a message out,
+   * and what failed in the last 24 hours. For the channel status lights.
+   */
+  async channelActivity(): Promise<
+    Record<
+      string,
+      {
+        lastInboundAt: string | null;
+        lastOutboundAt: string | null;
+        failed24h: number;
+        lastFailure: { at: string; reason: string } | null;
+      }
+    >
+  > {
+    const totals = await this.db
+      .select({
+        channel: messages.channel,
+        lastInboundAt: sql<Date | null>`max(${messages.createdAt}) filter (where ${messages.direction} = 'inbound')`,
+        lastOutboundAt: sql<Date | null>`max(${messages.sentAt}) filter (where ${messages.direction} = 'outbound')`,
+        failed24h: sql<number>`(count(*) filter (where ${messages.deliveryStatus} = 'failed' and ${messages.createdAt} > now() - interval '24 hours'))::int`,
+      })
+      .from(messages)
+      .where(sql`${messages.createdAt} > now() - interval '30 days'`)
+      .groupBy(messages.channel);
+    const failures = await this.db
+      .selectDistinctOn([messages.channel], {
+        channel: messages.channel,
+        at: messages.createdAt,
+        reason: messages.deliveryError,
+      })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.deliveryStatus, 'failed'),
+          sql`${messages.createdAt} > now() - interval '24 hours'`,
+        ),
+      )
+      .orderBy(messages.channel, desc(messages.createdAt));
+    const iso = (d: Date | string | null) => (d ? new Date(d).toISOString() : null);
+    return Object.fromEntries(
+      totals.map((t) => {
+        const failure = failures.find((f) => f.channel === t.channel);
+        return [
+          t.channel,
+          {
+            lastInboundAt: iso(t.lastInboundAt),
+            lastOutboundAt: iso(t.lastOutboundAt),
+            failed24h: t.failed24h,
+            lastFailure: failure
+              ? { at: failure.at.toISOString(), reason: failure.reason ?? 'Delivery failed' }
+              : null,
+          },
+        ];
+      }),
+    );
+  }
+
   /** Counts, for tests and health: messages still waiting to be delivered. */
   async pendingDeliveries(): Promise<number> {
     const [row] = await this.db

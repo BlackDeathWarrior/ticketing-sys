@@ -8,6 +8,8 @@ import { AiPolicyService } from './ai-policy.service';
 import { ChannelsController } from './channels.controller';
 import { InboundService } from './inbound.service';
 import { OutboundService } from './outbound.service';
+import { ChannelHealthService } from './health/channel-health.service';
+import { WhatsAppConnectService } from './whatsapp/whatsapp-connect.service';
 import { WhatsAppTemplatesService } from './whatsapp/whatsapp-templates.service';
 import { WhatsAppWebhookQueue } from './whatsapp/whatsapp-webhook.queue';
 import { WhatsAppController, WhatsAppWebhookController } from './whatsapp/whatsapp.controller';
@@ -27,6 +29,8 @@ import { WhatsAppService } from './whatsapp/whatsapp.service';
     WhatsAppTemplatesService,
     WhatsAppService,
     WhatsAppWebhookQueue,
+    WhatsAppConnectService,
+    ChannelHealthService,
   ],
   exports: [
     InboundService,
@@ -35,6 +39,7 @@ import { WhatsAppService } from './whatsapp/whatsapp.service';
     ConversationsModule,
     WhatsAppService,
     WhatsAppTemplatesService,
+    ChannelHealthService,
   ],
 })
 export class ChannelsModule {}

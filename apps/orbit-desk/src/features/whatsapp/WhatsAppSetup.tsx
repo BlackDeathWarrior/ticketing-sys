@@ -1,11 +1,11 @@
-import type { ChannelSettingsView, WaTemplateSyncResult, WaTemplateView } from '@tms/shared';
+import type { WaTemplateSyncResult, WaTemplateView } from '@tms/shared';
 import { useState } from 'react';
 import { api } from '../../api/client';
 import { Button, Input } from '../../components/ui';
 import { cx } from '../../lib/format';
 import { useGet } from '../../lib/useGet';
 import settings from '../settings/Settings.module.css';
-import { setupGaps, TEMPLATE_STATUS_LABELS } from './logic';
+import { TEMPLATE_STATUS_LABELS } from './logic';
 import styles from './WhatsApp.module.css';
 
 /** The address Meta calls. It must be reachable from the internet over HTTPS. */
@@ -13,14 +13,13 @@ export const webhookUrl = () =>
   new URL('/api/v1/channels/whatsapp/webhook', window.location.origin).href;
 
 /**
- * Everything about WhatsApp that isn't a plain setting: the webhook address
- * to paste into Meta, what is still missing, and the templates synced from Meta.
+ * What Meta needs from us and what we take from Meta: the webhook address to
+ * paste into Meta, and the templates synced from it.
  */
-export function WhatsAppSetup({ view }: { view: ChannelSettingsView }) {
+export function WhatsAppSetup() {
   const templates = useGet<WaTemplateView[]>('/whatsapp/templates?all=true');
   const [busy, setBusy] = useState<'sync' | 'subscribe' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const gaps = setupGaps(view);
   const url = webhookUrl();
 
   const run = async (what: 'sync' | 'subscribe') => {
@@ -64,25 +63,10 @@ export function WhatsAppSetup({ view }: { view: ChannelSettingsView }) {
           readOnly
           value={url}
           onFocus={(e) => e.target.select()}
-          hint="Meta must reach it over HTTPS. Use the same verify token here and in Meta."
+          hint="Paste it into Meta › WhatsApp › Configuration › Webhook, with the same verify token. Meta must reach it over HTTPS."
         />
         <Button onClick={() => void copy()}>Copy</Button>
       </div>
-
-      {gaps.length > 0 ? (
-        <div>
-          <p className={styles.sectionTitle}>Still to do</p>
-          <ul className={styles.gaps} aria-label="Missing WhatsApp settings">
-            {gaps.map((g) => (
-              <li key={g}>{g}</li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <p className={settings.note}>
-          Everything needed is saved. In Meta, subscribe the webhook to the “messages” field.
-        </p>
-      )}
 
       <div>
         <p className={styles.sectionTitle}>Message templates</p>
