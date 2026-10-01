@@ -56,6 +56,19 @@ describe('scripted agent', () => {
     expect(String(args(r).message)).toContain('5 to 7 days');
   });
 
+  it('answers from the passage that fits the question best, not simply the first', () => {
+    const reply = agentReply(
+      agent('When will my refund reach my card?', {
+        results: [
+          { id: 'c1', source: 'Billing FAQ', text: 'A second charge is released by your bank.' },
+          { id: 'c2', source: 'Returns policy', text: 'Refunds reach your card in 5 to 7 days.' },
+        ],
+      }),
+    );
+    expect(args(reply)).toMatchObject({ sources: ['c2'], confidence: 0.9 });
+    expect(args(reply).message).toContain('5 to 7 days');
+  });
+
   it('is less sure when the passage barely matches, and unsure with nothing', () => {
     const weak = agentReply(
       agent('What do penguins eat?', {

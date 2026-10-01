@@ -5,7 +5,7 @@ import type { ChatMessage, ChatRequest, ScriptedReply } from './llm';
  * demos and tests run without a real model. Deterministic by design:
  *
  * - Agent: first calls search_knowledge with the customer's words; then
- *   replies from the top result. Confidence is 0.9 when the result shares at
+ *   replies from the result that shares most words with the question. Confidence is 0.9 when the result shares at
  *   least two meaningful words with the question, 0.7 when it shares fewer
  *   (the agent drafts), and 0.3 when nothing was found (it hands over).
  *   Asking for a person calls request_human.
@@ -288,9 +288,17 @@ export function agentReply(req: ChatRequest): ScriptedReply {
       intent,
     });
   }
-  const top = results[0]!;
+  // Reads every passage it was given, as a model would, and answers from the one that
+  // shares most words with the question: the search's first hit is not always the best
+  // one. Between equals, the passage that uses those words more often wins, then the
+  // earlier one.
   const q = new Set(words(question));
-  const overlap = new Set(words(`${top.source} ${top.text}`).filter((w) => q.has(w))).size;
+  const hits = (r: (typeof results)[number]) =>
+    words(`${r.source} ${r.text}`).filter((w) => q.has(w));
+  const shared = (r: (typeof results)[number]) => new Set(hits(r)).size;
+  const fit = (r: (typeof results)[number]) => shared(r) * 1_000 + hits(r).length;
+  const top = results.reduce((best, r) => (fit(r) > fit(best) ? r : best), results[0]!);
+  const overlap = shared(top);
   const confidence = overlap >= 2 ? 0.9 : 0.7;
   const body = firstSentences(top.text, 2);
   return call('send_reply', {
