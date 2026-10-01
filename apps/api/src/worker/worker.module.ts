@@ -10,6 +10,8 @@ import { DeliveryHandler } from '../delivery/delivery.handler';
 import { EmailSender } from '../delivery/email.sender';
 import { CHANNEL_SENDERS } from '../delivery/senders';
 import { WebchatSender } from '../delivery/webchat.sender';
+import { WhatsAppSender } from '../delivery/whatsapp.sender';
+import { WhatsAppWebhookWorker } from '../channels/whatsapp/whatsapp-webhook.queue';
 import { InfraModule } from '../infra/infra.module';
 import { KbIndexerService } from '../kb/kb-indexer.service';
 import { KbIngestHandler, KbIngestWorker } from '../kb/kb-ingest.worker';
@@ -73,9 +75,11 @@ const env = loadEnv();
     HeartbeatService,
     WebchatSender,
     EmailSender,
+    WhatsAppSender,
+    WhatsAppWebhookWorker,
     {
       provide: CHANNEL_SENDERS,
-      inject: [WebchatSender, EmailSender],
+      inject: [WebchatSender, EmailSender, WhatsAppSender],
       useFactory: (...senders: unknown[]) => senders,
     },
     DeliveryHandler,

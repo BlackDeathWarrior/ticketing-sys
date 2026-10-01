@@ -150,13 +150,26 @@ export class CustomersService {
     const existing = await this.findByIdentity(tx, input.type, value);
     if (existing) return { customer: existing, created: false };
 
+    if (input.type === 'whatsapp') {
+      // Meta vouches for the number, so a customer already known by that phone is the same person.
+      const byPhone = await this.findByIdentity(tx, 'phone', value);
+      if (byPhone) {
+        const link = (t: DbOrTx) =>
+          this.insertIdentity(t, ctx, byPhone.id, 'whatsapp', value, true);
+        await (tx !== this.db ? link(tx) : this.db.transaction(link));
+        return { customer: byPhone, created: false };
+      }
+    }
+
     const run = async (t: DbOrTx) => {
       const fallbackName =
         input.type === 'email'
           ? value
           : input.type === 'webchat_session'
             ? 'Web visitor'
-            : `+${value}`;
+            : input.type === 'whatsapp_bsuid'
+              ? 'WhatsApp user'
+              : `+${value}`;
       const c = await this.insertCustomer(t, ctx, {
         displayName: input.displayName || fallbackName,
         customerType: 'standard',
@@ -267,6 +280,11 @@ export class CustomersService {
       current = c.mergedIntoId;
     }
     throw new NotFoundException('Customer not found');
+  }
+
+  /** The customer who owns a channel identity, if any. */
+  lookup(type: IdentityType, value: string, db: DbOrTx = this.db) {
+    return this.findByIdentity(db, type, normalizeIdentity(type, value));
   }
 
   private async findByIdentity(db: DbOrTx, type: IdentityType, value: string) {

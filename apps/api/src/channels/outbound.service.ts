@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 import type { Database, DbOrTx } from '@tms/db';
-import { type Channel, formatTicketNumber } from '@tms/shared';
+import {
+  type Channel,
+  formatTicketNumber,
+  type ParsedSendTemplate,
+  WA_TEXT_MAX,
+  type WaConversationMeta,
+  waWindow,
+} from '@tms/shared';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import { type RequestCtx, SYSTEM_CTX } from '../common/request-context';
@@ -11,6 +18,9 @@ import { DB } from '../infra/tokens';
 import { ChannelConfigService } from '../settings/channel-config.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { replySubject } from './email/email.util';
+import { isValidE164 } from './whatsapp/phone-utils';
+import { isBusinessScopedUserId } from './whatsapp/wa-identity';
+import { WhatsAppTemplatesService } from './whatsapp/whatsapp-templates.service';
 
 /**
  * Agent and AI replies. A reply is stored as `pending` together with a
@@ -28,12 +38,61 @@ export class OutboundService {
     private readonly tickets: TicketsService,
     private readonly customers: CustomersService,
     private readonly channels: ChannelConfigService,
+    private readonly templates: WhatsAppTemplatesService,
   ) {}
 
   async reply(ctx: RequestCtx, conversationId: string, body: string) {
     return this.db.transaction(async (tx) => {
       const conv = await this.conversations.lock(tx, conversationId);
+      if (conv.channel === 'whatsapp') await this.checkWhatsAppText(conv, body);
       return this.replyInTx(tx, ctx, conv, body);
+    });
+  }
+
+  /**
+   * Sends an approved WhatsApp template on a conversation: the only way to
+   * write to a customer more than 24 hours after their last message.
+   */
+  async replyWithTemplate(ctx: RequestCtx, conversationId: string, input: ParsedSendTemplate) {
+    await this.requireWhatsApp();
+    const { send, preview } = await this.templates.prepare(input);
+    return this.db.transaction(async (tx) => {
+      const conv = await this.conversations.lock(tx, conversationId);
+      if (conv.channel !== 'whatsapp') {
+        throw new BadRequestException('Templates can only be sent on WhatsApp conversations');
+      }
+      return this.replyInTx(tx, ctx, conv, preview, { metadata: { waTemplate: send } });
+    });
+  }
+
+  /** Opens a WhatsApp thread to the ticket's customer with an approved template. */
+  async startWhatsAppConversation(ctx: RequestCtx, ticketId: string, input: ParsedSendTemplate) {
+    await this.requireWhatsApp();
+    const ticket = await this.tickets.get(ticketId);
+    const customer = await this.customers.get(ticket.customerId);
+    const identity = (type: string) => customer.identities.find((i) => i.type === type)?.value;
+    const phone = identity('whatsapp') ?? identity('phone') ?? customer.primaryPhone ?? undefined;
+    const waUserId = identity('whatsapp_bsuid');
+    const meta: WaConversationMeta = {
+      ...(phone && isValidE164(phone) ? { waPhone: phone } : {}),
+      ...(isBusinessScopedUserId(waUserId) ? { waUserId } : {}),
+      profileName: customer.displayName,
+    };
+    if (!meta.waPhone && !meta.waUserId) {
+      throw new BadRequestException('The customer has no WhatsApp number');
+    }
+    const { send, preview } = await this.templates.prepare(input);
+
+    return this.db.transaction(async (tx) => {
+      const conv = await this.conversations.create(tx, ctx, {
+        ticketId: ticket.id,
+        customerId: customer.id,
+        channel: 'whatsapp',
+        externalThreadId: meta.waPhone ?? meta.waUserId!,
+        controller: 'human',
+        metadata: { ...meta },
+      });
+      return this.replyInTx(tx, ctx, conv, preview, { metadata: { waTemplate: send } });
     });
   }
 
@@ -298,6 +357,35 @@ export class OutboundService {
       inReplyTo: lastInbound?.id ?? previous.at(-1)?.id ?? null,
       references: previous.slice(-20).map((m) => m.id),
     };
+  }
+
+  /** A 400 when WhatsApp can't send at all, so an agent hears it before writing. */
+  private async requireWhatsApp() {
+    const config = await this.channels.whatsapp();
+    if (!config?.enabled || !config.accessToken) {
+      throw new BadRequestException(
+        'WhatsApp is not connected. An admin can connect it in Settings → Channels.',
+      );
+    }
+  }
+
+  /** Free text needs the channel connected, a short enough body and an open 24-hour window. */
+  private async checkWhatsAppText(conv: Conversation, body: string) {
+    await this.requireWhatsApp();
+    if (body.length > WA_TEXT_MAX) {
+      throw new BadRequestException(
+        `WhatsApp messages can be up to ${WA_TEXT_MAX.toLocaleString('en')} characters`,
+      );
+    }
+    const { lastInboundAt } = conv.metadata as WaConversationMeta;
+    if (!waWindow(lastInboundAt).open) {
+      throw new ConflictException({
+        message: lastInboundAt
+          ? "More than 24 hours have passed since the customer's last message. Send an approved template instead."
+          : 'The customer has not written on WhatsApp yet. Send an approved template instead.',
+        code: 'wa_window_closed',
+      });
+    }
   }
 
   /** The support address, or a 400 when the email channel is off. */

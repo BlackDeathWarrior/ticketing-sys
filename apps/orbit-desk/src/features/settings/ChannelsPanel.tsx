@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { Button, Card, CardHeader, Input, Select } from '../../components/ui';
 import { useSession } from '../../lib/session';
 import { useGet } from '../../lib/useGet';
+import { WhatsAppSetup } from '../whatsapp/WhatsAppSetup';
 import { maskedKey } from './logic';
 import styles from './Settings.module.css';
 import { TestResult } from './TestResult';
@@ -53,7 +54,7 @@ const CHANNELS: Record<
   whatsapp: {
     title: 'WhatsApp',
     subtitle:
-      'Meta WhatsApp Cloud API. The webhook and sending arrive in Phase 8; you can store the credentials now.',
+      'Meta WhatsApp Cloud API: customers write to your business number, and replies go out from here.',
     fields: [
       { name: 'enabled', label: 'WhatsApp channel on', kind: 'bool' },
       {
@@ -226,6 +227,7 @@ function ChannelCard({ view, onChanged }: { view: ChannelSettingsView; onChanged
           ))}
         </div>
       </div>
+      {view.kind === 'whatsapp' && <WhatsAppSetup view={view} />}
     </Card>
   );
 }

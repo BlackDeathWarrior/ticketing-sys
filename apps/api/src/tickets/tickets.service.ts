@@ -553,6 +553,7 @@ export class TicketsService {
           id: customers.id,
           displayName: customers.displayName,
           primaryEmail: customers.primaryEmail,
+          primaryPhone: customers.primaryPhone,
           customerType: customers.customerType,
           attributes: customers.attributes,
         },

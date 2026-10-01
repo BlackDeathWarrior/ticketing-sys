@@ -37,6 +37,7 @@ export interface ApiTicket {
     id: string;
     displayName: string;
     primaryEmail?: string | null;
+    primaryPhone?: string | null;
     customerType?: string;
     attributes?: Record<string, unknown>;
   };
@@ -78,7 +79,13 @@ export interface ApiConversation {
   controllerUserId?: string | null;
   controllerName?: string | null;
   lastMessageAt: string | null;
-  metadata: { visitorName?: string; address?: string };
+  metadata: {
+    visitorName?: string;
+    address?: string;
+    /** WhatsApp: the person's profile name and when they last wrote. */
+    profileName?: string;
+    lastInboundAt?: string;
+  };
   messages: Array<{
     id: string;
     direction: 'inbound' | 'outbound';
@@ -88,6 +95,7 @@ export interface ApiConversation {
     body: string;
     createdAt: string;
     deliveryStatus: string | null;
+    deliveryError?: string | null;
     attachments?: Array<{ filename: string; size: number; contentType: string }>;
     metadata?: {
       ai?: { confidence?: number | null; rules?: string[]; sources?: Array<{ label: string }> };
@@ -169,6 +177,7 @@ export function toCustomer(c: ApiTicket['customer']): Customer {
     name: c.displayName,
     initials: initials(c.displayName),
     email: c.primaryEmail ?? null,
+    phone: c.primaryPhone ?? null,
     company: typeof company === 'string' && company.trim() ? company : null,
     plan: PLAN_LABELS[c.customerType ?? 'standard'] ?? 'Standard',
   };
@@ -236,6 +245,7 @@ export function toThread(
       body: ticket.description,
       at: ticket.createdAt,
       delivery: null,
+      deliveryError: null,
       channel: null,
       byAi: false,
       attachments: [],
@@ -269,6 +279,7 @@ export function toThread(
         body: m.body,
         at: new Date(m.createdAt),
         delivery: fromCustomer ? null : m.deliveryStatus,
+        deliveryError: fromCustomer ? null : (m.deliveryError ?? null),
         channel: c.channel,
         byAi,
         attachments: (m.attachments ?? []).map((a, i) => ({
@@ -299,6 +310,7 @@ export function toThread(
       body: n.body,
       at: new Date(n.createdAt),
       delivery: null,
+      deliveryError: null,
       channel: null,
       byAi,
       attachments: [],
@@ -316,6 +328,7 @@ export function toThread(
       controller: c.controller ?? 'none',
       controllerUserId: c.controllerUserId ?? null,
       controllerName: c.controllerName ?? null,
+      lastInboundAt: c.metadata.lastInboundAt ?? null,
     })),
   };
 }
@@ -345,6 +358,25 @@ export const channelIcons = {
   web_form: 'list',
   agent: 'user',
 } as const satisfies Record<Channel, string>;
+
+/**
+ * What to show next to an outbound message. A plain "sent" needs no label;
+ * WhatsApp also reports when a message reached the phone and was read.
+ */
+export function deliveryLabel(delivery: string | null): string | null {
+  switch (delivery) {
+    case 'pending':
+      return 'Sending';
+    case 'delivered':
+      return 'Delivered';
+    case 'read':
+      return 'Read';
+    case 'failed':
+      return 'Not delivered';
+    default:
+      return null;
+  }
+}
 
 /** Minutes between `date` and `now`, never negative. */
 export const minutesSince = (date: Date, now = new Date()) =>

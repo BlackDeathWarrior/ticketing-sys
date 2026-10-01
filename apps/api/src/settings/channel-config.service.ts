@@ -16,12 +16,20 @@ import {
 import { ImapFlow } from 'imapflow';
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
+import { verifyPhoneNumber } from '../channels/whatsapp/meta-api';
+import { explainMetaError } from '../channels/whatsapp/meta-errors';
 import type { RequestCtx } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
 import type { Env } from '../config/env';
 import { ENV } from '../infra/tokens';
 import { AppSettingsService } from './app-settings.service';
 import { SecretsService } from './secrets.service';
+
+export interface ResolvedWhatsappConfig extends WhatsappChannelConfig {
+  accessToken: string | null;
+  /** Where the Graph API lives and which version to call. */
+  graph: { baseUrl: string; version: string };
+}
 
 export interface ResolvedEmailConfig extends EmailChannelConfig {
   imapPassword: string;
@@ -80,10 +88,28 @@ export class ChannelConfigService {
     };
   }
 
-  async whatsapp(): Promise<(WhatsappChannelConfig & { accessToken: string | null }) | null> {
-    const saved = await this.settings.get(configKey('whatsapp'), whatsappChannelConfigSchema);
+  /**
+   * Read fresh every time: a webhook that arrives right after the channel is
+   * switched on must not be dropped because of a cached "off".
+   */
+  async whatsapp(): Promise<ResolvedWhatsappConfig | null> {
+    const saved = await this.settings.get(configKey('whatsapp'), whatsappChannelConfigSchema, {
+      fresh: true,
+    });
     if (!saved) return null;
-    return { ...saved, accessToken: await this.secrets.get('whatsapp.access_token') };
+    return {
+      ...saved,
+      accessToken: await this.secrets.get('whatsapp.access_token'),
+      graph: { baseUrl: this.env.WHATSAPP_GRAPH_URL, version: saved.graphVersion },
+    };
+  }
+
+  /** What the public webhook checks requests against. Null values mean "reject everything". */
+  async whatsappWebhook(): Promise<{ appSecret: string | null; verifyToken: string | null }> {
+    return {
+      appSecret: await this.secrets.get('whatsapp.app_secret'),
+      verifyToken: await this.secrets.get('whatsapp.verify_token'),
+    };
   }
 
   async sarvam(): Promise<(SarvamChannelConfig & { apiKey: string | null }) | null> {
@@ -189,15 +215,31 @@ export class ChannelConfigService {
       return `Sarvam detected ${body.language_code ?? 'a language'}`;
     }
     const c = await this.whatsapp();
-    if (!c?.accessToken) throw new Error('The WhatsApp access token is not set');
-    const url = new URL(
-      `/${c.graphVersion}/${c.phoneNumberId}?fields=display_phone_number`,
-      this.env.WHATSAPP_GRAPH_URL,
-    );
-    const res = await fetch(url, { headers: { authorization: `Bearer ${c.accessToken}` } });
-    if (!res.ok) throw new Error(`Meta answered HTTP ${res.status}`);
-    const body = (await res.json()) as { display_phone_number?: string };
-    return `Connected to ${body.display_phone_number ?? c.phoneNumberId}`;
+    if (!c) throw new Error('WhatsApp is not configured');
+    if (!c.accessToken) throw new Error('The WhatsApp access token is not set');
+    let info: Awaited<ReturnType<typeof verifyPhoneNumber>>;
+    try {
+      info = await verifyPhoneNumber({
+        graph: c.graph,
+        accessToken: c.accessToken,
+        phoneNumberId: c.phoneNumberId,
+      });
+    } catch (err) {
+      throw new Error(explainMetaError(err).summary);
+    }
+    const hook = await this.whatsappWebhook();
+    const missing = [
+      ...(hook.appSecret ? [] : ['app secret']),
+      ...(hook.verifyToken ? [] : ['webhook verify token']),
+    ];
+    return [
+      `Connected to ${info.display_phone_number ?? c.phoneNumberId}`,
+      info.verified_name ? ` (${info.verified_name})` : '',
+      info.quality_rating ? `, quality ${info.quality_rating.toLowerCase()}` : '',
+      missing.length
+        ? `. Incoming messages are rejected until you set the ${missing.join(' and ')}.`
+        : '',
+    ].join('');
   }
 }
 

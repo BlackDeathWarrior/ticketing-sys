@@ -152,6 +152,8 @@
 .form {
   display: grid;
   gap: var(--spacing-16);
+  /* Rows keep their own height when the neighbouring column is taller. */
+  align-content: start;
 }
 
 .formRow {

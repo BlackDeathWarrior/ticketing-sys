@@ -63,7 +63,7 @@ export const messages = pgTable(
     attachments: jsonb('attachments').$type<MessageAttachment[]>().notNull().default([]),
     /** Provider message id; unique per channel so webhook retries are idempotent. */
     channelMessageId: text('channel_message_id'),
-    /** Outbound only: pending | sent | failed. */
+    /** Outbound only: pending | sent | delivered | read | failed | draft | discarded. */
     deliveryStatus: text('delivery_status'),
     deliveryError: text('delivery_error'),
     sentAt: timestamp('sent_at', { withTimezone: true }),

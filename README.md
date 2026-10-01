@@ -20,13 +20,13 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 | 5b    | Help center: public request form (channel `web_form`) with attachments, email acknowledgement and replies (ADR 0012)                                  | Done    |
 | 6     | Tools over MCP (Demo Store sample server), risk tiers, supervisor approvals, AI follow-ups (ADR 0013)                                                 | Done    |
 | 7     | Handover with context packs, take-over/hand-back, routing (rules, skills, presence), SLA timers, notifications, copilot, AI-vs-human views (ADR 0014) | Done    |
-| 8     | WhatsApp (Meta Cloud API, ported from whatsapp-crm; see `docs/research/whatsapp-crm.md`)                                                              | Next    |
-| 9     | Voice agent on Sarvam STT/TTS, in the browser (see `docs/research/voice-sarvam.md`)                                                                   | Planned |
+| 8     | WhatsApp on the Meta Cloud API (ported from whatsapp-crm): signed webhook, media, delivery and read reports, 24-hour window, templates (ADR 0015)     | Done    |
+| 9     | Voice agent on Sarvam STT/TTS, in the browser (see `docs/research/voice-sarvam.md`)                                                                   | Next    |
 | 10    | Reporting (AI vs human, SLA, CSAT), admin settings, customer portal (sign-in link, my tickets, reply, rate)                                           | Planned |
 | 11    | Hardening for the demo                                                                                                                                | Planned |
 | 12    | AWS live demo                                                                                                                                         | Planned |
 
-Not built yet, although the UI or schema hints at them: CSAT (Phase 10), WhatsApp (Phase 8) and voice (Phase 9). The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
+Not built yet, although the UI or schema hints at them: CSAT (Phase 10) and voice (Phase 9). WhatsApp is built but switched off until you connect a Meta app. The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
 
 ## Layout
 
@@ -108,7 +108,7 @@ Admins manage AI providers, models and channel credentials in Orbit Desk under *
 - **Models & roles:** register models (capabilities and prices come from LiteLLM) and decide what each AI feature uses.
   - By default a role uses the cheapest capable model and falls back to the next one.
   - Providers over their cap are skipped.
-- **Channels:** IMAP/SMTP, WhatsApp and Sarvam settings, with write-only secrets and "Test connection".
+- **Channels:** IMAP/SMTP, WhatsApp and Sarvam settings, with write-only secrets and "Test connection". The WhatsApp card also shows the webhook address for Meta and the synced templates.
 - **Usage:** spend by provider and role, and the recent calls.
 
 Keys are admin-only (`settings:secrets`), encrypted, and every change is audited. See ADR 0008 and ADR 0009. The sample data registers the scripted **Demo model** provider, so everything works offline. Walkthrough: [`docs/runbooks/phase-3-demo.md`](docs/runbooks/phase-3-demo.md).
@@ -169,6 +169,13 @@ Orbit Desk → **Knowledge base** (`#/kb`) searches approved documents with cita
 
 - **Web chat:** open http://localhost:8080/widget/demo.html, click **Chat with us** and send a message. A ticket appears in the console (channel `webchat`) without a refresh; reply from the ticket page and the visitor sees it live.
 - **Email:** `pnpm demo:email -- --subject "Where is my order?"` sends a customer email to `support@tms.local`. The worker picks it up within seconds and opens a ticket. Reply from the ticket page; the reply lands in Mailpit, threaded and tagged `[TMS-n]`. To answer as the customer, copy the reply's Message-ID from Mailpit: `pnpm demo:email -- --subject "Re: ..." --in-reply-to "<id>"`.
+- **WhatsApp:** it needs a Meta app, and there is no simulator. Once connected in Settings → Channels:
+  - customers' messages and files open tickets, and the AI or an agent replies;
+  - each reply shows whether it was delivered and read, or why it failed;
+  - more than 24 hours after the customer's last message, WhatsApp only allows approved templates, and the reply box offers those.
+
+  Setup steps are in [`docs/runbooks/phase-8-demo.md`](docs/runbooks/phase-8-demo.md); the design is ADR 0015.
+
 - **Embedding the widget on a site:**
   ```html
   <script src="https://tms.example.com/widget/tms-chat.js"></script>
@@ -204,6 +211,8 @@ pnpm test:int            # integration tests against real Postgres, Redis, S3 an
 ```
 
 Integration tests need `pnpm infra:up` plus the fake LLM (`docker compose -f infra/docker-compose.yml --profile fake up -d fake-providers`), or at least `postgres redis objectstore greenmail litellm fake-providers`. They wipe and migrate the database at `TEST_DATABASE_URL` (default `postgres://tms:tms@localhost:5432/tms_test`) and use Redis db 15. Create the database once with `docker compose -f infra/docker-compose.yml exec postgres createdb -U tms tms_test`.
+
+WhatsApp is tested without a stand-in for Meta: the tests post signed webhooks to the real route, and the integration tests answer calls to `graph.facebook.com` inside the test process.
 
 End-to-end tests (`e2e/`, Playwright) drive both consoles, the chat widget and the mailbox against a running stack loaded with sample data:
 

@@ -4,6 +4,8 @@ export const IDENTITY_TYPES = [
   'email',
   'phone',
   'whatsapp',
+  /** WhatsApp business-scoped user id, for senders Meta shows without a phone number. */
+  'whatsapp_bsuid',
   'webchat_session',
   'external_id',
 ] as const;

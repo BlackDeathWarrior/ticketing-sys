@@ -138,8 +138,13 @@ export class InboundService {
         body: env.text,
         attachments: env.attachments,
         channelMessageId: env.channelMessageId,
-        metadata: { ...env.metadata, ...(env.subject ? { subject: env.subject } : {}) },
+        metadata: { ...messageMetadata(env), ...(env.subject ? { subject: env.subject } : {}) },
       });
+
+      if (env.channel === 'whatsapp') {
+        // Keeps the send address and the 24-hour window current.
+        await this.conversations.mergeMetadata(tx, conversation.id, conversationMetadata(env));
+      }
 
       const data = {
         conversationId: conversation.id,
@@ -203,6 +208,9 @@ export class InboundService {
           }
         }
       }
+    } else if (env.channel === 'whatsapp') {
+      // One thread per person, whether Meta names them by phone or by user id this time.
+      conversation = await this.conversations.findLatestForCustomer(tx, 'whatsapp', customerId);
     } else {
       conversation = await this.conversations.findByThread(tx, env.channel, env.threadKey);
     }
@@ -223,8 +231,15 @@ function subjectFor(env: ParsedEnvelope): string {
       .split('\n')
       .find((l) => l.trim())
       ?.trim() ?? '';
-  const label = env.channel === 'webchat' ? 'Chat' : env.channel;
+  const label =
+    env.channel === 'webchat' ? 'Chat' : env.channel === 'whatsapp' ? 'WhatsApp' : env.channel;
   return firstLine ? `${label}: ${firstLine.slice(0, 120)}` : `${label} conversation`;
+}
+
+/** Envelope metadata kept on the message; `conversation` details go on the conversation. */
+function messageMetadata(env: ParsedEnvelope): Record<string, unknown> {
+  const { conversation: _conversation, ...rest } = env.metadata;
+  return rest;
 }
 
 function conversationMetadata(env: ParsedEnvelope): Record<string, unknown> {
@@ -240,6 +255,10 @@ function conversationMetadata(env: ParsedEnvelope): Record<string, unknown> {
   }
   if (env.channel === 'webchat') {
     return { sessionId: env.threadKey, visitorName: env.from.displayName };
+  }
+  if (env.channel === 'whatsapp') {
+    // Set by the WhatsApp adapter; see WaConversationMeta.
+    return (env.metadata.conversation ?? {}) as Record<string, unknown>;
   }
   return {};
 }

@@ -1,4 +1,4 @@
-import { type CopilotSuggestion, PRIORITIES } from '@tms/shared';
+import { type CopilotSuggestion, PRIORITIES, waWindow } from '@tms/shared';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, downloadFile } from '../../api/client';
 import {
@@ -7,6 +7,7 @@ import {
   type ApiRef,
   type ApiTicket,
   channelLabels,
+  deliveryLabel,
   minutesSince,
   nextStatuses,
   replyTarget,
@@ -30,6 +31,8 @@ import { ControlBar } from '../handover/ControlBar';
 import { laneRows } from '../handover/logic';
 import { HandoverContext, History, SlaPanel } from '../handover/Panels';
 import { ToolCalls } from '../tools/ToolCalls';
+import { windowNote } from '../whatsapp/logic';
+import { TemplateComposer } from '../whatsapp/TemplateComposer';
 import kbStyles from '../kb/Kb.module.css';
 import { useGet } from '../../lib/useGet';
 import {
@@ -200,9 +203,14 @@ function DrawerContent({
   );
   const target = replyTarget(thread);
   const canReply = can('message:send') && (target !== null || !!ticket.customer.email);
-  const [mode, setModeState] = useState<'reply' | 'note'>(canReply ? 'reply' : 'note');
+  // With no conversation yet, a customer with a phone number can be written to on WhatsApp,
+  // but only with an approved template.
+  const canStartWhatsApp = can('message:send') && !target && !!ticket.customer.phone;
+  const wa = target?.channel === 'whatsapp' ? waWindow(target.lastInboundAt) : null;
+  type Mode = 'reply' | 'template' | 'note';
+  const [mode, setModeState] = useState<Mode>(canReply ? 'reply' : 'note');
   const [modeChosen, setModeChosen] = useState(false);
-  const setMode = (m: 'reply' | 'note') => {
+  const setMode = (m: Mode) => {
     setModeChosen(true);
     setModeState(m);
   };
@@ -266,6 +274,18 @@ function DrawerContent({
   };
 
   const replyVia = target ? (REPLY_VIA[target.channel] ?? target.channel) : 'email';
+
+  const sendTemplate = (input: unknown) =>
+    run(() =>
+      target
+        ? api('POST', `/conversations/${target.id}/whatsapp-template`, input)
+        : api('POST', `/tickets/${ticket.id}/conversations`, {
+            channel: 'whatsapp',
+            template: input,
+          }),
+    );
+  // WhatsApp refuses free text once its 24-hour window has closed: offer templates instead.
+  const showTemplates = mode === 'template' || (mode === 'reply' && wa !== null && !wa.open);
 
   return (
     <>
@@ -464,8 +484,10 @@ function DrawerContent({
                         {m.kind === 'note' && (
                           <span className={styles.noteLabel}>Internal note</span>
                         )}
-                        {m.delivery && m.delivery !== 'sent' && m.delivery !== 'draft' && (
-                          <span className={styles.noteLabel}>{m.delivery}</span>
+                        {deliveryLabel(m.delivery) && (
+                          <span className={styles.noteLabel} data-delivery={m.delivery}>
+                            {deliveryLabel(m.delivery)}
+                          </span>
                         )}
                         <time className={styles.time} dateTime={m.at.toISOString()}>
                           {relativeTime(minutesSince(m.at))}
@@ -473,6 +495,11 @@ function DrawerContent({
                       </p>
                       <p className={styles.body}>{withMentions(m.body)}</p>
                       {m.attachments.length > 0 && <AttachmentList files={m.attachments} />}
+                      {m.delivery === 'failed' && m.deliveryError && (
+                        <p className={styles.deliveryError} role="note">
+                          {m.deliveryError}
+                        </p>
+                      )}
                       {m.delivery === 'draft' ? (
                         <DraftReview
                           messageId={m.id}
@@ -524,51 +551,67 @@ function DrawerContent({
             onChange={setMode}
             items={[
               ...(canReply ? [{ value: 'reply' as const, label: 'Reply to customer' }] : []),
+              ...(canStartWhatsApp
+                ? [{ value: 'template' as const, label: 'WhatsApp template' }]
+                : []),
               { value: 'note' as const, label: 'Internal note' },
             ]}
           />
         </div>
-        <label htmlFor="composer" className="visually-hidden">
-          {mode === 'reply' ? `Reply to ${ticket.customer.name}` : 'Internal note'}
-        </label>
-        <Textarea
-          id="composer"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={
-            mode === 'reply'
-              ? `Reply to ${ticket.customer.name.split(' ')[0]} by ${replyVia}…`
-              : 'Add a note for your team — use @name to mention'
-          }
-          rows={3}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void send(e);
-          }}
-        />
+        {showTemplates ? (
+          <TemplateComposer
+            reason={windowNote(wa ?? waWindow(null))}
+            busy={busy}
+            onSend={sendTemplate}
+          />
+        ) : (
+          <>
+            {mode === 'reply' && wa && <p className={styles.windowNote}>{windowNote(wa)}</p>}
+            <label htmlFor="composer" className="visually-hidden">
+              {mode === 'reply' ? `Reply to ${ticket.customer.name}` : 'Internal note'}
+            </label>
+            <Textarea
+              id="composer"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder={
+                mode === 'reply'
+                  ? `Reply to ${ticket.customer.name.split(' ')[0]} by ${replyVia}…`
+                  : 'Add a note for your team — use @name to mention'
+              }
+              rows={3}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void send(e);
+              }}
+            />
+          </>
+        )}
         {error && (
           <p role="alert" className={styles.error}>
             {error}
           </p>
         )}
-        <div className={styles.composerFoot}>
-          <span className={styles.hint}>
-            <Icon name="sparkle" size={14} /> ⌘ Enter to send
-          </span>
-          {canReply && (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon="sparkle"
-              disabled={suggesting}
-              onClick={() => void suggest()}
-            >
-              {suggesting ? 'Suggesting…' : 'Suggest a reply'}
+        {!showTemplates && (
+          <div className={styles.composerFoot}>
+            <span className={styles.hint}>
+              <Icon name="sparkle" size={14} /> ⌘ Enter to send
+            </span>
+            {canReply && (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="sparkle"
+                disabled={suggesting}
+                onClick={() => void suggest()}
+              >
+                {suggesting ? 'Suggesting…' : 'Suggest a reply'}
+              </Button>
+            )}
+            <Button type="submit" variant="secondary" icon="send" disabled={!draft.trim() || busy}>
+              {mode === 'reply' ? 'Send reply' : 'Add note'}
             </Button>
-          )}
-          <Button type="submit" variant="secondary" icon="send" disabled={!draft.trim() || busy}>
-            {mode === 'reply' ? 'Send reply' : 'Add note'}
-          </Button>
-        </div>
+          </div>
+        )}
       </form>
     </>
   );

@@ -24,8 +24,17 @@ export class AppSettingsService {
     private readonly outbox: OutboxService,
   ) {}
 
-  /** The stored value parsed with `schema`, or null when unset or no longer valid. */
-  async get<S extends ZodTypeAny>(key: string, schema: S): Promise<z.output<S> | null> {
+  /**
+   * The stored value parsed with `schema`, or null when unset or no longer
+   * valid. `fresh` skips the cache, for readers that must not act on a setting
+   * that changed a moment ago in another process.
+   */
+  async get<S extends ZodTypeAny>(
+    key: string,
+    schema: S,
+    opts: { fresh?: boolean } = {},
+  ): Promise<z.output<S> | null> {
+    if (opts.fresh) this.cache.delete(key);
     const raw = await this.raw(key);
     if (raw === undefined) return null;
     const parsed = schema.safeParse(raw);
