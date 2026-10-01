@@ -744,7 +744,8 @@ export class AiAgentService {
     out.confidence = verdict.confidence;
     out.selfConfidence = a.confidence;
     out.rules = verdict.rules;
-    out.reply = a.message || null;
+    // An unsafe reply is not sent, drafted or quoted in the handover note.
+    out.reply = verdict.rules.includes('unsafe_output') ? null : a.message || null;
     out.language = a.language?.split('-')[0] ?? i.language;
     out.intent = a.intent ?? null;
     out.resolves = !!a.resolves_issue;

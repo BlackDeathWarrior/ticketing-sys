@@ -15,6 +15,8 @@ import {
   type VoiceStartResult,
 } from '@tms/shared';
 import type { Socket } from 'socket.io';
+import { clientAddress } from '../../common/client-address';
+import { RateLimiterService } from '../../common/rate-limit';
 import { UsersService } from '../../users/users.service';
 import { VoiceService } from './voice.service';
 
@@ -35,7 +37,10 @@ function frame(body: unknown): Buffer | null {
 export class VoiceGateway implements OnGatewayDisconnect {
   private readonly logger = new Logger(VoiceGateway.name);
 
-  constructor(private readonly voice: VoiceService) {}
+  constructor(
+    private readonly voice: VoiceService,
+    private readonly limiter: RateLimiterService,
+  ) {}
 
   @SubscribeMessage('start')
   async onStart(
@@ -43,6 +48,16 @@ export class VoiceGateway implements OnGatewayDisconnect {
     @MessageBody() body: VoiceStartInput,
   ): Promise<VoiceStartResult> {
     if (socket.data.callId) return { ok: false, error: 'A call is already in progress' };
+    // Each call costs speech credits: a few starts a minute per address is plenty.
+    if (this.limiter.enabled) {
+      const who = clientAddress(
+        socket.handshake.address,
+        socket.handshake.headers['x-forwarded-for'],
+      );
+      if (!(await this.limiter.hit('voice-start', who, 6, 60)).allowed) {
+        return { ok: false, error: 'Too many calls were started. Please try again in a minute.' };
+      }
+    }
     try {
       const result = await this.voice.start(body, {
         audio: (pcm) => socket.emit('audio', pcm),

@@ -1,3 +1,5 @@
+import type { Retention, RetentionCounts } from '@tms/shared';
+
 export interface AdminUser {
   id: string;
   email: string;
@@ -142,3 +144,33 @@ export const CATEGORY_LABELS: Record<string, string> = {
   resolved: 'Resolved',
   closed: 'Closed',
 };
+
+// ---- System: retention ----
+
+export const RETENTION_FIELDS: Array<{
+  key: keyof Retention;
+  label: string;
+  min: number;
+  max: number;
+}> = [
+  { key: 'llmCallsDays', label: 'Log of AI model calls (days)', min: 7, max: 3650 },
+  { key: 'notificationsDays', label: 'Agents’ notifications (days)', min: 7, max: 3650 },
+  { key: 'eventsDays', label: 'Delivered internal events (days)', min: 1, max: 365 },
+  { key: 'signInLinksDays', label: 'Used portal sign-in links (days)', min: 1, max: 90 },
+];
+
+const COUNT_LABELS: Array<[keyof RetentionCounts, string, string]> = [
+  ['llmCalls', 'model call', 'model calls'],
+  ['notifications', 'notification', 'notifications'],
+  ['events', 'event', 'events'],
+  ['signInLinks', 'sign-in link', 'sign-in links'],
+  ['recordings', 'recording', 'recordings'],
+];
+
+/** "12 model calls, 3 events deleted", or that there was nothing to delete. */
+export function deletedText(d: RetentionCounts): string {
+  const parts = COUNT_LABELS.filter(([key]) => d[key] > 0).map(
+    ([key, one, many]) => `${d[key]} ${d[key] === 1 ? one : many}`,
+  );
+  return parts.length ? `${parts.join(', ')} deleted` : 'nothing was old enough to delete';
+}

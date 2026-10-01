@@ -52,6 +52,8 @@ export const outboxEvents = pgTable(
     publishedAt: timestamp('published_at', { withTimezone: true }),
     attempts: integer('attempts').notNull().default(0),
     lastError: text('last_error'),
+    /** W3C traceparent of the request that wrote the event, so the worker continues its trace. */
+    traceContext: text('trace_context'),
   },
   (t) => [
     index('outbox_unpublished_idx')

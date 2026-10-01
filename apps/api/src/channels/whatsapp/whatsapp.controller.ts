@@ -16,6 +16,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { type ParsedWhatsappConnect, whatsappConnectSchema } from '@tms/shared';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Ctx, Public, type RequestCtx, RequirePermission } from '../../common/request-context';
+import { RateLimit } from '../../common/rate-limit';
 import { ZodPipe } from '../../common/zod.pipe';
 import { ChannelSignalsService } from '../../settings/channel-signals.service';
 import type { WaWebhookPayload } from './webhook-payload';
@@ -32,6 +33,8 @@ import { WhatsAppService } from './whatsapp.service';
  */
 @ApiTags('channels')
 @Public()
+// Meta sends bursts; this only stops someone hammering the signature check.
+@RateLimit({ name: 'whatsapp-webhook', limit: 1200, windowSeconds: 60 })
 @Controller('channels/whatsapp/webhook')
 export class WhatsAppWebhookController {
   constructor(

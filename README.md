@@ -26,7 +26,7 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 | 9     | Voice calls in the browser on Sarvam speech: answered by the AI in 11 languages, barge-in, an agent can join by voice, transcripts and recordings on the ticket (ADR 0018)                                                                                                          | Done    |
 | 10    | Reports (the AI next to the team: resolution, handover, SLA, ratings, cost; CSV export), customer ratings, the customer portal (sign-in link, my requests, reply, rate), admin pages for people, teams, categories and the workflow; the AI resolves tickets it answered (ADR 0019) | Done    |
 | 10b   | Learning from ratings: badly rated topics and documents make the AI ask a person first; reviewers turn rated tickets into lessons the AI follows or knowledge base drafts; ratings per agent in Reports (ADR 0020)                                                                  | Done    |
-| 11    | Hardening for the demo                                                                                                                                                                                                                                                              | Planned |
+| 11    | Hardening: rate limits and sign-in lockout, data retention, a failed-jobs view, guards against prompt injection with red-team tests, tracing from the API through the worker to the model, a dependency audit in CI (ADR 0021)                                                      | Done    |
 | 12    | AWS live demo                                                                                                                                                                                                                                                                       | Planned |
 
 WhatsApp and voice are built but switched off until you connect a Meta app and save a Sarvam key; neither has been run against the real service yet. The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
@@ -172,6 +172,23 @@ See [`docs/runbooks/phase-7-demo.md`](docs/runbooks/phase-7-demo.md).
 
 `HELP_CENTER_URL` is the address used in emailed links. See ADR 0019 and [`docs/runbooks/phase-10-demo.md`](docs/runbooks/phase-10-demo.md).
 
+## Security and operations
+
+- **Rate limits:** the public routes (sign-in, request form, portal, rating page, WhatsApp webhook, chat and voice) are limited per network address; a refused call gets 429 and `Retry-After`. Ten wrong passwords lock an account for that address for 15 minutes. `RATE_LIMITS=off` switches them off (tests do).
+- **Behind a proxy:** the API believes `X-Forwarded-For` only from proxies on a private network, so run it behind nginx or Caddy, never with port 3000 open to the internet.
+- **Settings → System** (admins): background jobs that failed after every retry, with Retry and Remove; and how long logs are kept (model calls 90 days, notifications 90, delivered events 30, used sign-in links 7; recordings 30, fixed). The worker cleans up daily (`RETENTION_SWEEP_HOURS`). Tickets, messages and the audit log are never deleted.
+- **The AI under attack:** a reply that repeats the AI's own instructions is dropped and the ticket goes to a person. `apps/api/test/evals/redteam.yaml` holds the attacks; they run in CI and, with real keys, in `pnpm ai:eval`.
+- **Tracing:** set `OTEL_EXPORTER_OTLP_ENDPOINT` and one trace follows a request from the API through the worker to the model call. To see it locally:
+
+  ```bash
+  OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 docker compose -f infra/docker-compose.yml --profile app --profile observability up -d
+  docker compose -f infra/docker-compose.yml --profile observability logs -f otel-collector
+  ```
+
+- **Dependencies:** CI runs `pnpm audit`.
+
+See ADR 0021 and [`docs/runbooks/phase-11-demo.md`](docs/runbooks/phase-11-demo.md).
+
 ## Knowledge base
 
 Orbit Desk → **Knowledge base** (`#/kb`) searches approved documents with citations, the same search the AI agent uses.
@@ -249,7 +266,7 @@ pnpm e2e                                                  # report: e2e/playwrig
 
 On Windows hosts where `@swc/core` refuses its cache folder, run the CI check job in a Linux container instead: `bash scripts/check-in-docker.sh` (all steps) or `bash scripts/check-in-docker.sh test:int`. To use a Chromium that is already installed, set `CHROMIUM_PATH` for `pnpm e2e`.
 
-They default to the Docker ports; point them elsewhere with `API_URL`, `ORBIT_URL`, `WEB_URL`, `WIDGET_URL`, `MAILPIT_URL` and `SMTP_HOST`/`SMTP_PORT`. The latest run is written up in [`docs/testing/TEST_REPORT.md`](docs/testing/TEST_REPORT.md).
+They default to the Docker ports; point them elsewhere with `API_URL`, `ORBIT_URL`, `WEB_URL`, `WIDGET_URL`, `MAILPIT_URL`, `REDIS_URL` and `SMTP_HOST`/`SMTP_PORT`. The latest run is written up in [`docs/testing/TEST_REPORT.md`](docs/testing/TEST_REPORT.md).
 
 ## Conventions
 

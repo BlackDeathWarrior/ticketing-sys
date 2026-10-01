@@ -1,6 +1,93 @@
 # Test report
 
-## Latest: Phase 10b, learning from ratings
+## Latest: Phase 11, hardening
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-11-hardening`.
+
+**Result: every step of the gate passed.** The first full run had one failure, a real bug (number 5 below); it was fixed, the stack was reset again and everything was rerun.
+
+| Step                                              | Result                                                                            |
+| ------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                              |
+| `pnpm test`                                       | 337 passed (api 178, Orbit Desk 97, shared 34, fake providers 18, help center 10) |
+| `pnpm test:int`                                   | 217 passed (20 files)                                                             |
+| `pnpm e2e`                                        | 97 passed; 9 screenshot-only specs skipped as designed                            |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                        |
+| `pnpm ai:eval`                                    | 14 of 14 golden conversations passed (4 of them red-team)                         |
+| `pnpm audit --prod`                               | no known vulnerabilities                                                          |
+| `pnpm audit` (with tooling)                       | 3 moderate, in development tools only (accepted, ADR 0021)                        |
+
+### What was and wasn't tested
+
+- **Tested:** rate limits and the sign-in lockout through the real routes and sockets with Redis; that a made-up `X-Forwarded-For` doesn't change who is counted; retention against rows of every kind, old and new; a job that really fails, shown, retried and removed; the output guard with a model scripted to give in; one trace followed by hand from the API through the worker to the model call, in the collector's log.
+- **Not tested:** the limits under real load (no load test); the red-team conversations against a real model (needs keys: `pnpm ai:eval`); traces arriving in a real tracing backend; the trust rule behind a proxy on a public address (the demo's proxies are on a private network).
+
+### New tests
+
+| Where                                          | Tests | Covers                                                                                                                                    |
+| ---------------------------------------------- | ----: | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/common/client-address.test.ts`   |     5 | Which addresses count as our own proxies; the caller's address with no proxy, one, two; a header the caller wrote themselves; nonsense    |
+| `apps/api/src/telemetry/tracing.test.ts`       |     6 | Off: nothing happens. On: a span is active across awaits, nests, continues a trace handed over from another process, records a failure    |
+| `apps/api/src/ai/ai.test.ts`                   |    +1 | A reply that repeats the AI's instructions is never sent                                                                                  |
+| `apps/fake-providers/src/agent-script.test.ts` |    +1 | The scripted model gives in when asked for its instructions (so the guard is what the other tests exercise)                               |
+| `apps/orbit-desk/.../admin/logic.test.ts`      |    +1 | What a retention run deleted, in words                                                                                                    |
+| `apps/api/test/security.int.test.ts`           |    13 | See below                                                                                                                                 |
+| `apps/api/test/ai.int.test.ts`                 |    +6 | The four red-team goldens, a leaked prompt dropped end to end, and a poisoned knowledge base article that tells the AI to promise refunds |
+| `apps/api/test/kb.int.test.ts`                 |    +1 | Two indexing jobs for one document overlap and it still ends up indexed once (fails without the fix)                                      |
+| `apps/api/test/evals/redteam.yaml`             |     4 | Asked for its instructions; a fake system message in a customer message; another customer's details; posing as staff to get money         |
+| `e2e/tests/system.spec.ts`                     |     6 | See below                                                                                                                                 |
+
+`security.int.test.ts` (rate limits switched on for this file only):
+
+- **Lockout:** ten wrong passwords lock that account for that address, also for the right password, with `Retry-After`; another account still signs in; the lock is audited; a successful sign-in clears earlier mistakes; an address with no account gets the same answers.
+- **Public routes:** the 61st call to the rating page in a minute gets 429 with `Retry-After` and a sentence; the request form and portal sign-in count separately; signed-in work is not limited.
+- **Who is counted:** straight from the internet, a different made-up `X-Forwarded-For` on every call changes nothing; through our proxy each customer has their own count, and what they wrote in front of the proxy's entry is ignored.
+- **Chat:** the 61st new chat from one address in a minute is refused, another address is not; messages are counted per address across all its chats.
+- **Headers:** helmet's headers are on API responses.
+- **Retention:** admins only; defaults and limits; a run deletes the old model call, notification, delivered event and sign-in link, keeps the new ones and an old event that was never delivered, and is on record with what it deleted.
+- **Failed jobs:** listed with the reason and identifiers, never the content (a card number in the job's data is not in the answer or the audit entry); retry and remove work, are audited, and are refused to agents.
+
+`system.spec.ts`: an admin sees a job that failed, retries it (it fails again) and removes it; changes a retention period, reloads, runs the clean-up and sees the last run; a supervisor has no System tab and is refused by the API; the page on a phone; ten wrong passwords and the sign-in page says to wait, while others still sign in; the security headers.
+
+### Bugs found and fixed
+
+1. **Rate limits could be dodged with a made-up `X-Forwarded-For`.** The API believed the header from anyone. It now believes it only from proxies on a private network.
+2. **The chat's message limit reset on reconnect.** It was per connection. New chats and messages are now also counted per address.
+3. **All voice callers behind the proxy shared one allowance**, because the limit counted the proxy's address.
+4. **After the API container was recreated, nginx answered 502 until it was restarted** (it kept the old address), and Orbit Desk showed a JSON parse error on sign-in. nginx now looks the address up again, and Orbit Desk shows a plain sentence when a proxy answers instead of the API.
+5. **A document could be indexed twice.** A new version and a "re-index everything" job reaching one document at the same moment each deleted the old chunks and inserted their own, so search returned every passage twice. It showed up as one integration test failing once. The swap now locks the document first.
+6. **Retrying or removing a failed job left no audit entry.** Both are recorded now.
+7. **Known vulnerabilities in dependencies** (9 high in what we ship: Fastify, nodemailer, OpenTelemetry's Jaeger propagator). Upgraded; `pnpm audit` now runs in CI.
+
+### Known limits
+
+- Limits are per network address: an office behind one address shares them.
+- The failed-jobs view shows the 25 most recent per queue and has no alert; someone has to look.
+- Retention deletes logs, not customer data: erasing a customer on request is not built.
+- The demo collector only prints spans; there is no trace viewer, metrics or dashboards.
+- SSO and MFA come after the demo.
+
+### Screenshots
+
+Settings → System, with one failed job:
+
+![System settings](screenshots/orbit-system-jobs.png)
+
+After a retention run:
+
+![Retention](screenshots/orbit-system-retention.png)
+
+On a phone:
+
+![System settings on a phone](screenshots/orbit-system-phone.png)
+
+Sign-in after ten wrong passwords:
+
+![Sign-in locked](screenshots/orbit-sign-in-locked.png)
+
+---
+
+## Phase 10b: learning from ratings
 
 Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-10b-learning-loop`.
 

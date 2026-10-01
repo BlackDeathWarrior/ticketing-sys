@@ -26,6 +26,7 @@ import {
 } from '@tms/shared';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
+import { RateLimit } from '../common/rate-limit';
 import { Ctx, Public, type RequestCtx } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
 import { type PortalCustomer, PortalService } from './portal.service';
@@ -69,6 +70,7 @@ const Customer = createParamDecorator(
 export class PortalSignInController {
   constructor(private readonly portal: PortalService) {}
 
+  @RateLimit({ name: 'portal-sign-in', limit: 20, windowSeconds: 60 })
   @Post('sign-in')
   @HttpCode(202)
   async signIn(
@@ -80,6 +82,7 @@ export class PortalSignInController {
     return { ok: true };
   }
 
+  @RateLimit({ name: 'portal-session', limit: 30, windowSeconds: 60 })
   @Post('session')
   @HttpCode(200)
   session(@Body(new ZodPipe(portalSessionSchema)) body: z.infer<typeof portalSessionSchema>) {
@@ -90,6 +93,7 @@ export class PortalSignInController {
 /** A signed-in customer's own tickets. Nothing here takes a customer id from the request. */
 @ApiTags('portal')
 @Public()
+@RateLimit({ name: 'portal', limit: 240, windowSeconds: 60 })
 @UseGuards(PortalGuard)
 @Controller('portal')
 export class PortalController {

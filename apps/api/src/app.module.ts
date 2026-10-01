@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AiModule } from './ai/ai.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
@@ -23,6 +23,8 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { ReportsModule } from './reports/reports.module';
 import { SettingsModule } from './settings/settings.module';
 import { StorageModule } from './storage/storage.module';
+import { SystemModule } from './system/system.module';
+import { TracingInterceptor } from './telemetry/tracing.interceptor';
 import { TicketsModule } from './tickets/tickets.module';
 import { UsersModule } from './users/users.module';
 import { WorkflowModule } from './workflow/workflow.module';
@@ -61,6 +63,7 @@ const env = loadEnv();
     CsatModule,
     PortalModule,
     LearningModule,
+    SystemModule,
     ToolsModule,
     SlaModule,
     RoutingModule,
@@ -68,6 +71,9 @@ const env = loadEnv();
     HandoverModule,
   ],
   controllers: [HealthController],
-  providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
+  providers: [
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
+    { provide: APP_INTERCEPTOR, useClass: TracingInterceptor },
+  ],
 })
 export class AppModule {}

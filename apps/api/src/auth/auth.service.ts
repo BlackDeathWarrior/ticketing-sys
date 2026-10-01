@@ -6,6 +6,7 @@ import type { AuthTokens } from '@tms/shared';
 import argon2 from 'argon2';
 import { and, eq, isNull } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
+import { RateLimiterService, tooManyRequests } from '../common/rate-limit';
 import type { RequestCtx } from '../common/request-context';
 import { type Env } from '../config/env';
 import { DB, ENV } from '../infra/tokens';
@@ -17,6 +18,10 @@ export interface AccessTokenPayload {
 }
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
+
+/** Wrong passwords allowed for one account from one address before a pause. */
+const LOGIN_FAILURES = 10;
+const LOCKOUT_SECONDS = 15 * 60;
 
 @Injectable()
 export class AuthService {
@@ -30,9 +35,20 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly users: UsersService,
     private readonly audit: AuditService,
+    private readonly limiter: RateLimiterService,
   ) {}
 
   async login(ctx: RequestCtx, email: string, password: string): Promise<AuthTokens> {
+    // Wrong passwords for one account from one address: after ten, wait.
+    const who = `${createHash('sha256').update(email.toLowerCase()).digest('hex')}:${ctx.ip ?? '-'}`;
+    if (this.limiter.enabled && (await this.limiter.count('login-failed', who)) >= LOGIN_FAILURES) {
+      await this.audit.record(this.db, ctx, {
+        action: 'auth.login_locked',
+        targetType: 'user',
+        data: { email },
+      });
+      throw tooManyRequests(LOCKOUT_SECONDS, 'failed sign-in attempts');
+    }
     const user = await this.users.findByEmail(email);
     const ok = user?.passwordHash
       ? await argon2.verify(user.passwordHash, password)
@@ -45,8 +61,12 @@ export class AuthService {
         targetId: user?.id ?? null,
         data: { email },
       });
+      if (this.limiter.enabled) {
+        await this.limiter.hit('login-failed', who, LOGIN_FAILURES, LOCKOUT_SECONDS);
+      }
       throw new UnauthorizedException('Email or password is incorrect');
     }
+    await this.limiter.reset('login-failed', who);
 
     await this.users.touchLogin(user.id);
     await this.audit.record(

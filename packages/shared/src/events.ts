@@ -97,6 +97,11 @@ export const DOMAIN_EVENT_TYPES = [
   'learning.review_closed',
   /** A lesson for the AI was added, changed, switched on or off, or deleted. */
   'learning.lesson_changed',
+  /** The daily retention run deleted old operational data. */
+  'system.retention_ran',
+  /** An admin retried or removed a background job that had failed for good. */
+  'system.job_retried',
+  'system.job_removed',
   /** A customer asked for a sign-in link to the portal; the worker emails it. */
   'portal.link_requested',
   'portal.signed_in',
@@ -135,6 +140,8 @@ export interface DomainEvent<P = Record<string, unknown>> {
   occurredAt: string;
   actor: Actor;
   payload: P;
+  /** W3C traceparent of the request that caused the event, when tracing is on. */
+  trace?: string | null;
 }
 
 export type ActorType = 'user' | 'system' | 'ai' | 'customer';

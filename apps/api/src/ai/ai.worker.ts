@@ -11,16 +11,21 @@ import Redis from 'ioredis';
 import type { Env } from '../config/env';
 import { ConversationsService } from '../conversations/conversations.service';
 import { ENV } from '../infra/tokens';
+import { currentTrace, SpanKind, withSpan } from '../telemetry/tracing';
 import type { DomainEventHandler } from '../worker/domain-events';
 import { AiAgentService, ConversationBusyError } from './ai-agent.service';
 import { AiClassifierService } from './ai-classifier.service';
 
 export const AI_QUEUE = 'ai-turns';
 
-type AiJob =
+type AiJob = (
   | { kind: 'turn'; conversationId: string; messageId: string; handBack?: string }
   | { kind: 'classify'; ticketId: string }
-  | { kind: 'followup'; approvalId: string };
+  | { kind: 'followup'; approvalId: string }
+) & {
+  /** W3C traceparent of whatever queued the job. */
+  trace?: string | null;
+};
 
 /**
  * AI work runs on its own queue so slow model calls never hold up delivery
@@ -68,20 +73,26 @@ export class AiWorker implements OnApplicationBootstrap, BeforeApplicationShutdo
         : job.kind === 'classify'
           ? `classify--${job.ticketId}`
           : `followup--${job.approvalId}`;
-    await this.queue.add(job.kind, job, {
-      jobId,
-      attempts: 8,
-      backoff: { type: 'fixed', delay: 1_500 },
-      removeOnComplete: { count: 2_000 },
-      removeOnFail: { count: 2_000 },
-    });
+    await this.queue.add(
+      job.kind,
+      { ...job, trace: currentTrace() },
+      {
+        jobId,
+        attempts: 8,
+        backoff: { type: 'fixed', delay: 1_500 },
+        removeOnComplete: { count: 2_000 },
+        removeOnFail: { count: 2_000 },
+      },
+    );
   }
 
   private async process(job: Job<AiJob>) {
     const d = job.data;
-    if (d.kind === 'turn') return this.agent.runTurn(d.conversationId, d.messageId);
-    if (d.kind === 'followup') return this.agent.followUp(d.approvalId);
-    return this.classifier.classify(d.ticketId);
+    return withSpan(`ai ${d.kind}`, { parent: d.trace, kind: SpanKind.CONSUMER }, async () => {
+      if (d.kind === 'turn') return this.agent.runTurn(d.conversationId, d.messageId);
+      if (d.kind === 'followup') return this.agent.followUp(d.approvalId);
+      return this.classifier.classify(d.ticketId);
+    });
   }
 }
 

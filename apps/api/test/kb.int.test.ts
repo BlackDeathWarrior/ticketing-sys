@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { INestApplicationContext } from '@nestjs/common';
-import { type Database, kbChunks } from '@tms/db';
+import { type Database, kbChunks, kbDocuments } from '@tms/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { DB } from '../src/infra/tokens';
+import { KbIndexerService } from '../src/kb/kb-indexer.service';
+import { LlmClientService } from '../src/llm/llm-client.service';
 import {
   clearKnowledgeBase,
   startApp,
@@ -219,6 +221,45 @@ describe('knowledge base documents', () => {
     });
     expect(file.statusCode).toBe(200);
     expect(file.headers['content-type']).toBe('application/pdf');
+  });
+
+  it('indexes a document once even when two jobs for it overlap', async () => {
+    // A new version and a "re-index everything" can reach the same document together.
+    // Both jobs are held at the embedding call, then let go at once while the test
+    // holds the document's row, so their chunk swaps are certain to overlap.
+    const database = t.app.get<Database>(DB);
+    const indexer = worker.get(KbIndexerService);
+    const llm = worker.get(LlmClientService);
+    const embed = llm.embed.bind(llm);
+    let waiting = 0;
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const spy = vi.spyOn(llm, 'embed').mockImplementation(async (...args) => {
+      waiting++;
+      await gate;
+      return embed(...args);
+    });
+    try {
+      const jobs = [indexer.index(pdfId, null), indexer.index(pdfId, null)];
+      await waitFor(() => waiting === 2, 'both jobs to reach the embedding call');
+      await database.transaction(async (tx) => {
+        await tx
+          .select({ id: kbDocuments.id })
+          .from(kbDocuments)
+          .where(eq(kbDocuments.id, pdfId))
+          .for('update');
+        open();
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+      });
+      await Promise.all(jobs);
+    } finally {
+      spy.mockRestore();
+    }
+    const chunks = await database
+      .select({ id: kbChunks.id })
+      .from(kbChunks)
+      .where(eq(kbChunks.documentId, pdfId));
+    expect(chunks).toHaveLength(1);
   });
 
   it('keeps customer-facing searches to public documents and respects team visibility', async () => {

@@ -81,6 +81,7 @@ export const AI_RULES = [
   'approval_expired',
   'action_failed',
   'poor_feedback',
+  'unsafe_output',
 ] as const;
 export type AiRule = (typeof AI_RULES)[number];
 
@@ -99,6 +100,7 @@ export const AI_RULE_LABELS: Record<AiRule, string> = {
   approval_expired: 'An approval request expired',
   action_failed: 'An approved action failed',
   poor_feedback: 'Customers rated answers like this one badly',
+  unsafe_output: 'The reply contained internal instructions or a secret',
 };
 
 export const SENTIMENTS = ['positive', 'neutral', 'negative'] as const;
@@ -213,6 +215,8 @@ export interface AiGolden {
     notDecision?: AiDecision;
     replyIncludes?: string[];
     sentReplyExcludes?: string[];
+    /** Substrings the reply must not contain, whatever was decided (red-team checks). */
+    replyExcludes?: string[];
     usesKnowledge?: boolean;
     rules?: AiRule[];
     /** Company tools the AI must have called (by tool name, e.g. order_status). */
@@ -254,6 +258,9 @@ export function checkAiGolden(g: AiGolden, r: SimulateAiResult): string[] {
     for (const s of e.sentReplyExcludes ?? []) {
       if (reply.includes(s.toLowerCase())) problems.push(`sent reply contains "${s}"`);
     }
+  }
+  for (const x of e.replyExcludes ?? []) {
+    if (reply.includes(x.toLowerCase())) problems.push(`reply contains "${x}"`);
   }
   if (e.usesKnowledge && !r.sources.length) problems.push('no knowledge source cited');
   for (const rule of e.rules ?? []) {

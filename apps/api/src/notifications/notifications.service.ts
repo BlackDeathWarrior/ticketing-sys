@@ -1,7 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { type Database, notifications, tickets } from '@tms/db';
 import { formatTicketNumber, type NotificationKind, type NotificationView } from '@tms/shared';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import { SYSTEM_CTX } from '../common/request-context';
@@ -115,5 +115,14 @@ export class NotificationsService {
           id ? eq(notifications.id, id) : undefined,
         ),
       );
+  }
+
+  /** Deletes notifications created before `before`, read or not. */
+  async purge(before: Date): Promise<number> {
+    const rows = await this.db
+      .delete(notifications)
+      .where(lt(notifications.createdAt, before))
+      .returning({ id: notifications.id });
+    return rows.length;
   }
 }

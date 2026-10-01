@@ -32,6 +32,8 @@ x-app-env: &app-env
   EMAIL_IMAP_USER: ${EMAIL_IMAP_USER:-support@tms.local}
   EMAIL_IMAP_PASSWORD: ${EMAIL_IMAP_PASSWORD:-support}
   EMAIL_POLL_SECONDS: ${EMAIL_POLL_SECONDS:-30}
+  # Tracing is off unless this is set, e.g. http://otel-collector:4318 with --profile observability.
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
   EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-mailpit}
   EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-1025}
   EMAIL_SMTP_SECURE: ${EMAIL_SMTP_SECURE:-false}

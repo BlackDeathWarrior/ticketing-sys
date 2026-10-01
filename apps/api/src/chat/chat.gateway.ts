@@ -18,12 +18,20 @@ import {
 } from '@tms/shared';
 import type { Namespace, Socket } from 'socket.io';
 import { InboundService } from '../channels/inbound.service';
+import { clientAddress } from '../common/client-address';
+import { RateLimiterService } from '../common/rate-limit';
 import { ConversationsService } from '../conversations/conversations.service';
 import { CsatService } from '../csat/csat.service';
 import { type ChatSession, ChatSessionService } from './chat-session.service';
 
 const RATE_WINDOW_MS = 10_000;
 const RATE_MAX_MESSAGES = 10;
+/**
+ * Per network address and minute, across all its connections: reconnecting
+ * doesn't reset the allowance. Every message may cost an AI answer (ADR 0021).
+ */
+const ADDRESS_MAX_CONNECTIONS = 60;
+const ADDRESS_MAX_MESSAGES = 120;
 
 type Ack<T> = { ok: true } & T;
 type Nack = { ok: false; error: string };
@@ -45,6 +53,7 @@ export class ChatGateway implements OnGatewayConnection {
     private readonly inbound: InboundService,
     private readonly conversations: ConversationsService,
     private readonly csat: CsatService,
+    private readonly limiter: RateLimiterService,
   ) {}
 
   /** Visitors with the chat open on this API instance; null before the server is up. */
@@ -56,6 +65,13 @@ export class ChatGateway implements OnGatewayConnection {
     const auth = chatHandshakeSchema.safeParse(socket.handshake.auth ?? {});
     if (!auth.success) {
       socket.emit('error', { message: 'Invalid chat handshake' });
+      socket.disconnect(true);
+      return;
+    }
+    if (await this.addressLimited(socket, 'chat-connect', ADDRESS_MAX_CONNECTIONS)) {
+      socket.emit('error', {
+        message: 'Too many chats were opened. Please try again in a minute.',
+      });
       socket.disconnect(true);
       return;
     }
@@ -75,7 +91,10 @@ export class ChatGateway implements OnGatewayConnection {
     if (!session) return { ok: false, error: 'No session' };
     const parsed = chatMessageSchema.safeParse(body);
     if (!parsed.success) return { ok: false, error: 'Message must be 1–5000 characters' };
-    if (this.rateLimited(socket))
+    if (
+      this.rateLimited(socket) ||
+      (await this.addressLimited(socket, 'chat-message', ADDRESS_MAX_MESSAGES))
+    )
       return { ok: false, error: 'You are sending messages too quickly' };
 
     try {
@@ -139,6 +158,15 @@ export class ChatGateway implements OnGatewayConnection {
     } catch (err) {
       return { ok: false, error: (err as Error).message };
     }
+  }
+
+  private async addressLimited(socket: Socket, name: string, limit: number): Promise<boolean> {
+    if (!this.limiter.enabled) return false;
+    const who = clientAddress(
+      socket.handshake.address,
+      socket.handshake.headers['x-forwarded-for'],
+    );
+    return !(await this.limiter.hit(name, who, limit, 60)).allowed;
   }
 
   private rateLimited(socket: Socket): boolean {

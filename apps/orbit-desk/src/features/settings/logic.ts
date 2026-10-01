@@ -17,7 +17,8 @@ export type SettingsTab =
   | 'sla'
   | 'tickets'
   | 'people'
-  | 'usage';
+  | 'usage'
+  | 'system';
 
 export const SETTINGS_TABS: Array<{
   value: SettingsTab;
@@ -42,6 +43,7 @@ export const SETTINGS_TABS: Array<{
   },
   { value: 'people', label: 'People', needs: ['user:manage'] },
   { value: 'usage', label: 'Usage', needs: ['settings:llm'] },
+  { value: 'system', label: 'System', needs: ['system:manage'] },
 ];
 
 /** Tabs the user may open, in display order. */

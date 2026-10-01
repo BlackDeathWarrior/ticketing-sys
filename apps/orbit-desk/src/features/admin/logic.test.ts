@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { visibleTabs } from '../settings/logic';
+import { deletedText } from './logic';
 import {
   type AdminStatus,
   type AdminUser,
@@ -114,5 +115,19 @@ describe('settings tabs for the new admin pages', () => {
     expect(tabs('settings:categories')).toEqual(['tickets']);
     expect(tabs('settings:channels')).toEqual(['channels', 'customers']);
     expect(tabs()).toEqual([]);
+  });
+});
+
+describe('retention', () => {
+  const none = { llmCalls: 0, notifications: 0, events: 0, signInLinks: 0, recordings: 0 };
+
+  it('says what a run deleted, in words', () => {
+    expect(deletedText(none)).toBe('nothing was old enough to delete');
+    expect(deletedText({ ...none, llmCalls: 12, events: 1 })).toBe(
+      '12 model calls, 1 event deleted',
+    );
+    expect(deletedText({ ...none, recordings: 2, signInLinks: 1 })).toBe(
+      '1 sign-in link, 2 recordings deleted',
+    );
   });
 });

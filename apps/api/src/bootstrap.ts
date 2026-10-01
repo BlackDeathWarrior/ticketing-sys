@@ -9,6 +9,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { KB_MAX_FILE_BYTES } from '@tms/shared';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
+import { isPrivateAddress } from './common/client-address';
 import type { Env } from './config/env';
 import { ENV } from './infra/tokens';
 import { RedisIoAdapter } from './realtime/redis-io.adapter';
@@ -18,7 +19,8 @@ export const API_PREFIX = 'api/v1';
 /** Builds the configured application. Shared by main.ts and the integration tests. */
 export async function createApp(): Promise<NestFastifyApplication> {
   const adapter = new FastifyAdapter({
-    trustProxy: true,
+    // Forwarded addresses count only when one of our own proxies reports them (ADR 0021).
+    trustProxy: isPrivateAddress,
     bodyLimit: 10 * 1024 * 1024,
     genReqId: (req: IncomingMessage) => {
       const header = req.headers['x-request-id'];

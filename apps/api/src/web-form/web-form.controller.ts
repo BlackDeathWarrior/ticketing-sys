@@ -2,6 +2,7 @@ import { Controller, Get, HttpCode, Post, PayloadTooLargeException, Req } from '
 import { ApiTags } from '@nestjs/swagger';
 import { WEB_FORM_MAX_FILE_BYTES, WEB_FORM_MAX_FILES, webFormSchema } from '@tms/shared';
 import type { FastifyRequest } from 'fastify';
+import { RateLimit } from '../common/rate-limit';
 import { Public } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
 import { type FormFile, WebFormService } from './web-form.service';
@@ -24,6 +25,7 @@ export class WebFormController {
   }
 
   /** multipart/form-data (fields plus up to 3 `files`), or JSON without files. */
+  @RateLimit({ name: 'public-request', limit: 20, windowSeconds: 60 })
   @Post('requests')
   @HttpCode(201)
   async submit(@Req() req: FastifyRequest) {

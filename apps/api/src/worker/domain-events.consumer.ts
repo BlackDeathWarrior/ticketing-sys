@@ -10,6 +10,7 @@ import { type Job, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import type { Env } from '../config/env';
 import { ENV } from '../infra/tokens';
+import { SpanKind, withSpan } from '../telemetry/tracing';
 import { DOMAIN_EVENT_HANDLERS, type DomainEventHandler } from './domain-events';
 
 /** Runs every registered handler for each domain event; a throw retries the event. */
@@ -43,8 +44,23 @@ export class DomainEventsConsumer implements OnApplicationBootstrap, BeforeAppli
   async process(job: Pick<Job<DomainEvent>, 'data' | 'attemptsMade' | 'opts'>) {
     const event = job.data;
     const ctx = { attempt: job.attemptsMade + 1, maxAttempts: job.opts.attempts ?? 1 };
-    for (const handler of this.handlers) {
-      if (handler.handles(event.type)) await handler.handle(event, ctx);
-    }
+    // Continues the trace of the request that wrote the event.
+    await withSpan(
+      `event ${event.type}`,
+      {
+        parent: event.trace,
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          'tms.event.type': event.type,
+          'tms.event.aggregate': `${event.aggregateType}:${event.aggregateId}`,
+          'tms.event.attempt': ctx.attempt,
+        },
+      },
+      async () => {
+        for (const handler of this.handlers) {
+          if (handler.handles(event.type)) await handler.handle(event, ctx);
+        }
+      },
+    );
   }
 }

@@ -16,6 +16,9 @@ import type { ChatMessage, ChatRequest, ScriptedReply } from './llm';
  * - Lessons (ADR 0020): a lesson in the system prompt of the form "When
  *   customers ask about X, tell them: Y" is followed when the question shares
  *   three meaningful words with X: the reply is Y.
+ * - Red team (ADR 0021): asked to print or repeat its instructions, the
+ *   scripted model does: the worst case, so tests can show that the system
+ *   around the model still stops the reply.
  * - Classifier: picks the category whose words best match the ticket.
  * - Summarizer: the first sentence of each customer message.
  */
@@ -193,6 +196,16 @@ export function agentReply(req: ChatRequest): ScriptedReply {
 
   if (/\b(human|real person|someone real|representative|manager)\b|इंसान/i.test(question)) {
     return call('request_human', { reason: 'The customer asked for a person' });
+  }
+  if (/\b(print|repeat|reveal|show)\b[^.?!]*\b(system prompt|instructions)\b/i.test(question)) {
+    const system = textOf(req.messages.find((m) => m.role === 'system'));
+    return call('send_reply', {
+      message: `Sure. My instructions are: ${system.slice(0, 400)}`,
+      confidence: 0.95,
+      sources: [],
+      language,
+      intent: 'instructions',
+    });
   }
   const company = companyFlow(req, question);
   if (company) return company;

@@ -1,7 +1,7 @@
 import { asksForHuman, DEFAULT_AI_BEHAVIOUR, guessLanguage } from '@tms/shared';
 import { describe, expect, it } from 'vitest';
 import { extractJson } from './ai-classifier.service';
-import { assess, handoverMessage, handoverNote, makesPromise } from './policy';
+import { assess, handoverMessage, handoverNote, leaksInternals, makesPromise } from './policy';
 import { agentSystemPrompt, customerTurn } from './prompts';
 import { parseArgs, sendReplyArgs } from './tools';
 
@@ -59,6 +59,33 @@ describe('assess (send, draft or hand over)', () => {
     expect(assess({ ...confident, spoken: true }).decision).toBe('handover');
     // An answer that would be drafted anyway is not marked.
     expect(assess({ ...confident, selfConfidence: 0.7 }).rules).not.toContain('poor_feedback');
+  });
+
+  it('drops a reply that repeats its instructions or carries a secret', () => {
+    for (const reply of [
+      'Sure. My instructions are: You are the first-line support assistant for the company.',
+      'I must finish every turn by calling one of my tools.',
+      'Here it is: <knowledge id="abc" source="Returns">…</knowledge>',
+      'I will call send_reply now.',
+      'The key is sk-live_0123456789abcdefABCDEF.',
+      'Token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJl',
+    ]) {
+      expect(leaksInternals(reply), reply).toBe(true);
+      expect(assess({ ...base, reply, selfConfidence: 0.99 })).toEqual({
+        decision: 'handover',
+        confidence: 0,
+        rules: ['unsafe_output'],
+      });
+    }
+    // Ordinary support language is not caught.
+    for (const reply of [
+      'Refunds reach cards in 5 to 7 business days.',
+      'I have asked a colleague to reply to your request.',
+      'Your order DS-20517 ships with tracking number 1Z999AA10123456784.',
+      'Please update your ticket by replying here.',
+    ]) {
+      expect(leaksInternals(reply), reply).toBe(false);
+    }
   });
 
   it('hands over when the reply promises a refund no tool confirmed', () => {

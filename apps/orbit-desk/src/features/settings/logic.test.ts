@@ -25,6 +25,7 @@ describe('settings tabs', () => {
       'settings:categories',
       'settings:workflow',
       'user:manage',
+      'system:manage',
     ]);
     expect(visibleTabs(admin).map((t) => t.value)).toEqual([
       'providers',
@@ -38,6 +39,7 @@ describe('settings tabs', () => {
       'tickets',
       'people',
       'usage',
+      'system',
     ]);
     expect(canOpenSettings(can(['ticket:read']))).toBe(false);
   });

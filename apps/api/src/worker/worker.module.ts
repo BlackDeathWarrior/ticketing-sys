@@ -15,7 +15,6 @@ import { CHANNEL_SENDERS } from '../delivery/senders';
 import { WebchatSender } from '../delivery/webchat.sender';
 import { WhatsAppSender } from '../delivery/whatsapp.sender';
 import { ChannelHealthMonitor } from '../channels/health/channel-health.monitor';
-import { VoiceRetentionWorker } from '../channels/voice/voice.module';
 import { WhatsAppWebhookWorker } from '../channels/whatsapp/whatsapp-webhook.queue';
 import { InfraModule } from '../infra/infra.module';
 import { KbIndexerService } from '../kb/kb-indexer.service';
@@ -29,6 +28,8 @@ import { RealtimeFanoutHandler } from '../realtime/realtime-fanout.handler';
 import { SettingsChangedHandler } from '../settings/settings-changed.handler';
 import { SettingsModule } from '../settings/settings.module';
 import { StorageModule } from '../storage/storage.module';
+import { SystemModule } from '../system/system.module';
+import { RetentionWorker } from '../system/system.service';
 import { TicketsModule } from '../tickets/tickets.module';
 import { HandoverHandler, RoutingHandler } from '../handover/handover.handler';
 import { HandoverModule } from '../handover/handover.module';
@@ -78,6 +79,7 @@ const env = loadEnv();
     CsatModule,
     PortalModule,
     LearningModule,
+    SystemModule,
   ],
   providers: [
     emitterProvider,
@@ -88,7 +90,7 @@ const env = loadEnv();
     WhatsAppSender,
     WhatsAppWebhookWorker,
     ChannelHealthMonitor,
-    VoiceRetentionWorker,
+    RetentionWorker,
     {
       provide: CHANNEL_SENDERS,
       inject: [WebchatSender, EmailSender, WhatsAppSender],

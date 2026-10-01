@@ -9,7 +9,7 @@ Guidance for working in this repo. Read `docs/IMPLEMENTATION_PLAN.md` for the ph
 - `pnpm demo:email` sends a customer email to the dev support mailbox.
 - `pnpm sample:load` loads the fictional sample data (`scripts/sample-data/data.ts`) through the API; `pnpm e2e` runs the Playwright suite in `e2e/` against the running stack.
 - `pnpm build` builds all packages (apps depend on `packages/*/dist`, so build after changing `shared` or `db`).
-- `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:int` (needs Postgres, Redis, LiteLLM and `fake-providers`; see README). On Windows, where `@swc/core` rejects its cache folder, run them with `bash scripts/check-in-docker.sh [steps]` (a Linux container on the compose network). `pnpm e2e` accepts `CHROMIUM_PATH`. `pnpm kb:eval` reports knowledge-base recall@5 and `pnpm ai:eval` runs the AI golden conversations against a running stack.
+- `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:int` (needs Postgres, Redis, LiteLLM and `fake-providers`; see README). On Windows, where `@swc/core` rejects its cache folder, run them with `bash scripts/check-in-docker.sh [steps]` (a Linux container on the compose network). `pnpm e2e` accepts `CHROMIUM_PATH`. `pnpm kb:eval` reports knowledge-base recall@5 and `pnpm ai:eval` runs the AI golden conversations (including the red-team ones) against a running stack. CI also runs `pnpm audit`.
 - `pnpm db:generate` after schema edits; commit the SQL in `packages/db/drizzle`. Hand-written SQL goes in `drizzle-kit generate --custom` migrations.
 
 ## Rules
@@ -46,5 +46,11 @@ Guidance for working in this repo. Read `docs/IMPLEMENTATION_PLAN.md` for the ph
   - Links we email carry tokens from `common/signed-token.ts` (an id plus an HMAC, one purpose each). Mail the system sends by itself goes through `SystemMailer`, from the worker.
   - The AI closes tickets only through `AiAutoResolveService` (quiet for `autoResolveHours`, still owned by the AI).
 - Learning from ratings (ADR 0020) lives in `apps/api/src/learning`. Keep its two rules: on its own the system may only make the AI more careful (`LearningService.cautionFor` → rule `poor_feedback`, a draft instead of a send); what the AI says changes only through staff (lessons from `LearningService.lessonsFor`, or knowledge base drafts that still need approval). Never put customer-written text (rating comments, messages) into a lesson or the prompt's lesson block automatically. Lessons are part of the prompt: changing how they are injected needs a prompt version bump and a golden.
+- Hardening (ADR 0021):
+  - A new `@Public()` route or public socket event needs a limit: `@RateLimit({ name, limit, windowSeconds })` on routes, `RateLimiterService.hit` elsewhere. Take the caller's address from `req.ip` or `clientAddress()` (`common/client-address.ts`), never from `X-Forwarded-For` or `socket.handshake.address` directly.
+  - Operational tables that grow get a `purge…(before)` method on their owning service and a line in `RetentionService.run`. Tickets, messages, customers and the audit log are never deleted there.
+  - A new BullMQ queue gets a label in `QUEUE_LABELS` (`packages/shared/src/system.ts`) so its failed jobs show in Settings → System. That view shows identifiers only; never return a job's payload.
+  - Work that crosses a process carries the trace: outbox events do by themselves; a new queue passes `currentTrace()` in the job data and wraps its processor in `withSpan`. Spans carry ids and route patterns, never URLs, bodies or message text.
+  - The model's reply passes `decide()` in `ai/policy.ts` before use; a new kind of unsafe output gets a rule there, a unit test and a golden in `apps/api/test/evals/redteam.yaml`.
 - Channels produce a `MessageEnvelope` and call `InboundService.handle()`; outbound messages are stored `pending` and sent by the worker's `DeliveryHandler` (spoken voice replies are the exception). Don't send to external services inside a request.
 - Worker services that hold resources stop in `beforeApplicationShutdown` (the DB pool and Redis close in `onApplicationShutdown`).
