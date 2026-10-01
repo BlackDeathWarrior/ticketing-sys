@@ -1,6 +1,84 @@
 # Test report
 
-## Latest: Phase 8b, channel status lights and one-step WhatsApp connect
+## Latest: Phase 8c, custom tools and custom MCP servers
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-8c-custom-tools`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                           |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                             |
+| `pnpm test`                                       | 254 passed (api 140, Orbit Desk 71, shared 23, fake providers 15, help center 5) |
+| `pnpm test:int`                                   | 161 passed (15 files)                                                            |
+| `pnpm e2e`                                        | 63 passed; 9 screenshot-only specs skipped as designed                           |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                       |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed                                               |
+
+### How custom tools and custom MCP servers were tested
+
+The integration test starts its own "company systems" inside the test: a small HTTP API and an MCP server written with the MCP SDK. Nothing in it uses the bundled Demo Store sample, so it shows that any HTTP API and any streamable-HTTP MCP server work, not only ours.
+
+### Sample data
+
+One custom tool is added: "Store systems status", a GET to the sample server's health address.
+
+### New tests
+
+| Where                                        | Tests | Covers                                                                                                                                                                                           |
+| -------------------------------------------- | ----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/api/src/tools/http-tool.test.ts`       |    13 | Building the request (placeholders escaped, query or JSON body, key header), answers (JSON, text, empty, 4xx, 5xx, 429), no redirects, private addresses, definition rules, the generated schema |
+| `apps/orbit-desk/.../tools/logic.test.ts`    |    +3 | The custom tool form round trip                                                                                                                                                                  |
+| `apps/orbit-desk/.../settings/logic.test.ts` |    +1 | The Tools tab for someone who may only create custom tools                                                                                                                                       |
+| `apps/api/test/custom-tools.int.test.ts`     |    14 | See below                                                                                                                                                                                        |
+| `e2e/tests/custom-tools.spec.ts`             |     4 | See below                                                                                                                                                                                        |
+
+`custom-tools.int.test.ts` covers:
+
+- **Permission:** agents, team leads and supervisors are refused until an admin grants `tool:create`. A granted team lead can create tools but still can't see MCP servers or set keys. Revoking stops it. Only delegable permissions can be granted, and the administrator role can't be changed. Grants are audited.
+- **Definitions:** metadata and private addresses, undeclared placeholders, bad names and duplicate names are refused.
+- **Calls:** a new tool starts off; a test call sends the key, the escaped path value and the query; missing or unexpected arguments are refused before any request; a 404 is reported as the system's answer; POST sends a JSON body; a redirect is not followed.
+- **Outages:** after repeated 503s the tool is paused without another request, and other custom tools keep working.
+- **Lifecycle:** edit and switch on keep the name; an unused tool can be deleted; a used one can't; the holder of custom tools can't be removed as a server.
+- **The AI:** it answers "Where is my order?" from a custom tool, with the customer's email filled in by TMS, not by the model. A transactional custom tool waits for a supervisor, and runs only after approval.
+- **A custom MCP server:** added with an `X-Api-Key` key; a sync without the key fails and the reason is kept; with the key its tools arrive switched off, with tier and customer argument guessed from the server's hints; a call returns its result; a tool error and invalid arguments are reported; an unreachable server records why the sync failed.
+
+`custom-tools.spec.ts` covers:
+
+- An admin creates a tool in the dialog (an internal address and a missing value are refused with reasons), tests it, switches it on, edits it, and is told a used tool can only be switched off.
+- A team lead is refused until the admin ticks the role. The lead then sees one Settings tab with custom tools only, creates a tool, and still can't reach keys or MCP servers. Unticking removes access.
+- An admin adds a second MCP server through the form: sync fails without the key, then succeeds, tools arrive switched off, and a test call returns the order.
+- The dialog fits a phone screen.
+
+### Bugs found and fixed
+
+1. **Every Settings dialog had no padding and could not scroll** (providers, models, routing rules, SLA, tool tests, handover reasons). Content sat flush against the edge, and a tall form was cut off. Found on the new tool dialog; fixed once in the shared dialog component.
+2. **Checkbox labels in Models and SLA settings were laid out as rows with a top border.** The Phase 8b status lights reused the class name `check`. The lights now use their own class.
+3. **The role checkbox did not react until the server answered.** It now changes at once.
+
+### Known limits
+
+- A custom tool is one request: no pagination, no response mapping, no extra headers besides the key.
+- A role with `tool:create` can make the AI send customer data to any public address that role chooses. Grant it with that in mind.
+- A grant can take up to ten seconds to reach other API instances.
+
+### Screenshots
+
+Custom tools in Settings → Tools & MCP:
+
+![Custom tools](screenshots/orbit-custom-tools.png)
+
+The new custom tool dialog:
+
+![New custom tool](screenshots/orbit-custom-tool-new.png)
+
+Who can create custom tools:
+
+![Tool creators](screenshots/orbit-tool-creators.png)
+
+---
+
+## Phase 8b: channel status lights and one-step WhatsApp connect
 
 Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-8b-channel-health`.
 
