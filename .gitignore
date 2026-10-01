@@ -10,3 +10,4 @@ coverage/
 .DS_Store
 .vite/
 *.rdb
+__pycache__/

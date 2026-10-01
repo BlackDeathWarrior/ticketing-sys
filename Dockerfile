@@ -30,6 +30,7 @@ FROM base AS build
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/db/package.json packages/db/
+COPY packages/sdk/package.json packages/sdk/
 COPY apps/api/package.json apps/api/
 COPY apps/chat-widget/package.json apps/chat-widget/
 COPY apps/help-center/package.json apps/help-center/

@@ -227,3 +227,42 @@ describe('API keys', () => {
     expect(old.body.message).toBe('This API key has expired');
   });
 });
+
+describe('the API docs', () => {
+  it('describe the integration routes from the contracts they validate', async () => {
+    const res = await t.app.inject({ method: 'GET', url: '/docs-json' });
+    expect(res.statusCode).toBe(200);
+    const doc = res.json();
+    expect(doc.components.securitySchemes.apiKey).toMatchObject({ type: 'http', scheme: 'bearer' });
+
+    const create = doc.paths['/api/v1/integration/tickets'].post;
+    expect(create.summary).toBe('Raise a ticket for one of your users');
+    expect(create.security).toEqual([{ apiKey: [] }]);
+    const body = create.requestBody.content['application/json'].schema;
+    expect(body.required).toEqual(expect.arrayContaining(['customer', 'subject', 'body']));
+    expect(Object.keys(body.properties)).toEqual(
+      expect.arrayContaining(['category', 'priority', 'tags', 'externalRef', 'metadata', 'ai']),
+    );
+    expect(body.properties.priority.enum).toEqual(['urgent', 'high', 'normal', 'low']);
+    expect(create.parameters.map((p: { name: string }) => p.name)).toContain('Idempotency-Key');
+
+    const list = doc.paths['/api/v1/integration/tickets'].get;
+    expect(list.parameters.map((p: { name: string }) => p.name).sort()).toEqual([
+      'externalRef',
+      'limit',
+      'offset',
+      'state',
+    ]);
+    const event = doc.paths['/api/v1/integration/events'].post;
+    expect(event.requestBody.content['application/json'].schema.properties.severity.enum).toEqual([
+      'info',
+      'warning',
+      'error',
+      'critical',
+    ]);
+    const hook = doc.paths['/api/v1/integrations/{id}/webhooks'].post;
+    expect(
+      hook.requestBody.content['application/json'].schema.properties.events.items.enum,
+    ).toContain('message.created');
+  });
+});

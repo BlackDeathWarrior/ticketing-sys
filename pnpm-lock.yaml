@@ -177,6 +177,9 @@ importers:
       zod:
         specifier: ^3.25.76
         version: 3.25.76
+      zod-to-json-schema:
+        specifier: ^3.25.2
+        version: 3.25.2(zod@3.25.76)
     devDependencies:
       '@nestjs/testing':
         specifier: ^11.1.0
@@ -184,6 +187,9 @@ importers:
       '@swc/core':
         specifier: ^1.12.0
         version: 1.16.12
+      '@tms/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@types/html-to-text':
         specifier: ^9.0.4
         version: 9.0.4
@@ -424,6 +430,21 @@ importers:
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
+
+  packages/sdk:
+    devDependencies:
+      '@tms/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.4
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@22.20.4)(jsdom@26.1.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
 
   packages/shared:
     dependencies:
