@@ -9,7 +9,7 @@ Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, 
 | Step                                              | Result                                                                            |
 | ------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                              |
-| `pnpm test`                                       | 339 passed (api 178, Orbit Desk 97, shared 34, fake providers 20, help center 10) |
+| `pnpm test`                                       | 340 passed (api 178, Orbit Desk 97, shared 34, fake providers 21, help center 10) |
 | `pnpm test:int`                                   | 220 passed (20 files)                                                             |
 | `pnpm e2e`                                        | 97 passed; 9 screenshot-only specs skipped as designed                            |
 | `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                        |
@@ -66,7 +66,7 @@ Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, 
 
 ### Known limits
 
-- The scripted demo model is not a language model: it answers on its own only when the question's words match a knowledge base passage. Free conversation needs a real provider key in Settings.
+- The scripted demo model is not a language model: it answers on its own only when the question's words match a knowledge base passage, from the passage that shares most words with the question. That can still be the wrong passage: with the sample data, "Can I return an item after 20 days?" gets the refund-timing passage. Free conversation and reliable answers need a real provider key in Settings.
 - Limits are per network address: an office behind one address shares them.
 - The failed-jobs view shows the 25 most recent per queue and has no alert; someone has to look.
 - Retention deletes logs, not customer data: erasing a customer on request is not built.
