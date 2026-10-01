@@ -446,7 +446,7 @@
   list-style: none;
 }
 
-.check {
+.healthRow {
   display: grid;
   grid-template-columns: auto minmax(120px, 200px) minmax(0, 1fr);
   align-items: baseline;
@@ -456,7 +456,7 @@
   font-size: var(--text-body-sm);
 }
 
-.check:first-child {
+.healthRow:first-child {
   border-top: 0;
 }
 
@@ -470,8 +470,8 @@
   overflow-wrap: anywhere;
 }
 
-.check[data-state='off'] .checkLabel,
-.check[data-state='off'] .checkDetail {
+.healthRow[data-state='off'] .checkLabel,
+.healthRow[data-state='off'] .checkDetail {
   color: var(--color-fog);
 }
 
@@ -486,7 +486,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .check {
+  .healthRow {
     grid-template-columns: auto minmax(0, 1fr);
   }
 

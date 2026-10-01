@@ -39,6 +39,12 @@ describe('settings tabs', () => {
   it('shows only channels to someone with channel settings alone', () => {
     expect(visibleTabs(can(['settings:channels'])).map((t) => t.value)).toEqual(['channels']);
   });
+
+  it('opens Tools for someone who may only create custom tools', () => {
+    const lead = can(['ticket:read', 'tool:create']);
+    expect(visibleTabs(lead).map((t) => t.value)).toEqual(['tools']);
+    expect(canOpenSettings(lead)).toBe(true);
+  });
 });
 
 describe('formatting', () => {

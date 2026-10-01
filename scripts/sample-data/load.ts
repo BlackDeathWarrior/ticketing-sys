@@ -402,11 +402,19 @@ async function loadTools(admin: string) {
   for (const t of listed.filter((x) => tools.enable.includes(x.name))) {
     await call(admin, 'PATCH', `/tools/${t.id}`, { enabled: true });
   }
+  const custom = await call<Array<{ name: string }>>(admin, 'GET', '/tools/custom');
+  if (!custom.some((t) => t.name === tools.custom.name)) {
+    const { path, ...definition } = tools.custom;
+    await call(admin, 'POST', '/tools/custom', {
+      ...definition,
+      url: new URL(path, FAKE_MCP_URL).toString(),
+    });
+  }
   log(
     `Demo Store MCP server with ${listed.length} tools (${listed
       .filter((t) => t.tier === 'transactional')
       .map((t) => t.name)
-      .join(', ')} needs approval)`,
+      .join(', ')} needs approval), and 1 custom tool`,
   );
 }
 

@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { argRows, parseArgs, resultPreview, schemaArgs, timeLeft } from './logic';
+import type { ToolView } from '@tms/shared';
+import {
+  argRows,
+  customToolBody,
+  emptyCustomTool,
+  formFromTool,
+  parseArgs,
+  resultPreview,
+  schemaArgs,
+  timeLeft,
+} from './logic';
 
 describe('tools logic', () => {
   it('shows arguments without the customer binding', () => {
@@ -31,5 +41,79 @@ describe('tools logic', () => {
     expect(parseArgs('[1]')).toMatchObject({ ok: false });
     expect(parseArgs('{')).toEqual({ ok: false, error: 'That is not valid JSON' });
     expect(resultPreview({ a: 'x'.repeat(300) }, 20)).toHaveLength(21);
+  });
+});
+
+describe('custom tool form', () => {
+  const tool: ToolView = {
+    id: 't1',
+    serverId: 's1',
+    serverName: 'Custom tools',
+    name: 'stock_level',
+    qualifiedName: 'custom__stock_level',
+    title: 'Stock level',
+    description: 'How many units of a product are in the warehouse.',
+    inputSchema: {},
+    enabled: true,
+    tier: 'read',
+    timeoutMs: 8000,
+    customerArg: 'email',
+    missing: false,
+    custom: {
+      method: 'GET',
+      url: 'https://api.shop.example/stock/{sku}',
+      authHeader: 'X-Api-Key',
+      parameters: [
+        { name: 'sku', type: 'string', description: 'Product code', required: true },
+        { name: 'email', type: 'string', description: '', required: true },
+      ],
+      token: { key: 'tool.custom_stock_level.token', set: true, last4: '9f2c' },
+      createdBy: null,
+    },
+  };
+
+  it('starts empty, switched off and read-only', () => {
+    expect(emptyCustomTool()).toMatchObject({
+      method: 'GET',
+      tier: 'read',
+      enabled: false,
+      parameters: [],
+    });
+  });
+
+  it('round-trips a saved tool through the form', () => {
+    const form = formFromTool(tool);
+    expect(form).toMatchObject({
+      name: 'stock_level',
+      authHeader: 'X-Api-Key',
+      customerArg: 'email',
+    });
+    expect(customToolBody(form)).toEqual({
+      title: 'Stock level',
+      description: 'How many units of a product are in the warehouse.',
+      method: 'GET',
+      url: 'https://api.shop.example/stock/{sku}',
+      authHeader: 'X-Api-Key',
+      parameters: tool.custom!.parameters,
+      tier: 'read',
+      customerArg: 'email',
+      timeoutMs: 8000,
+      enabled: true,
+    });
+  });
+
+  it('trims what was typed, and drops a customer argument that no longer exists', () => {
+    const body = customToolBody({
+      ...formFromTool(tool),
+      title: '  Stock  ',
+      authHeader: '',
+      parameters: [{ name: ' sku ', type: 'string', description: ' Code ', required: true }],
+    });
+    expect(body.title).toBe('Stock');
+    expect(body.authHeader).toBeNull();
+    expect(body.parameters).toEqual([
+      { name: 'sku', type: 'string', description: 'Code', required: true },
+    ]);
+    expect(body.customerArg).toBeNull();
   });
 });

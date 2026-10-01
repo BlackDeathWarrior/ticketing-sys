@@ -9,6 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import type { CustomToolHttp } from '@tms/shared';
 import { users } from './auth';
 import { conversations } from './conversations';
 import { tickets } from './tickets';
@@ -22,6 +23,8 @@ export const mcpServers = pgTable('mcp_servers', {
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
   url: text('url').notNull(),
+  /** `mcp`: a real MCP server. `custom`: the built-in holder of custom HTTP tools. */
+  kind: text('kind').notNull().default('mcp'),
   enabled: boolean('enabled').notNull().default(true),
   /** Header carrying the token (`Authorization` sends `Bearer <token>`). */
   authHeader: text('auth_header'),
@@ -53,6 +56,9 @@ export const tools = pgTable(
     customerArg: text('customer_arg'),
     /** Gone from the server at the last sync; kept for history, never offered. */
     missing: boolean('missing').notNull().default(false),
+    /** Custom tools only: the HTTP request to make (method, URL, token header, parameters). */
+    http: jsonb('http').$type<CustomToolHttp>(),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('tools_server_name_idx').on(t.serverId, t.name)],

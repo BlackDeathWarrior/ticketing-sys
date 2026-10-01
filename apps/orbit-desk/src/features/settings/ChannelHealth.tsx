@@ -122,7 +122,7 @@ export function HealthChecks({ health }: { health: ChannelHealth }) {
     <div className={styles.checks}>
       <ul className={styles.checkList} aria-label={`${health.label} checks`}>
         {health.checks.map((c) => (
-          <li key={c.key} className={styles.check} data-state={c.state}>
+          <li key={c.key} className={styles.healthRow} data-state={c.state}>
             <StatusLight state={c.state} compact />
             <span className={styles.checkLabel}>{c.label}</span>
             <span className={styles.checkDetail}>{c.detail}</span>

@@ -17,6 +17,7 @@ import { useGet } from '../../lib/useGet';
 import { minutesSince } from '../../data/adapters';
 import { SecretField } from '../settings/ChannelsPanel';
 import settings from '../settings/Settings.module.css';
+import { CustomTools } from './CustomTools';
 import { parseArgs, resultPreview, schemaArgs, tierLabel } from './logic';
 import styles from './Tools.module.css';
 
@@ -25,6 +26,18 @@ import styles from './Tools.module.css';
  * tools, and what the AI may do with each (ADR 0013).
  */
 export function ToolsPanel() {
+  const { can } = useSession();
+  // Someone allowed to create custom tools, but not to manage servers, sees only those.
+  const manage = can('tool:manage');
+  return (
+    <div className={settings.stack}>
+      {manage && <McpServers />}
+      {can('tool:create') && <CustomTools />}
+    </div>
+  );
+}
+
+function McpServers() {
   const servers = useGet<McpServerView[]>('/tools/servers');
   const tools = useGet<ToolView[]>('/tools');
   const reload = () => {
@@ -33,7 +46,7 @@ export function ToolsPanel() {
   };
 
   return (
-    <div className={settings.stack}>
+    <>
       <p className={settings.note}>
         The AI can use tools from these servers to look up and act on a customer’s orders, payments
         and account. New tools start switched off. “Needs approval” tools only submit a request: a
@@ -52,7 +65,7 @@ export function ToolsPanel() {
         <p className={settings.note}>No MCP servers yet.</p>
       )}
       <AddServer onAdded={reload} />
-    </div>
+    </>
   );
 }
 
@@ -236,12 +249,15 @@ function ToolRow({ tool, onChanged }: { tool: ToolView; onChanged: () => void })
   );
 }
 
-function TestDialog({
+export function TestDialog({
   tool,
+  path,
   open,
   onClose,
 }: {
   tool: ToolView;
+  /** Where to post the test; custom tools have their own route. */
+  path?: string;
   open: boolean;
   onClose: () => void;
 }) {
@@ -262,7 +278,7 @@ function TestDialog({
     if (!parsed.ok) return setResult(parsed.error);
     setBusy(true);
     try {
-      const r = await api<Record<string, unknown>>('POST', `/tools/${tool.id}/test`, {
+      const r = await api<Record<string, unknown>>('POST', path ?? `/tools/${tool.id}/test`, {
         args: parsed.value,
         ...(email.trim() ? { customerEmail: email.trim() } : {}),
       });

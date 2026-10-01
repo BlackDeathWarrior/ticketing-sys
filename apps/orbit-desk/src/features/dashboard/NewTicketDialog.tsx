@@ -30,7 +30,7 @@ const MANUAL_CHANNELS = [
 
 export function NewTicketDialog({ open, onClose, onCreated }: NewTicketDialogProps) {
   return (
-    <Dialog open={open} onClose={onClose} labelledBy="new-ticket-title">
+    <Dialog open={open} onClose={onClose} labelledBy="new-ticket-title" padded={false}>
       {open && <NewTicketForm onClose={onClose} onCreated={onCreated} />}
     </Dialog>
   );

@@ -77,6 +77,8 @@ export const DOMAIN_EVENT_TYPES = [
   'notification.created',
   /** A team lead escalated a ticket. */
   'ticket.escalated',
+  /** An admin granted a role a permission, or took it back. */
+  'role.permissions_changed',
   /** WhatsApp templates were synced from Meta, or Meta changed a template's status. */
   'whatsapp.templates_changed',
 ] as const;
@@ -87,6 +89,7 @@ export type AggregateType =
   | 'ticket'
   | 'customer'
   | 'user'
+  | 'role'
   | 'conversation'
   | 'team'
   | 'category'

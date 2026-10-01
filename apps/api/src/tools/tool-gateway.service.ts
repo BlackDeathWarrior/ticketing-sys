@@ -16,6 +16,7 @@ import { OutboxService } from '../audit/outbox.service';
 import type { RequestCtx } from '../common/request-context';
 import type { Env } from '../config/env';
 import { DB, ENV, REDIS } from '../infra/tokens';
+import { callHttpTool, HttpToolError } from './http-tool';
 import { callTool, McpCallError, RESULT_PREVIEW_CHARS } from './mcp-client';
 import { errorText, type ServerRow, type ToolRow, ToolsService } from './tools.service';
 
@@ -277,26 +278,36 @@ export class ToolGatewayService {
     | { ok: false; error: string; latencyMs: number; attempts: number }
   > {
     const started = Date.now();
-    const breaker = `tms:tools:breaker:${server.id}`;
+    // Custom tools each talk to their own system, so each has its own breaker.
+    const breaker = `tms:tools:breaker:${tool.http ? tool.id : server.id}`;
+    const label = tool.http ? (tool.title ?? tool.name) : server.name;
     if (Number(await this.redis.get(breaker)) >= BREAKER_FAILURES) {
       return {
         ok: false,
-        error: `${server.name} is unavailable right now (too many recent failures)`,
+        error: `${label} is unavailable right now (too many recent failures)`,
         latencyMs: 0,
         attempts: 0,
       };
     }
-    const target = await this.registry.target(server);
+    const http = tool.http;
+    const call = http
+      ? async () =>
+          callHttpTool(http, args, {
+            token: await this.registry.customToken(tool),
+            timeoutMs: tool.timeoutMs,
+            privateHosts: this.registry.privateHosts,
+          })
+      : async () => callTool(await this.registry.target(server), tool.name, args, tool.timeoutMs);
     let last = 'The tool failed';
     for (let n = 1; n <= attempts; n++) {
       try {
-        const result = await callTool(target, tool.name, args, tool.timeoutMs);
+        const result = await call();
         await this.redis.del(breaker);
         return { ok: true, result, latencyMs: Date.now() - started, attempts: n };
       } catch (err) {
         last = errorText(err);
         // The tool said no (e.g. "order not found"): a real answer, not an outage.
-        if (err instanceof McpCallError && err.fromTool) break;
+        if ((err instanceof McpCallError || err instanceof HttpToolError) && err.fromTool) break;
         await this.redis.multi().incr(breaker).expire(breaker, BREAKER_OPEN_SECONDS).exec();
         this.logger.warn(`tool ${server.slug}/${tool.name} failed (attempt ${n}): ${last}`);
       }

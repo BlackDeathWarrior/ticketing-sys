@@ -9,16 +9,21 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
+  createCustomToolSchema,
   type CreateMcpServerInput,
   createMcpServerSchema,
   type DecideApprovalInput,
   decideApprovalSchema,
   listApprovalsQuerySchema,
+  type ParsedCustomTool,
+  type ParsedCustomToolUpdate,
   testToolSchema,
+  updateCustomToolSchema,
   type UpdateMcpServerInput,
   updateMcpServerSchema,
   type UpdateToolInput,
@@ -86,6 +91,53 @@ export class ToolsController {
   @RequirePermission('tool:manage')
   list() {
     return this.tools.listTools();
+  }
+
+  // ---- Custom tools: for admins and for roles an admin gave `tool:create` (ADR 0017) ----
+
+  @Get('custom')
+  @RequirePermission('tool:create')
+  listCustom() {
+    return this.tools.listCustom();
+  }
+
+  @Post('custom')
+  @RequirePermission('tool:create')
+  createCustom(
+    @Ctx() ctx: RequestCtx,
+    @Body(new ZodPipe(createCustomToolSchema)) body: ParsedCustomTool,
+  ) {
+    return this.tools.createCustom(ctx, body);
+  }
+
+  @Put('custom/:id')
+  @RequirePermission('tool:create')
+  updateCustom(
+    @Ctx() ctx: RequestCtx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(updateCustomToolSchema)) body: ParsedCustomToolUpdate,
+  ) {
+    return this.tools.updateCustom(ctx, id, body);
+  }
+
+  @Delete('custom/:id')
+  @HttpCode(204)
+  @RequirePermission('tool:create')
+  async deleteCustom(@Ctx() ctx: RequestCtx, @Param('id', ParseUUIDPipe) id: string) {
+    await this.tools.deleteCustom(ctx, id);
+  }
+
+  /** Runs a custom read or write tool once, recorded like any call. */
+  @Post('custom/:id/test')
+  @HttpCode(200)
+  @RequirePermission('tool:create')
+  async testCustom(
+    @Ctx() ctx: RequestCtx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(testToolSchema)) body: z.output<typeof testToolSchema>,
+  ) {
+    await this.tools.customTool(id);
+    return this.test(ctx, id, body);
   }
 
   @Patch(':id')

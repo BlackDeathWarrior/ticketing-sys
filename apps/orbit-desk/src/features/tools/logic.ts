@@ -1,9 +1,13 @@
 import {
   type ApprovalStatus,
+  type CustomToolMethod,
+  type CustomToolParamType,
   describeArgs,
   type ToolCallStatus,
   TOOL_TIER_LABELS,
   type ToolTier,
+  type ToolView,
+  type UpdateCustomToolInput,
 } from '@tms/shared';
 
 export const tierLabel = (tier: ToolTier) => TOOL_TIER_LABELS[tier];
@@ -77,4 +81,77 @@ export function parseArgs(
   } catch {
     return { ok: false, error: 'That is not valid JSON' };
   }
+}
+
+// ---- Custom tools ----
+
+/** The custom tool dialog's fields; selects use '' for "none". */
+export interface CustomToolForm {
+  name: string;
+  title: string;
+  description: string;
+  method: CustomToolMethod;
+  url: string;
+  authHeader: string;
+  parameters: Array<{
+    name: string;
+    type: CustomToolParamType;
+    description: string;
+    required: boolean;
+  }>;
+  tier: ToolTier;
+  customerArg: string;
+  enabled: boolean;
+}
+
+export const emptyCustomTool = (): CustomToolForm => ({
+  name: '',
+  title: '',
+  description: '',
+  method: 'GET',
+  url: '',
+  authHeader: '',
+  parameters: [],
+  tier: 'read',
+  customerArg: '',
+  enabled: false,
+});
+
+export function formFromTool(tool: ToolView): CustomToolForm {
+  const custom = tool.custom;
+  return {
+    name: tool.name,
+    title: tool.title ?? tool.name,
+    description: tool.description,
+    method: custom?.method ?? 'GET',
+    url: custom?.url ?? '',
+    authHeader: custom?.authHeader ?? '',
+    parameters: (custom?.parameters ?? []).map((p) => ({ ...p })),
+    tier: tool.tier,
+    customerArg: tool.customerArg ?? '',
+    enabled: tool.enabled,
+  };
+}
+
+/** What the API takes for a custom tool (everything but the name). */
+export function customToolBody(form: CustomToolForm): UpdateCustomToolInput {
+  const names = form.parameters.map((p) => p.name.trim());
+  return {
+    title: form.title.trim(),
+    description: form.description.trim(),
+    method: form.method,
+    url: form.url.trim(),
+    authHeader: form.authHeader || null,
+    parameters: form.parameters.map((p) => ({
+      name: p.name.trim(),
+      type: p.type,
+      description: p.description.trim(),
+      required: p.required,
+    })),
+    tier: form.tier,
+    // A customer argument that was renamed or removed no longer applies.
+    customerArg: names.includes(form.customerArg) ? form.customerArg : null,
+    timeoutMs: 8000,
+    enabled: form.enabled,
+  };
 }

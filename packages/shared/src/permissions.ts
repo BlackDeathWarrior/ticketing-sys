@@ -35,6 +35,11 @@ export const PERMISSIONS = [
   'settings:ai',
   /** Register MCP servers, enable tools, set risk tiers, run test calls. Admin only. */
   'tool:manage',
+  /**
+   * Create, edit, test and switch on custom (HTTP) tools. Admins have it; an
+   * admin can grant it to other roles. Keys still need `settings:secrets`.
+   */
+  'tool:create',
   /** Take a conversation over from the AI or the queue, and hand it back. */
   'conversation:takeover',
   /** Routing rules, agent skills and capacities. */
