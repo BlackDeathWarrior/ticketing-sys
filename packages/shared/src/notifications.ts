@@ -13,6 +13,8 @@ export const NOTIFICATION_KINDS = [
   'channel.down',
   /** A customer rated a ticket 1 or 2 out of 5. */
   'csat.low',
+  /** A webhook kept failing and was switched off (to people who manage integrations). */
+  'webhook.disabled',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

@@ -103,6 +103,27 @@ export class IntegrationTicketsService {
     return this.view(await this.owned(key, reference));
   }
 
+  /**
+   * A ticket and one of its customer-visible messages as integrations see
+   * them, for webhook bodies. Null for a ticket that is gone; `message` is
+   * null for a draft or a message that is not on this ticket.
+   */
+  async forWebhook(
+    ticketId: string,
+    messageId?: string,
+  ): Promise<{
+    ticket: IntegrationTicketView;
+    integrationId: string | null;
+    message: IntegrationMessageView | null;
+  } | null> {
+    const ticket = await this.tickets.get(ticketId).catch(() => null);
+    if (!ticket) return null;
+    const message = messageId
+      ? ((await this.visibleMessages(ticket.id)).find((m) => m.id === messageId) ?? null)
+      : null;
+    return { ticket: await this.view(ticket), integrationId: ticket.integrationId, message };
+  }
+
   /** What the customer wrote and was sent, oldest first. Never drafts or internal notes. */
   async messages(
     key: ApiKeyContext,
@@ -111,10 +132,15 @@ export class IntegrationTicketsService {
   ): Promise<IntegrationMessageView[]> {
     const ticket = await this.owned(key, reference);
     const since = after ? new Date(after).getTime() : null;
-    return (await this.conversations.listForTicket(ticket.id))
+    return (await this.visibleMessages(ticket.id)).filter(
+      (m) => since === null || new Date(m.createdAt).getTime() > since,
+    );
+  }
+
+  private async visibleMessages(ticketId: string): Promise<IntegrationMessageView[]> {
+    return (await this.conversations.listForTicket(ticketId))
       .flatMap((c) => c.messages)
       .filter((m) => m.deliveryStatus !== 'draft' && m.deliveryStatus !== 'discarded')
-      .filter((m) => since === null || m.createdAt.getTime() > since)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((m) => ({
         id: m.id,

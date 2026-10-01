@@ -14,3 +14,4 @@ export * from './customer-experience';
 export * from './learning';
 export * from './integrations';
 export * from './incidents';
+export * from './webhooks';

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  deliveryLine,
+  eventSummary,
   expiresAtFor,
   incidentLine,
   isValidSlug,
@@ -9,6 +11,7 @@ import {
   parseRateLimit,
   scopeSummary,
   slugFromName,
+  testLine,
   toggle,
 } from './logic';
 
@@ -88,6 +91,73 @@ describe('incidents on a ticket', () => {
         now,
       ),
     ).toBe('Recovered 5m ago · reported 4 times');
+  });
+});
+
+describe('webhooks', () => {
+  const delivery = {
+    id: 'd1',
+    eventType: 'ticket.created' as const,
+    httpStatus: null,
+    error: null,
+    durationMs: null,
+    redeliveryOf: null,
+    createdAt: '2026-10-01T10:00:00.000Z',
+    deliveredAt: null,
+  };
+
+  it('describes a delivery by its outcome', () => {
+    expect(
+      deliveryLine({
+        ...delivery,
+        status: 'delivered',
+        attempts: 1,
+        httpStatus: 200,
+        durationMs: 84,
+      }),
+    ).toBe('Delivered · 200 · 84 ms');
+    expect(
+      deliveryLine({
+        ...delivery,
+        status: 'delivered',
+        attempts: 3,
+        httpStatus: 204,
+        durationMs: 9,
+      }),
+    ).toBe('Delivered · 204 · 9 ms · 3 attempts');
+    expect(
+      deliveryLine({
+        ...delivery,
+        status: 'failed',
+        attempts: 8,
+        httpStatus: 500,
+        error: 'HTTP 500',
+      }),
+    ).toBe('Failed after 8 attempts · HTTP 500');
+    expect(deliveryLine({ ...delivery, status: 'pending', attempts: 0 })).toBe(
+      'Waiting to be sent',
+    );
+    expect(
+      deliveryLine({ ...delivery, status: 'pending', attempts: 1, error: 'Could not connect' }),
+    ).toBe('Trying again · 1 attempt so far · Could not connect');
+  });
+
+  it('lists a few events by name and counts many', () => {
+    expect(eventSummary(['ticket.created', 'message.created'])).toBe(
+      'ticket.created, message.created',
+    );
+    expect(
+      eventSummary(['ticket.created', 'ticket.updated', 'message.created', 'csat.submitted']),
+    ).toBe('4 events');
+  });
+
+  it('says how a test went', () => {
+    expect(testLine({ ok: true, httpStatus: 200, durationMs: 31, error: null })).toBe(
+      'The test was delivered: the receiver answered 200 in 31 ms.',
+    );
+    expect(testLine({ ok: false, httpStatus: 503, durationMs: 12, error: 'HTTP 503' })).toBe(
+      'The test failed: HTTP 503.',
+    );
   });
 });
 

@@ -25,3 +25,4 @@ export * from './portal';
 export * from './learning';
 export * from './system';
 export * from './integrations';
+export * from './webhooks';

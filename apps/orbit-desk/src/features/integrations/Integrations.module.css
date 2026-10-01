@@ -79,3 +79,38 @@
 .incidents [data-status='open'] {
   color: var(--color-lilac-white);
 }
+
+/* Webhooks of an integration: one block per address, its log underneath. */
+.hooks {
+  display: grid;
+  gap: var(--spacing-16);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hooks > li {
+  padding-top: var(--spacing-16);
+  border-top: 1px solid var(--line-subtle);
+}
+
+.hookHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-12);
+}
+
+.hookHead > :first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.deliveries {
+  display: grid;
+  gap: var(--spacing-8);
+  margin-top: var(--spacing-12);
+}

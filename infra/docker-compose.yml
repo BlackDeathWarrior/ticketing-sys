@@ -16,6 +16,9 @@ x-app-env: &app-env
   CORS_ORIGINS: http://localhost:8080,http://localhost:8081
   # MCP servers may live on these compose hosts (the sample Demo Store server in fake-providers).
   TOOL_PRIVATE_HOSTS: ${TOOL_PRIVATE_HOSTS:-fake-providers}
+  # Webhook receivers may run on the machine that runs Docker (a local app, the E2E tests).
+  # Everything else must be a public https address.
+  WEBHOOK_PRIVATE_HOSTS: ${WEBHOOK_PRIVATE_HOSTS:-host.docker.internal}
   API_DOCS: ${API_DOCS:-true}
   # Object storage (SeaweedFS S3 API)
   S3_ENDPOINT: http://objectstore:8333
@@ -185,6 +188,9 @@ services:
     profiles: ['app']
     build: { <<: *build, target: api }
     environment: *app-env
+    # Docker Desktop provides this name; on Linux it has to be mapped.
+    extra_hosts: &host-gateway
+      - 'host.docker.internal:host-gateway'
     ports:
       - '3000:3000'
     restart: unless-stopped
@@ -198,6 +204,7 @@ services:
     profiles: ['app']
     build: { <<: *build, target: worker }
     environment: *app-env
+    extra_hosts: *host-gateway
     restart: unless-stopped
     depends_on:
       <<: *app-deps

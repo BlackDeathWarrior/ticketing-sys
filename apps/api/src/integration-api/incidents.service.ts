@@ -108,6 +108,17 @@ export class IncidentsService {
     return rows.map((r) => view(r, (r.ticketId && numbers.get(r.ticketId)) || null));
   }
 
+  /** One incident with the integration it belongs to, for webhook bodies. */
+  async byId(id: string): Promise<{ incident: IncidentView; integrationId: string } | null> {
+    const [row] = await this.db.select().from(incidents).where(eq(incidents.id, id));
+    if (!row) return null;
+    const numbers = await this.tickets.numbersFor(this.db, row.ticketId ? [row.ticketId] : []);
+    return {
+      incident: view(row, (row.ticketId && numbers.get(row.ticketId)) || null),
+      integrationId: row.integrationId,
+    };
+  }
+
   /** The incidents a ticket tracks or tracked, newest first (for agents). */
   async forTicket(ticketRef: string): Promise<IncidentView[]> {
     const ticket = await this.tickets.get(ticketRef);

@@ -36,6 +36,7 @@ import { RoutingModule } from './routing/routing.module';
 import { SlaModule } from './sla/sla.module';
 import { ToolsModule } from './tools/tools.module';
 import { WebFormModule } from './web-form/web-form.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 
 const env = loadEnv();
 
@@ -73,6 +74,7 @@ const env = loadEnv();
     NotificationsModule,
     HandoverModule,
     IntegrationApiModule,
+    WebhooksModule,
   ],
   controllers: [HealthController],
   providers: [

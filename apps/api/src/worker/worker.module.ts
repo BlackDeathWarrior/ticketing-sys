@@ -45,6 +45,8 @@ import { ApprovalExpiryWorker, ApprovalsHandler } from '../tools/approvals.worke
 import { ToolsModule } from '../tools/tools.module';
 import { WebFormAckHandler } from '../web-form/web-form-ack.handler';
 import { WebFormModule } from '../web-form/web-form.module';
+import { WebhookDeliveryWorker, WebhookDispatchHandler } from '../webhooks/webhook-delivery.worker';
+import { WebhooksModule } from '../webhooks/webhooks.module';
 import { DOMAIN_EVENT_HANDLERS } from './domain-events';
 import { DomainEventsConsumer } from './domain-events.consumer';
 import { HeartbeatService } from './heartbeat.service';
@@ -81,6 +83,7 @@ const env = loadEnv();
     PortalModule,
     LearningModule,
     SystemModule,
+    WebhooksModule,
   ],
   providers: [
     emitterProvider,
@@ -116,6 +119,8 @@ const env = loadEnv();
     HandoverHandler,
     RoutingHandler,
     CsatHandler,
+    WebhookDeliveryWorker,
+    WebhookDispatchHandler,
     {
       provide: DOMAIN_EVENT_HANDLERS,
       inject: [
@@ -134,6 +139,7 @@ const env = loadEnv();
         CsatHandler,
         PortalMailHandler,
         LearningHandler,
+        WebhookDispatchHandler,
       ],
       useFactory: (...handlers: unknown[]) => handlers,
     },

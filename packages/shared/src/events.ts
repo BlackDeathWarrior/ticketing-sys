@@ -116,6 +116,8 @@ export const DOMAIN_EVENT_TYPES = [
   'incident.opened',
   'incident.updated',
   'incident.resolved',
+  /** An admin asked for a webhook delivery to be sent again. */
+  'webhook.redelivery_requested',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];

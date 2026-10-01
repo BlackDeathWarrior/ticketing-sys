@@ -5,6 +5,7 @@ import { Ctx, type RequestCtx, RequirePermission } from '../common/request-conte
 import { LlmModule } from '../llm/llm.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PortalModule } from '../portal/portal.module';
+import { WebhooksModule } from '../webhooks/webhooks.module';
 import { RetentionService, SystemJobsService } from './system.service';
 
 /** Housekeeping for admins: failed background jobs and data retention (ADR 0021). */
@@ -61,7 +62,7 @@ export class SystemController {
 }
 
 @Module({
-  imports: [LlmModule, NotificationsModule, PortalModule, ChannelsModule],
+  imports: [LlmModule, NotificationsModule, PortalModule, ChannelsModule, WebhooksModule],
   controllers: [SystemController],
   // RetentionWorker is registered by the worker process only (worker.module.ts).
   providers: [RetentionService, SystemJobsService],

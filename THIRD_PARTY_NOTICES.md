@@ -5,8 +5,8 @@ Code in this repository that was copied or adapted from other projects, with the
 ## whatsapp-crm (wacrm)
 
 - **Source:** https://github.com/BlackDeathWarrior/whatsapp-crm at commit `47100ad`, a fork of https://github.com/ArnasDon/wacrm.
-- **Used in:** `apps/api/src/channels/whatsapp/`: `meta-api.ts`, `meta-errors.ts`, `phone-utils.ts`, `template-send-builder.ts`, `wa-identity.ts`, `webhook-payload.ts`, `webhook-signature.ts` and `whatsapp.test.ts`; and `apps/api/src/integrations/api-key.util.ts`. Each file's header names the original file and what changed.
-- **Why:** the WhatsApp Cloud API adapter (ADR 0015), and API key generation and hashing (ADR 0022).
+- **Used in:** `apps/api/src/channels/whatsapp/`: `meta-api.ts`, `meta-errors.ts`, `phone-utils.ts`, `template-send-builder.ts`, `wa-identity.ts`, `webhook-payload.ts`, `webhook-signature.ts` and `whatsapp.test.ts`; `apps/api/src/integrations/api-key.util.ts` and `apps/api/src/webhooks/webhook-sign.ts`. Each file's header names the original file and what changed.
+- **Why:** the WhatsApp Cloud API adapter (ADR 0015), API key generation and hashing (ADR 0022), and webhook signing (ADR 0025).
 - **Licence:** MIT.
 
 ```
