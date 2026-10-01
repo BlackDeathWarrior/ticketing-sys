@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Database, DbOrTx } from '@tms/db';
 import {
   type Channel,
+  formatTicketNumber,
   type MessageEnvelope,
   messageEnvelopeSchema,
   normalizeIdentity,
@@ -26,6 +27,8 @@ export interface InboundResult {
   ticketId: string;
   customerId?: string;
   createdTicket: boolean;
+  /** The ticket's reference, e.g. TMS-1042. Not set for a duplicate. */
+  ticketReference?: string;
 }
 
 /**
@@ -181,6 +184,7 @@ export class InboundService {
       ticketId: ticket.id,
       customerId: customer.id,
       createdTicket,
+      ticketReference: formatTicketNumber(ticket.number),
     };
   }
 

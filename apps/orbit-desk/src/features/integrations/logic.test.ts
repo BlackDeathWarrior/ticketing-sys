@@ -13,6 +13,7 @@ import {
   slugFromName,
   testLine,
   toggle,
+  widgetSnippet,
 } from './logic';
 
 describe('integration slugs', () => {
@@ -158,6 +159,20 @@ describe('webhooks', () => {
     expect(testLine({ ok: false, httpStatus: 503, durationMs: 12, error: 'HTTP 503' })).toBe(
       'The test failed: HTTP 503.',
     );
+  });
+});
+
+describe('the chat widget snippet', () => {
+  it('loads the script from the helpdesk and names the integration', () => {
+    const snippet = widgetSnippet('https://help.example.com', 'ethnic-threads');
+    expect(snippet.split('\n').slice(0, 5)).toEqual([
+      '<script src="https://help.example.com/widget/tms-chat.js"></script>',
+      '<script>',
+      '  TMSChat.init({',
+      "    server: 'https://help.example.com',",
+      "    integration: 'ethnic-threads',",
+    ]);
+    expect(snippet.endsWith('</script>')).toBe(true);
   });
 });
 

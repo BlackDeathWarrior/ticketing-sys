@@ -6,7 +6,7 @@ import nodemailer from 'nodemailer';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EmailPollerService } from '../src/channels/email/email-poller.service';
 import { OutboundService } from '../src/channels/outbound.service';
-import { startApp, startWorker, type TestClient, uniq, waitFor } from './helpers';
+import { makeUser, startApp, startWorker, type TestClient, uniq, waitFor } from './helpers';
 import { applyEmailEnv, TEST_MAIL } from './test-env';
 
 applyEmailEnv();
@@ -269,5 +269,77 @@ describe('web form channel', () => {
     const res = await submit(f, [big]);
     expect(res.status).toBe(413);
     expect(await ticketFor(f.subject)).toHaveLength(0);
+  });
+});
+
+describe('branding (ADR 0026)', () => {
+  const defaults = {
+    companyName: 'Demo Store',
+    supportName: 'Support',
+    helpCenterNote: 'Demo Store is a fictional shop used to demonstrate TMS.',
+    referenceLabel: 'Order number',
+  };
+  const publicBranding = async () => (await t.call('GET', '/public/request-form')).body.branding;
+  const firstMessage = async (subject: string) => {
+    const [ticket] = await ticketFor(subject);
+    return (await conversationsOf(ticket!.id))[0]!.messages[0]!.body as string;
+  };
+
+  afterAll(async () => {
+    await t.call('PUT', '/settings/branding', { token: admin, body: {} });
+  });
+
+  it('is the sample shop until someone says otherwise', async () => {
+    expect((await t.call('GET', '/settings/branding', { token: admin })).body).toEqual(defaults);
+    expect(await publicBranding()).toEqual(defaults);
+  });
+
+  it('names the company in the help center and the reference field on the form', async () => {
+    const saved = await t.call('PUT', '/settings/branding', {
+      token: admin,
+      body: {
+        companyName: 'Ethnic Threads',
+        supportName: 'Ethnic Threads Care',
+        helpCenterNote: '',
+        referenceLabel: 'Listing',
+      },
+    });
+    expect(saved.status).toBe(200);
+    expect(await publicBranding()).toEqual({
+      companyName: 'Ethnic Threads',
+      supportName: 'Ethnic Threads Care',
+      helpCenterNote: '',
+      referenceLabel: 'Listing',
+    });
+
+    const f = form({ orderNumber: 'MYN-48213' });
+    expect((await t.call('POST', '/public/requests', { body: f })).status).toBe(201);
+    expect(await firstMessage(f.subject)).toBe(`${f.description}\n\nListing: MYN-48213`);
+  });
+
+  it('hides the reference field when it has no label', async () => {
+    const saved = await t.call('PUT', '/settings/branding', {
+      token: admin,
+      body: { companyName: 'Ethnic Threads', referenceLabel: '' },
+    });
+    expect(saved.body.referenceLabel).toBeNull();
+    expect((await publicBranding()).referenceLabel).toBeNull();
+    // A page that still sends one is not refused.
+    const f = form({ orderNumber: 'MYN-1' });
+    expect((await t.call('POST', '/public/requests', { body: f })).status).toBe(201);
+    expect(await firstMessage(f.subject)).toBe(`${f.description}\n\nReference: MYN-1`);
+  });
+
+  it('is changed by people who manage channels, and checked', async () => {
+    const agent = await makeUser(t, admin, 'agent');
+    for (const method of ['GET', 'PUT'] as const) {
+      const res = await t.call(method, '/settings/branding', { token: agent.token, body: {} });
+      expect(res.status).toBe(403);
+    }
+    const bad = await t.call('PUT', '/settings/branding', {
+      token: admin,
+      body: { companyName: '' },
+    });
+    expect(bad.status).toBe(400);
   });
 });

@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   type ApiKeyScope,
@@ -9,6 +19,7 @@ import {
   type IntegrationIdentity,
   type UpdateIntegrationInput,
   updateIntegrationSchema,
+  type WidgetHost,
 } from '@tms/shared';
 import {
   type ApiKeyContext,
@@ -19,6 +30,8 @@ import {
   RequirePermission,
 } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
+import type { Env } from '../config/env';
+import { ENV } from '../infra/tokens';
 import { ApiKeysService } from './api-keys.service';
 import { IntegrationsService } from './integrations.service';
 
@@ -30,12 +43,20 @@ export class IntegrationsController {
   constructor(
     private readonly integrations: IntegrationsService,
     private readonly keys: ApiKeysService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   @Get()
   @RequirePermission('integration:manage')
   list() {
     return this.integrations.list();
+  }
+
+  /** Where a site loads the chat widget from: the address the help center is served at. */
+  @Get('widget-host')
+  @RequirePermission('integration:manage')
+  widgetHost(): WidgetHost {
+    return { origin: new URL(this.env.HELP_CENTER_URL).origin };
   }
 
   @Post()
@@ -73,6 +94,16 @@ export class IntegrationsController {
     @Body(new ZodPipe(createApiKeySchema)) body: CreateApiKeyInput,
   ) {
     return this.keys.create(ctx, id, body);
+  }
+
+  /**
+   * Generates the secret the integration's site signs chat identity tokens
+   * with, replacing any earlier one. The answer carries it, once.
+   */
+  @Post(':id/chat-identity-secret')
+  @RequirePermission('integration:manage', 'settings:secrets')
+  newChatIdentitySecret(@Ctx() ctx: RequestCtx, @Param('id', ParseUUIDPipe) id: string) {
+    return this.integrations.newChatIdentitySecret(ctx, id);
   }
 
   @Post('keys/:keyId/revoke')

@@ -230,6 +230,34 @@ describe('prompts and parsing', () => {
     expect(agentSystemPrompt({ ...base, ticket })).not.toContain('<ticket_context>\n');
   });
 
+  it('speaks for the company in the branding setting and signs emails as its support team', () => {
+    const input = {
+      channel: 'email',
+      language: 'en',
+      customer: { name: 'Asha', type: 'standard' },
+      ticket: { reference: 'TMS-2', subject: 'Sizes', status: 'ai_handling', category: null },
+      summary: null,
+      knowledge: [],
+      categories: [],
+      companyTools: true,
+      update: null,
+    };
+    // The sample shop, unless Settings says otherwise.
+    const sample = agentSystemPrompt(input);
+    expect(sample).toContain('support assistant for Demo Store.');
+    expect(sample).toContain('end with "Kind regards, Support"');
+
+    const branded = agentSystemPrompt({
+      ...input,
+      company: { companyName: 'Ethnic\nThreads', supportName: 'Ethnic Threads Care' },
+    });
+    expect(branded).toContain('support assistant for Ethnic Threads.');
+    expect(branded).toContain('end with "Kind regards, Ethnic Threads Care"');
+    // Tools are described without assuming a shop.
+    expect(branded).toContain('like orders__order_status');
+    expect(branded).not.toMatch(/demo_store|payments and account/);
+  });
+
   it('explains company tools and approval updates only when they apply', () => {
     const base = {
       channel: 'web_form',

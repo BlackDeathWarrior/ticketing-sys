@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Branding } from './branding';
 
 /**
  * The public "Submit a request" form (channel `web_form`). Anyone can submit
@@ -32,6 +33,7 @@ export const webFormSchema = z.object({
     .uuid()
     .optional()
     .or(z.literal('').transform(() => undefined)),
+  /** The form's optional reference field. Its label is a branding setting; the name is historic. */
   orderNumber: optionalText(60),
   /** Honeypot: hidden from people, so only bots fill it in. */
   website: z.string().max(0, 'Could not submit the form').optional(),
@@ -43,6 +45,8 @@ export interface WebFormConfig {
   categories: { id: string; name: string }[];
   maxFiles: number;
   maxFileBytes: number;
+  /** Who the help center speaks for, and how the form's reference field is named. */
+  branding: Branding;
 }
 
 export interface WebFormReceipt {

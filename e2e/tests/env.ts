@@ -4,6 +4,8 @@ export const env = {
   orbit: process.env.ORBIT_URL ?? 'http://localhost:8081',
   console: process.env.WEB_URL ?? 'http://localhost:8080',
   widgetDemo: process.env.WIDGET_URL ?? 'http://localhost:8080/widget/demo.html',
+  /** The page that stands in for an integration's own site (apps/chat-widget/public/site.html). */
+  widgetSite: process.env.WIDGET_SITE_URL ?? 'http://localhost:8080/widget/site.html',
   helpCenter: process.env.HELP_URL ?? 'http://localhost:8080/help/',
   mailpit: process.env.MAILPIT_URL ?? 'http://localhost:8025',
   smtpHost: process.env.SMTP_HOST ?? 'localhost',

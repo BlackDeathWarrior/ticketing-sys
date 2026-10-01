@@ -9,6 +9,7 @@ import {
 } from '@nestjs/websockets';
 import {
   CHAT_NAMESPACE,
+  chatContextSchema,
   chatHandshakeSchema,
   chatMessageSchema,
   type ChatMessageView,
@@ -22,7 +23,11 @@ import { clientAddress } from '../common/client-address';
 import { RateLimiterService } from '../common/rate-limit';
 import { ConversationsService } from '../conversations/conversations.service';
 import { CsatService } from '../csat/csat.service';
-import { type ChatSession, ChatSessionService } from './chat-session.service';
+import {
+  type ChatSession,
+  ChatSessionService,
+  UnknownIntegrationError,
+} from './chat-session.service';
 
 const RATE_WINDOW_MS = 10_000;
 const RATE_MAX_MESSAGES = 10;
@@ -35,6 +40,16 @@ const ADDRESS_MAX_MESSAGES = 120;
 
 type Ack<T> = { ok: true } & T;
 type Nack = { ok: false; error: string };
+
+/**
+ * What the page said the visitor is looking at, as ticket metadata. `kind`
+ * is ours (it marks incident tickets), so a browser can't set it.
+ */
+function pageContext(context: unknown): Record<string, unknown> | undefined {
+  if (!context || typeof context !== 'object') return undefined;
+  const { kind: _kind, ...rest } = context as Record<string, unknown>;
+  return rest;
+}
 
 /**
  * The web chat channel. Visitors connect to /chat; on connect they get a
@@ -75,8 +90,18 @@ export class ChatGateway implements OnGatewayConnection {
       socket.disconnect(true);
       return;
     }
-    const { session, token } = await this.sessions.open(auth.data);
+    let opened: Awaited<ReturnType<ChatSessionService['open']>>;
+    try {
+      opened = await this.sessions.open(auth.data);
+    } catch (err) {
+      if (!(err instanceof UnknownIntegrationError)) throw err;
+      socket.emit('error', { message: err.message });
+      socket.disconnect(true);
+      return;
+    }
+    const { session, token } = opened;
     socket.data.session = session;
+    socket.data.context = auth.data.context;
     socket.data.sent = [] as number[];
     await socket.join(chatRoom(session.sid));
     socket.emit('session', { token, sessionId: session.sid, name: session.name ?? null });
@@ -86,7 +111,9 @@ export class ChatGateway implements OnGatewayConnection {
   async onMessage(
     @ConnectedSocket() socket: Socket,
     @MessageBody() body: unknown,
-  ): Promise<Ack<{ message: ChatMessageView }> | Nack> {
+  ): Promise<
+    Ack<{ message: ChatMessageView; ticket?: { reference: string; created: boolean } }> | Nack
+  > {
     const session = socket.data.session as ChatSession | undefined;
     if (!session) return { ok: false, error: 'No session' };
     const parsed = chatMessageSchema.safeParse(body);
@@ -110,6 +137,12 @@ export class ChatGateway implements OnGatewayConnection {
           origin: socket.handshake.headers.origin,
           userAgent: socket.handshake.headers['user-agent'],
         },
+        // A chat on an integration's site is that integration's ticket, and
+        // starts with what the page said the visitor was looking at.
+        ticket: {
+          integrationId: session.integrationId,
+          metadata: pageContext(socket.data.context),
+        },
       });
       return {
         ok: true,
@@ -119,11 +152,24 @@ export class ChatGateway implements OnGatewayConnection {
           authorType: 'customer',
           createdAt: new Date().toISOString(),
         },
+        ...(result.ticketReference
+          ? { ticket: { reference: result.ticketReference, created: result.createdTicket } }
+          : {}),
       };
     } catch (err) {
       this.logger.error(`chat message failed: ${(err as Error).stack}`);
       return { ok: false, error: 'Your message could not be sent. Please try again.' };
     }
+  }
+
+  /** The page says what the visitor is looking at now; it applies to the next ticket they open. */
+  @SubscribeMessage('context')
+  onContext(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): Ack<object> | Nack {
+    if (!socket.data.session) return { ok: false, error: 'No session' };
+    const parsed = chatContextSchema.safeParse(body ?? {});
+    if (!parsed.success) return { ok: false, error: 'Context must be a small JSON object' };
+    socket.data.context = parsed.data;
+    return { ok: true };
   }
 
   @SubscribeMessage('history')

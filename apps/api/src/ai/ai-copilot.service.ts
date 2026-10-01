@@ -5,6 +5,7 @@ import { ConversationsService } from '../conversations/conversations.service';
 import { KbSearchService } from '../kb/kb-search.service';
 import { LlmClientService } from '../llm/llm-client.service';
 import { TicketsService } from '../tickets/tickets.service';
+import { BrandingService } from '../settings/branding.service';
 import { copilotSystemPrompt, customerTurn } from './prompts';
 
 /**
@@ -19,6 +20,7 @@ export class AiCopilotService {
     private readonly conversations: ConversationsService,
     private readonly kb: KbSearchService,
     private readonly llm: LlmClientService,
+    private readonly branding: BrandingService,
   ) {}
 
   async suggest(ticketRef: string, instruction: string | null): Promise<CopilotSuggestion> {
@@ -59,6 +61,7 @@ export class AiCopilotService {
         {
           role: 'system',
           content: copilotSystemPrompt({
+            company: await this.branding.get(),
             channel: latest?.channel ?? ticket.channel,
             customer: ticket.customer.displayName,
             knowledge,

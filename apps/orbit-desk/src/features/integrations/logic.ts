@@ -129,6 +129,22 @@ export function testLine(r: WebhookTestResult): string {
     : `The test failed: ${r.error ?? 'no answer'}.`;
 }
 
+/** What a site pastes to get the chat: the script, then `init` with its integration. */
+export function widgetSnippet(origin: string, slug: string): string {
+  return [
+    `<script src="${origin}/widget/tms-chat.js"></script>`,
+    '<script>',
+    '  TMSChat.init({',
+    `    server: '${origin}',`,
+    `    integration: '${slug}',`,
+    "    // theme: { primary: '#7a1f3d' },",
+    "    // context: { product_id: '…' },",
+    "    // identityToken: '<signed on your server for a logged-in visitor>',",
+    '  });',
+    '</script>',
+  ].join('\n');
+}
+
 export function toggle<T>(list: T[], item: T): T[] {
   return list.includes(item) ? list.filter((i) => i !== item) : [...list, item];
 }

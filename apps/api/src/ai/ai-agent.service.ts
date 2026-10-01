@@ -26,6 +26,7 @@ import { KbSearchService } from '../kb/kb-search.service';
 import { LlmClientService, LlmUnavailableError } from '../llm/llm-client.service';
 import { OrgService } from '../org/org.service';
 import { AiBehaviourService } from '../settings/ai-behaviour.service';
+import { BrandingService } from '../settings/branding.service';
 import { HandoverService } from '../handover/handover.service';
 import { LearningService } from '../learning/learning.service';
 import { TicketsService } from '../tickets/tickets.service';
@@ -151,6 +152,7 @@ export class AiAgentService {
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
     private readonly tools: ToolsService,
+    private readonly branding: BrandingService,
     private readonly gateway: ToolGatewayService,
     private readonly approvals: ApprovalsService,
     private readonly handover: HandoverService,
@@ -608,6 +610,7 @@ export class AiAgentService {
       {
         role: 'system',
         content: agentSystemPrompt({
+          company: await this.branding.get(),
           channel: i.channel,
           language: i.language,
           customer: i.customer,

@@ -213,7 +213,7 @@ describe('AI agent on web chat', () => {
     expect(run).toMatchObject({
       decision: 'sent',
       model: 'openai/scripted-cheap',
-      promptVersion: 'agent-v4',
+      promptVersion: 'agent-v5',
     });
     expect(run.sources.length).toBeGreaterThan(0);
     const reply = await waitFor(async () => {
@@ -519,7 +519,7 @@ describe('AI agent on tickets an integration raises', () => {
     const ticketId = (await ticket(made.body.reference)).id as string;
 
     const run = await waitForTurn(ticketId);
-    expect(run).toMatchObject({ decision: 'drafted', promptVersion: 'agent-v4' });
+    expect(run).toMatchObject({ decision: 'drafted', promptVersion: 'agent-v5' });
     expect(run.rules).toContain('draft_channel');
     const draft = (await conversations(ticketId))[0]!.messages.find(
       (m) => m.deliveryStatus === 'draft',

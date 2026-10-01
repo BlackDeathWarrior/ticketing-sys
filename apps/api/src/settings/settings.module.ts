@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { AiBehaviourService } from './ai-behaviour.service';
 import { AppSettingsService } from './app-settings.service';
+import { BrandingService } from './branding.service';
 import { ChannelConfigService } from './channel-config.service';
 import { ChannelSignalsService } from './channel-signals.service';
 import { CustomerExperienceService } from './customer-experience.service';
@@ -19,6 +20,7 @@ import { SystemMailer } from './system-mailer.service';
     ChannelSignalsService,
     AiBehaviourService,
     CustomerExperienceService,
+    BrandingService,
     SystemMailer,
   ],
   exports: [
@@ -28,6 +30,7 @@ import { SystemMailer } from './system-mailer.service';
     ChannelSignalsService,
     AiBehaviourService,
     CustomerExperienceService,
+    BrandingService,
     SystemMailer,
   ],
 })

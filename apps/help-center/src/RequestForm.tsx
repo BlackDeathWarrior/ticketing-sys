@@ -1,4 +1,5 @@
 import {
+  DEFAULT_BRANDING,
   WEB_FORM_MAX_FILE_BYTES,
   WEB_FORM_MAX_FILES,
   type WebFormConfig,
@@ -25,6 +26,8 @@ const DESCRIPTION_MAX = 10_000;
 export function RequestForm({ config, onSubmitted }: Props) {
   const maxFiles = config?.maxFiles ?? WEB_FORM_MAX_FILES;
   const maxBytes = config?.maxFileBytes ?? WEB_FORM_MAX_FILE_BYTES;
+  // What the optional reference is called here ("Order number", "Listing"); hidden when unset.
+  const referenceLabel = (config?.branding ?? DEFAULT_BRANDING).referenceLabel;
   // One id per form: a double click or a retry after a network error can't open two tickets.
   const [formId, setFormId] = useState(submissionId);
   const [values, setValues] = useState({
@@ -173,17 +176,19 @@ export function RequestForm({ config, onSubmitted }: Props) {
             </select>
           </div>
         )}
-        <div className="field">
-          <label htmlFor={`${uid}-orderNumber`}>Order number</label>
-          <input
-            {...field('orderNumber')}
-            inputMode="text"
-            placeholder="Optional"
-            value={values.orderNumber}
-            onChange={(e) => set('orderNumber')(e.target.value)}
-          />
-          {error('orderNumber')}
-        </div>
+        {referenceLabel && (
+          <div className="field">
+            <label htmlFor={`${uid}-orderNumber`}>{referenceLabel}</label>
+            <input
+              {...field('orderNumber')}
+              inputMode="text"
+              placeholder="Optional"
+              value={values.orderNumber}
+              onChange={(e) => set('orderNumber')(e.target.value)}
+            />
+            {error('orderNumber')}
+          </div>
+        )}
       </div>
 
       <div className="field">
