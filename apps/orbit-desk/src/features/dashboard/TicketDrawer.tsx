@@ -430,7 +430,7 @@ function DrawerContent({
           </dl>
         </section>
 
-        <TicketContext ticket={ticket} />
+        <TicketContext ticket={ticket} liveTick={liveTick} />
         <CallPanel ticketId={ticket.id} liveTick={liveTick} onChanged={() => void onChanged()} />
         <SlaPanel ticketId={ticket.id} liveTick={liveTick} />
         <RatingPanel ticketId={ticket.id} liveTick={liveTick} />

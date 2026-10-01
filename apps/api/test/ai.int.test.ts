@@ -507,7 +507,7 @@ describe('AI agent on tickets an integration raises', () => {
     });
     const made = await t.call('POST', `/integrations/${integration.body.id}/keys`, {
       token: admin,
-      body: { name: 'Backend', scopes: ['integration:ticket'] },
+      body: { name: 'Backend', scopes: ['integration:ticket', 'integration:event'] },
     });
     key = made.body.key;
   });
@@ -552,6 +552,25 @@ describe('AI agent on tickets an integration raises', () => {
       'the ticket to be classified',
     );
     expect((await runs(ticketId)).filter((r) => r.kind === 'turn')).toEqual([]);
+  });
+
+  it('neither answers nor classifies an incident the app reports about itself', async () => {
+    const incident = await app('POST', '/integration/events', {
+      fingerprint: `scraper.run_failed:${uniq()}`,
+      title: 'Scraper exited with code 1',
+      severity: 'critical',
+      message: 'When will my refund reach my card?',
+    });
+    expect(incident.status).toBe(202);
+    // A ticket raised after it has been classified by the time we look, so the incident was skipped.
+    const later = await raise({ ai: 'off' });
+    await waitFor(
+      async () => ((await ticket(later.body.reference)).aiClassification ? true : undefined),
+      'the later ticket to be classified',
+    );
+    const tracked = await ticket(incident.body.incident.ticket);
+    expect(tracked).toMatchObject({ aiClassification: null, priority: 'urgent', status: 'new' });
+    expect(await runs(tracked.id)).toEqual([]);
   });
 });
 

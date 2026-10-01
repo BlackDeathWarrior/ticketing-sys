@@ -109,6 +109,13 @@ export const DOMAIN_EVENT_TYPES = [
   'whatsapp.templates_changed',
   /** An integration or one of its API keys was created, changed or revoked. Never the key. */
   'integration.config_changed',
+  /**
+   * An integration reported a problem (opened), kept reporting it past a
+   * threshold or at a higher severity (updated), or reported the recovery.
+   */
+  'incident.opened',
+  'incident.updated',
+  'incident.resolved',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
@@ -133,7 +140,8 @@ export type AggregateType =
   | 'user_presence'
   | 'notification'
   | 'learning'
-  | 'integration';
+  | 'integration'
+  | 'incident';
 
 export interface DomainEvent<P = Record<string, unknown>> {
   id: string;
