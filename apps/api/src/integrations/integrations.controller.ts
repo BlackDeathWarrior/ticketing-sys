@@ -9,7 +9,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   type ApiKeyScope,
   type CreateApiKeyInput,
@@ -29,6 +29,7 @@ import {
   type RequestCtx,
   RequirePermission,
 } from '../common/request-context';
+import { ZodBody } from '../common/zod-openapi';
 import { ZodPipe } from '../common/zod.pipe';
 import type { Env } from '../config/env';
 import { ENV } from '../infra/tokens';
@@ -61,6 +62,7 @@ export class IntegrationsController {
 
   @Post()
   @RequirePermission('integration:manage')
+  @ZodBody(createIntegrationSchema)
   create(
     @Ctx() ctx: RequestCtx,
     @Body(new ZodPipe(createIntegrationSchema)) body: CreateIntegrationInput,
@@ -70,6 +72,7 @@ export class IntegrationsController {
 
   @Patch(':id')
   @RequirePermission('integration:manage')
+  @ZodBody(updateIntegrationSchema)
   update(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,
@@ -88,6 +91,7 @@ export class IntegrationsController {
   /** The answer carries the key itself, once; it cannot be read again (ADR 0022). */
   @Post(':id/keys')
   @RequirePermission('integration:manage', 'settings:secrets')
+  @ZodBody(createApiKeySchema)
   createKey(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,
@@ -122,6 +126,7 @@ export class IntegrationsController {
 export class IntegrationIdentityController {
   /** Who the key is: for checking a connection. Any working key may ask. */
   @Get()
+  @ApiOperation({ summary: 'Check the key: which integration it is and what it may do' })
   whoAmI(@ApiKey() key: ApiKeyContext): IntegrationIdentity {
     return {
       integration: { slug: key.integration.slug, name: key.integration.name },

@@ -20,6 +20,7 @@ import {
   updateWebhookSchema,
 } from '@tms/shared';
 import { Ctx, type RequestCtx, RequirePermission } from '../common/request-context';
+import { ZodBody, ZodQuery } from '../common/zod-openapi';
 import { ZodPipe } from '../common/zod.pipe';
 import { WebhooksService } from './webhooks.service';
 
@@ -39,6 +40,7 @@ export class WebhooksController {
   /** The answer carries the signing secret, once (like an API key, ADR 0022). */
   @Post('integrations/:id/webhooks')
   @RequirePermission('integration:manage', 'settings:secrets')
+  @ZodBody(createWebhookSchema)
   create(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,
@@ -49,6 +51,7 @@ export class WebhooksController {
 
   @Patch('webhooks/:id')
   @RequirePermission('integration:manage')
+  @ZodBody(updateWebhookSchema)
   update(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,
@@ -82,6 +85,7 @@ export class WebhooksController {
   /** The delivery log: outcomes and identifiers, never what was sent. */
   @Get('webhooks/:id/deliveries')
   @RequirePermission('integration:manage')
+  @ZodQuery(listDeliveriesQuerySchema)
   deliveries(
     @Param('id', ParseUUIDPipe) id: string,
     @Query(new ZodPipe(listDeliveriesQuerySchema)) q: ListDeliveriesQuery,

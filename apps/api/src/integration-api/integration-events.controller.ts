@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   type ListIncidentsQuery,
   listIncidentsQuerySchema,
@@ -14,6 +14,7 @@ import {
   type RequestCtx,
   RequirePermission,
 } from '../common/request-context';
+import { ZodBody, ZodQuery } from '../common/zod-openapi';
 import { ZodPipe } from '../common/zod.pipe';
 import { IncidentsService } from './incidents.service';
 
@@ -32,6 +33,8 @@ export class IntegrationEventsController {
   /** 202: the report was taken. The answer says what it did and which ticket tracks it. */
   @Post('events')
   @HttpCode(202)
+  @ApiOperation({ summary: 'Report a problem of your own, or its recovery' })
+  @ZodBody(reportEventSchema)
   report(
     @Ctx() ctx: RequestCtx,
     @ApiKey() key: ApiKeyContext,
@@ -42,6 +45,8 @@ export class IntegrationEventsController {
 
   /** The integration's own incidents, e.g. to show what is open right now. */
   @Get('incidents')
+  @ApiOperation({ summary: "List this integration's incidents" })
+  @ZodQuery(listIncidentsQuerySchema)
   list(
     @ApiKey() key: ApiKeyContext,
     @Query(new ZodPipe(listIncidentsQuerySchema)) q: ListIncidentsQuery,

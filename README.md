@@ -44,6 +44,8 @@ apps/
 packages/
   shared/       Zod schemas, permissions, workflow defaults, channel envelope, event contracts
   db/           Drizzle schema, SQL migrations, seed
+  sdk/          @tms/sdk: client for the integration API, webhook verification, chat identity tokens
+docs/integration/     Guide for connecting an outside app: tickets, incidents, webhooks, chat widget
 scripts/sample-data/  Fictional demo data loader (pnpm sample:load)
 e2e/                  Playwright suite against the running stack (pnpm e2e)
 infra/
@@ -188,6 +190,18 @@ See [`docs/runbooks/phase-7-demo.md`](docs/runbooks/phase-7-demo.md).
 - **Dependencies:** CI runs `pnpm audit`.
 
 See ADR 0021 and [`docs/runbooks/phase-11-demo.md`](docs/runbooks/phase-11-demo.md).
+
+## Connecting an outside app
+
+TMS plugs into an existing app through four things, each usable alone. The guide is [`docs/integration/README.md`](docs/integration/README.md).
+
+- **API keys:** Settings → Integrations. An integration is one outside app; its keys (`tms_sk_…`, shown once) carry scopes and a per-minute limit, and work only on the integration routes (ADR 0022).
+- **Tickets:** `POST /api/v1/integration/tickets` raises a ticket for one of the app's users in one call, with the app's own reference and context; the app reads the answer back or is told by webhook. It never reaches a ticket it did not raise (ADR 0023).
+- **Incidents:** `POST /api/v1/integration/events` reports a failure by fingerprint. Repeats share one ticket, and a recovery closes it (ADR 0024).
+- **Webhooks:** signed `POST`s for ticket, message, incident, approval and rating events, retried and logged ([`docs/integration/webhooks.md`](docs/integration/webhooks.md), ADR 0025).
+- **Chat widget:** themed, aware of what the visitor is looking at, and able to recognise signed-in visitors with a secret per integration ([`docs/integration/widget.md`](docs/integration/widget.md), ADR 0026).
+- **Clients:** `packages/sdk` for Node and `docs/integration/examples/python/tms_support.py` for Python (standard library only). Both are tested against `docs/integration/signature-vectors.json`.
+- **Branding:** Settings → Customers names the company the help center and the AI speak for.
 
 ## Knowledge base
 
