@@ -104,11 +104,20 @@ export const whatsappChannelConfigSchema = z.object({
 });
 export type WhatsappChannelConfig = z.infer<typeof whatsappChannelConfigSchema>;
 
+export const VOICE_DEFAULT_GREETING =
+  'Hello, thanks for calling. This call is recorded and transcribed so we can help you. How can I help you today?';
+
 export const sarvamChannelConfigSchema = z.object({
   enabled: z.boolean(),
   sttModel: z.string().trim().min(1).max(50).default('saaras:v4'),
   ttsModel: z.string().trim().min(1).max(50).default('bulbul:v3'),
   defaultSpeaker: z.string().trim().min(1).max(50).default('shubh'),
+  /** Spoken when a call starts. It must tell the caller that the call is recorded. */
+  greeting: z.string().trim().min(10).max(400).default(VOICE_DEFAULT_GREETING),
+  /** A call ends by itself after this long. */
+  maxCallMinutes: z.coerce.number().int().min(1).max(60).default(10),
+  /** Keep a recording of each call for 30 days. Transcripts are always kept. */
+  recordCalls: z.boolean().default(true),
 });
 export type SarvamChannelConfig = z.infer<typeof sarvamChannelConfigSchema>;
 

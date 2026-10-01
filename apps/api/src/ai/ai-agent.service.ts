@@ -468,7 +468,7 @@ export class AiAgentService {
           const m = await this.outbound.aiReply(
             AI_CTX,
             conv.id,
-            handoverMessage(replyLanguage),
+            handoverMessage(replyLanguage, conv.channel),
             { draft: false },
             tx,
           );
@@ -712,6 +712,7 @@ export class AiAgentService {
       unconfidentTurnsBefore: i.unconfidentTurnsBefore,
       mode: i.mode,
       behaviour: i.behaviour,
+      spoken: i.channel === 'voice',
     });
     out.decision = verdict.decision;
     out.confidence = verdict.confidence;

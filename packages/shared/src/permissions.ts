@@ -40,6 +40,10 @@ export const PERMISSIONS = [
    * admin can grant it to other roles. Keys still need `settings:secrets`.
    */
   'tool:create',
+  /** Join a live voice call and speak with the caller. */
+  'voice:answer',
+  /** Listen to call recordings. */
+  'voice:recording_read',
   /** Take a conversation over from the AI or the queue, and hand it back. */
   'conversation:takeover',
   /** Routing rules, agent skills and capacities. */
@@ -57,6 +61,7 @@ export function isPermission(value: string): value is Permission {
 }
 
 const AGENT: Permission[] = [
+  'voice:answer',
   'conversation:takeover',
   'kb:read',
   'message:approve_draft',
@@ -84,6 +89,7 @@ const SUPERVISOR: Permission[] = [
   'approval:approve',
   'audit:read',
   'kb:manage',
+  'voice:recording_read',
 ];
 
 export const SYSTEM_ROLES = {

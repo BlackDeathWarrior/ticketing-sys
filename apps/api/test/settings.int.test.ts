@@ -67,8 +67,11 @@ describe('settings permissions', () => {
 
 describe('secrets', () => {
   const value = 'sarvam-test-key-0123456789abcd';
+  // Other test files save this key too, so count the entries each step adds.
+  const entriesFor = async (action: string) => (await audit(action, 'sarvam.api_key')).length;
 
   it('stores a secret encrypted and only ever shows the last four characters', async () => {
+    const createdBefore = await entriesFor('settings.secret_created');
     const res = await t.call('PUT', '/settings/secrets/sarvam.api_key', {
       token: admin,
       body: { value },
@@ -86,22 +89,24 @@ describe('secrets', () => {
     expect(row!.ciphertext.startsWith('v1:')).toBe(true);
 
     const entries = await audit('settings.secret_created', 'sarvam.api_key');
-    expect(entries).toHaveLength(1);
+    expect(entries).toHaveLength(createdBefore + 1);
     expect(JSON.stringify(entries)).not.toContain(value);
   });
 
   it('rotates and deletes, auditing each step', async () => {
+    const rotatedBefore = await entriesFor('settings.secret_rotated');
+    const deletedBefore = await entriesFor('settings.secret_deleted');
     const rotated = await t.call('PUT', '/settings/secrets/sarvam.api_key', {
       token: admin,
       body: { value: 'sarvam-rotated-key-000000wxyz' },
     });
     expect(rotated.body.last4).toBe('wxyz');
-    expect(await audit('settings.secret_rotated', 'sarvam.api_key')).toHaveLength(1);
+    expect(await entriesFor('settings.secret_rotated')).toBe(rotatedBefore + 1);
 
     expect(
       (await t.call('DELETE', '/settings/secrets/sarvam.api_key', { token: admin })).status,
     ).toBe(204);
-    expect(await audit('settings.secret_deleted', 'sarvam.api_key')).toHaveLength(1);
+    expect(await entriesFor('settings.secret_deleted')).toBe(deletedBefore + 1);
     expect(
       (await t.call('DELETE', '/settings/secrets/sarvam.api_key', { token: admin })).status,
     ).toBe(404);

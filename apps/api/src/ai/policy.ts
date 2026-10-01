@@ -21,6 +21,8 @@ export interface AssessInput {
   unconfidentTurnsBefore: number;
   mode: AiChannelMode;
   behaviour: Pick<AiBehaviour, 'sendAt' | 'handoverBelow' | 'maxFailedTurns'>;
+  /** A voice call: nobody can approve a draft while the caller waits, so a person takes it. */
+  spoken?: boolean;
 }
 
 export interface Assessment {
@@ -64,11 +66,20 @@ export function assess(i: AssessInput): Assessment {
   }
   if (i.mode === 'auto' && !unconfident) return { decision: 'sent', confidence: c, rules };
   if (!unconfident) rules.push('draft_channel');
+  if (i.spoken) {
+    if (unconfident) rules.push('low_confidence');
+    return { decision: 'handover', confidence: c, rules };
+  }
   return { decision: 'drafted', confidence: c, rules };
 }
 
 /** What the AI tells a live customer when it hands over. */
-export function handoverMessage(language: string | null): string {
+export function handoverMessage(language: string | null, channel?: string): string {
+  if (channel === 'voice') {
+    return language === 'hi'
+      ? 'कृपया लाइन पर बने रहें। मैं आपको हमारी टीम के एक सदस्य से जोड़ रहा हूँ।'
+      : "Please stay on the line. I'm connecting you with a member of our team.";
+  }
   if (language === 'hi') {
     return 'धन्यवाद। मैं आपकी बातचीत हमारी टीम के एक सदस्य को सौंप रहा हूँ; वे जल्द ही यहीं जवाब देंगे।';
   }

@@ -1,6 +1,92 @@
 # Test report
 
-## Latest: Phase 8c, custom tools and custom MCP servers
+## Latest: Phase 9, voice calls in the browser
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-9-voice`.
+
+**Result: every step of the gate passed. Voice has not been run against Sarvam itself** (see below).
+
+| Step                                              | Result                                                                           |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                             |
+| `pnpm test`                                       | 279 passed (api 160, Orbit Desk 76, shared 23, fake providers 15, help center 5) |
+| `pnpm test:int`                                   | 170 passed (16 files)                                                            |
+| `pnpm e2e`                                        | 68 passed; 9 screenshot-only specs skipped as designed                           |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                       |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed                                               |
+
+### What was and wasn't tested
+
+There is no stand-in for Sarvam, and no Sarvam key on the test stack.
+
+- **Tested:** everything on our side of the speech provider. The Sarvam client talks to a WebSocket server created inside its unit test, using the message formats from Sarvam's documentation. Whole calls run through the real `/voice` and `/agent` sockets, the AI agent, handover, recording and retention, with speech scripted by the test (it says what was heard, and records what was spoken).
+- **Not tested:** a call with real audio. No speech has been recognised or spoken by Sarvam, and nobody has heard a call. The browser microphone and playback code has unit tests for its maths only.
+- **First things to check with a real key:** that Sarvam accepts `linear16` output at 16 kHz on the streaming speech socket (its guide lists it; its API reference mentions MP3 only), and how the delay before the AI starts speaking feels.
+
+### Sample data
+
+Unchanged. The three sample tickets with channel "Voice call" are tickets an agent logged after a phone call; they have no transcript or recording, because none were made.
+
+### New tests
+
+| Where                                               |   Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------------------------- | ------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/channels/voice/voice.test.ts`         |      20 | WAV building and reading, sentence chunks, the stereo recorder (alignment, cut on interruption, size limit), the voice rule "no drafts on a call", the call state machine (greeting, a turn, English when the language has no voice, barge-in, waiting for a person, an agent joining, the time limit, a failed answer, ending once), the Sarvam client (messages sent, transcripts, speech signals, audio out, abort, a refused key) |
+| `apps/api/src/channels/health/health-rules.test.ts` | updated | The Voice light follows the key, the last connection test and the free lines                                                                                                                                                                                                                                                                                                                                                          |
+| `apps/orbit-desk/.../voice/voice.test.ts`           |       5 | Call summary lines, who answered, downsampling 48 kHz to 16 kHz, 100 ms frames, playback samples, loudness                                                                                                                                                                                                                                                                                                                            |
+| `apps/api/test/voice.int.test.ts`                   |       9 | See below                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `e2e/tests/voice.spec.ts`                           |       5 | See below                                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+`voice.int.test.ts` covers:
+
+- **Before setup:** a caller is told calls are not available; a start without accepting the recording notice is refused.
+- **A call answered by the AI:** greeting, a question answered from the knowledge base and spoken, a ticket with channel `voice`, the transcript with AI messages stored as sent, audit entries, the call record, and a stereo recording in S3.
+- **Language:** a Hindi caller is answered in Hindi.
+- **Barge-in:** speech stops and the caller's page is told to drop queued audio.
+- **Handover:** "talk to a real person" plays the hold line and hands the ticket over. An agent joins; a second agent is refused; a typed reply is refused; audio flows both ways; both sides are transcribed; the AI stays quiet. Agents can't play the recording, supervisors can, and listening is audited.
+- **Retention:** recordings older than 30 days are deleted and the transcript stays.
+- **Endings:** closing the page ends the call; a call where nobody spoke leaves no ticket.
+- **Refusals:** every line busy, and a speech provider that refuses the key.
+- **Status:** the Voice light and its lines in channel status.
+
+`voice.spec.ts` covers:
+
+- The call page shows the recording notice, and Start call answers "Voice calls are not available right now" without opening the microphone.
+- The chat demo links to the call page.
+- An admin saves the voice settings; the light turns red with "Sarvam key: Not saved. Calls cannot start."
+- Agents are refused recordings.
+- The call page fits a phone screen.
+
+### Bugs found and fixed
+
+1. **A typed reply on a voice call was accepted** and stored as sent, although the caller could never see it. It is now refused with "Join the call to talk to the caller", and the ticket offers only an internal note.
+2. **The greeting field showed the first few words only.** It is now a text area across the form.
+3. **A settings test counted audit entries made by other test files** and failed once the voice tests also saved a Sarvam key. It now counts what its own step adds.
+
+### Known limits
+
+- Not yet run against Sarvam (above).
+- Live calls are held in one API process: with several instances an agent can only join a call on the instance their socket reached, and a restart ends its calls.
+- The AI's reply is spoken after the whole turn finishes, not word by word.
+- Browser calls only. Real phone numbers are not built.
+
+### Screenshots
+
+The call page (`/widget/voice.html`):
+
+![Call page](screenshots/voice-call-page.png)
+
+On a phone:
+
+![Call page on a phone](screenshots/voice-call-page-phone.png)
+
+Voice settings, switched on without a key:
+
+![Voice settings](screenshots/orbit-settings-voice.png)
+
+---
+
+## Phase 8c: custom tools and custom MCP servers
 
 Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-8c-custom-tools`.
 

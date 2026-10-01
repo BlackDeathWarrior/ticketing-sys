@@ -162,6 +162,11 @@
   gap: var(--spacing-12);
 }
 
+/* A field that takes the whole row of a two-column form. */
+.wide {
+  grid-column: 1 / -1;
+}
+
 .formActions {
   display: flex;
   justify-content: flex-end;

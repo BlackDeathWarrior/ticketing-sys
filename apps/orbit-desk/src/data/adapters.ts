@@ -345,7 +345,7 @@ export const channelLabels: Record<Channel, string> = {
   email: 'Email',
   webchat: 'Web chat',
   whatsapp: 'WhatsApp',
-  voice: 'Phone',
+  voice: 'Voice call',
   web_form: 'Web form',
   agent: 'Agent-created',
 };

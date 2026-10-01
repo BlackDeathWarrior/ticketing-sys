@@ -1,0 +1,99 @@
+.live {
+  display: grid;
+  gap: var(--spacing-12);
+  margin-bottom: var(--spacing-12);
+  padding: var(--spacing-12) var(--spacing-16);
+  border-radius: var(--radius-cards);
+  box-shadow: var(--shadow-rim);
+}
+
+.state {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  font-size: var(--text-body-sm);
+  color: var(--color-lilac-white);
+}
+
+/* A call in progress: the lavender "needs attention" mark, breathing. */
+.pulse {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-lavender-accent);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+  }
+}
+
+.captions {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  font-size: var(--text-body-sm);
+  line-height: 1.5;
+  color: var(--color-ash);
+}
+
+.captions b {
+  margin-right: 6px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fog);
+}
+
+.captions [data-who='caller'] {
+  color: var(--color-lilac-white);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+}
+
+.calls {
+  display: grid;
+  gap: var(--spacing-12);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ended {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  font-size: var(--text-body-sm);
+}
+
+.note {
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--color-fog);
+}
+
+.error {
+  font-size: var(--text-caption);
+  color: var(--color-lavender-accent);
+}
+
+.player {
+  width: 100%;
+  max-width: 420px;
+  height: 36px;
+}

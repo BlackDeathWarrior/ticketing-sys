@@ -5,6 +5,7 @@ import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { ChannelHealthModule } from './channels/health/channel-health.controller';
 import { ChannelsModule } from './channels/channels.module';
+import { VoiceModule } from './channels/voice/voice.module';
 import { ChatModule } from './chat/chat.module';
 import { AllExceptionsFilter } from './common/exception.filter';
 import { loadEnv } from './config/env';
@@ -48,6 +49,7 @@ const env = loadEnv();
     RealtimeModule,
     ChatModule,
     ChannelHealthModule,
+    VoiceModule,
     ReportsModule,
     LlmModule,
     KbModule,

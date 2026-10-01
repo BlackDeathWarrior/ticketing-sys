@@ -31,6 +31,7 @@ import { ControlBar } from '../handover/ControlBar';
 import { laneRows } from '../handover/logic';
 import { HandoverContext, History, SlaPanel } from '../handover/Panels';
 import { ToolCalls } from '../tools/ToolCalls';
+import { CallPanel } from '../voice/CallPanel';
 import { windowNote } from '../whatsapp/logic';
 import { TemplateComposer } from '../whatsapp/TemplateComposer';
 import kbStyles from '../kb/Kb.module.css';
@@ -202,7 +203,11 @@ function DrawerContent({
     [ticket, conversations, notes],
   );
   const target = replyTarget(thread);
-  const canReply = can('message:send') && (target !== null || !!ticket.customer.email);
+  // A voice call is answered by talking (the call panel), not by typing.
+  const canReply =
+    can('message:send') &&
+    target?.channel !== 'voice' &&
+    (target !== null || !!ticket.customer.email);
   // With no conversation yet, a customer with a phone number can be written to on WhatsApp,
   // but only with an approved template.
   const canStartWhatsApp = can('message:send') && !target && !!ticket.customer.phone;
@@ -423,6 +428,7 @@ function DrawerContent({
           </dl>
         </section>
 
+        <CallPanel ticketId={ticket.id} liveTick={liveTick} onChanged={() => void onChanged()} />
         <SlaPanel ticketId={ticket.id} liveTick={liveTick} />
         <HandoverContext ticketId={ticket.id} liveTick={liveTick} />
 

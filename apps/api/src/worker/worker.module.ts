@@ -12,6 +12,7 @@ import { CHANNEL_SENDERS } from '../delivery/senders';
 import { WebchatSender } from '../delivery/webchat.sender';
 import { WhatsAppSender } from '../delivery/whatsapp.sender';
 import { ChannelHealthMonitor } from '../channels/health/channel-health.monitor';
+import { VoiceRetentionWorker } from '../channels/voice/voice.module';
 import { WhatsAppWebhookWorker } from '../channels/whatsapp/whatsapp-webhook.queue';
 import { InfraModule } from '../infra/infra.module';
 import { KbIndexerService } from '../kb/kb-indexer.service';
@@ -79,6 +80,7 @@ const env = loadEnv();
     WhatsAppSender,
     WhatsAppWebhookWorker,
     ChannelHealthMonitor,
+    VoiceRetentionWorker,
     {
       provide: CHANNEL_SENDERS,
       inject: [WebchatSender, EmailSender, WhatsAppSender],

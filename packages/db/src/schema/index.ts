@@ -9,3 +9,4 @@ export * from './ai';
 export * from './tools';
 export * from './operations';
 export * from './whatsapp';
+export * from './voice';

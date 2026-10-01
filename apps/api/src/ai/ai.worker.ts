@@ -118,7 +118,7 @@ export class AiDispatchHandler implements DomainEventHandler {
       const c = event.payload as { conversationId: string; to: string };
       if (c.to !== 'ai') return;
       const last = (await this.conversations.transcript(c.conversationId, 1))[0];
-      if (last?.authorType === 'customer') {
+      if (last?.authorType === 'customer' && last.channel !== 'voice') {
         await this.ai.enqueue({
           kind: 'turn',
           conversationId: c.conversationId,
@@ -138,7 +138,8 @@ export class AiDispatchHandler implements DomainEventHandler {
     const p = event.payload as { conversationId?: string; messageId?: string };
     if (!p.conversationId || !p.messageId) return;
     const conv = await this.conversations.get(p.conversationId).catch(() => null);
-    if (conv?.controller === 'ai') {
+    // A voice call answers while the caller is on the line (VoiceService), not from this queue.
+    if (conv?.controller === 'ai' && conv.channel !== 'voice') {
       await this.ai.enqueue({ kind: 'turn', conversationId: conv.id, messageId: p.messageId });
     }
   }

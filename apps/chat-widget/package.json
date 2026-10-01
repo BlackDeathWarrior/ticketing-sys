@@ -2,11 +2,11 @@
   "name": "@tms/chat-widget",
   "version": "0.1.0",
   "private": true,
-  "description": "Embeddable web chat widget: one script tag, talks to the TMS /chat socket",
+  "description": "Embeddable web chat widget and voice call box: one script tag each, over the TMS sockets",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "build": "tsc -p tsconfig.json --noEmit && vite build && vite build -c vite.voice.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
