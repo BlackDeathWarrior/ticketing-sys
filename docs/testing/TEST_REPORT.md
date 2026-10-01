@@ -4,13 +4,13 @@
 
 Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-11-hardening`.
 
-**Result: every step of the gate passed.** The first full run had one failure, a real bug (number 5 below); it was fixed, the stack was reset again and everything was rerun.
+**Result: every step of the gate passed.** The first full run had one failure, a real bug (number 5 below); it was fixed, the stack was reset again and everything was rerun. The figures are from the last run, after the chat fix (number 8).
 
 | Step                                              | Result                                                                            |
 | ------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                              |
-| `pnpm test`                                       | 337 passed (api 178, Orbit Desk 97, shared 34, fake providers 18, help center 10) |
-| `pnpm test:int`                                   | 217 passed (20 files)                                                             |
+| `pnpm test`                                       | 339 passed (api 178, Orbit Desk 97, shared 34, fake providers 20, help center 10) |
+| `pnpm test:int`                                   | 220 passed (20 files)                                                             |
 | `pnpm e2e`                                        | 97 passed; 9 screenshot-only specs skipped as designed                            |
 | `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                        |
 | `pnpm ai:eval`                                    | 14 of 14 golden conversations passed (4 of them red-team)                         |
@@ -24,18 +24,20 @@ Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, 
 
 ### New tests
 
-| Where                                          | Tests | Covers                                                                                                                                    |
-| ---------------------------------------------- | ----: | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/api/src/common/client-address.test.ts`   |     5 | Which addresses count as our own proxies; the caller's address with no proxy, one, two; a header the caller wrote themselves; nonsense    |
-| `apps/api/src/telemetry/tracing.test.ts`       |     6 | Off: nothing happens. On: a span is active across awaits, nests, continues a trace handed over from another process, records a failure    |
-| `apps/api/src/ai/ai.test.ts`                   |    +1 | A reply that repeats the AI's instructions is never sent                                                                                  |
-| `apps/fake-providers/src/agent-script.test.ts` |    +1 | The scripted model gives in when asked for its instructions (so the guard is what the other tests exercise)                               |
-| `apps/orbit-desk/.../admin/logic.test.ts`      |    +1 | What a retention run deleted, in words                                                                                                    |
-| `apps/api/test/security.int.test.ts`           |    13 | See below                                                                                                                                 |
-| `apps/api/test/ai.int.test.ts`                 |    +6 | The four red-team goldens, a leaked prompt dropped end to end, and a poisoned knowledge base article that tells the AI to promise refunds |
-| `apps/api/test/kb.int.test.ts`                 |    +1 | Two indexing jobs for one document overlap and it still ends up indexed once (fails without the fix)                                      |
-| `apps/api/test/evals/redteam.yaml`             |     4 | Asked for its instructions; a fake system message in a customer message; another customer's details; posing as staff to get money         |
-| `e2e/tests/system.spec.ts`                     |     6 | See below                                                                                                                                 |
+| Where                                          | Tests | Covers                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------------- | ----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/common/client-address.test.ts`   |     5 | Which addresses count as our own proxies; the caller's address with no proxy, one, two; a header the caller wrote themselves; nonsense                                                                                                                                                            |
+| `apps/api/src/telemetry/tracing.test.ts`       |     6 | Off: nothing happens. On: a span is active across awaits, nests, continues a trace handed over from another process, records a failure                                                                                                                                                            |
+| `apps/api/src/ai/ai.test.ts`                   |    +1 | A reply that repeats the AI's instructions is never sent                                                                                                                                                                                                                                          |
+| `apps/fake-providers/src/agent-script.test.ts` |    +1 | The scripted model gives in when asked for its instructions (so the guard is what the other tests exercise)                                                                                                                                                                                       |
+| `apps/orbit-desk/.../admin/logic.test.ts`      |    +1 | What a retention run deleted, in words                                                                                                                                                                                                                                                            |
+| `apps/api/test/security.int.test.ts`           |    13 | See below                                                                                                                                                                                                                                                                                         |
+| `apps/api/test/ai.int.test.ts`                 |    +6 | The four red-team goldens, a leaked prompt dropped end to end, and a poisoned knowledge base article that tells the AI to promise refunds                                                                                                                                                         |
+| `apps/api/test/kb.int.test.ts`                 |    +1 | Two indexing jobs for one document overlap and it still ends up indexed once (fails without the fix)                                                                                                                                                                                              |
+| `apps/api/test/evals/redteam.yaml`             |     4 | Asked for its instructions; a fake system message in a customer message; another customer's details; posing as staff to get money                                                                                                                                                                 |
+| `apps/api/test/ai.int.test.ts` (chat fix)      |    +3 | A draft on chat tells the visitor once that a person will reply, is not a first response, and the draft stays last in the timeline; a greeting is answered; a message with no question is asked for one and the real question is then answered by the AI alone; email senders get no such message |
+| `apps/fake-providers/src/agent-script.test.ts` |    +2 | Greetings, and messages with nothing to look up                                                                                                                                                                                                                                                   |
+| `e2e/tests/system.spec.ts`                     |     6 | See below                                                                                                                                                                                                                                                                                         |
 
 `security.int.test.ts` (rate limits switched on for this file only):
 
@@ -59,8 +61,12 @@ Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, 
 6. **Retrying or removing a failed job left no audit entry.** Both are recorded now.
 7. **Known vulnerabilities in dependencies** (9 high in what we ship: Fastify, nodemailer, OpenTelemetry's Jaeger propagator). Upgraded; `pnpm audit` now runs in CI.
 
+8. **A chat visitor whose question the AI was unsure about saw nothing at all.** The answer became a draft for an agent, and nobody told the visitor. Found by the product owner typing "hi" into the help center chat. On chat and WhatsApp the visitor now gets one automatic line saying a member of the team will reply; it is not counted as a first response. The scripted demo model also greets back and asks what the visitor needs when a message holds no question, instead of drafting an unrelated passage.
+9. **Two messages written in one transaction had the same timestamp**, so their order in the timeline was random (it showed as one integration test failing once). Messages are now stamped with the clock at the moment they are written.
+
 ### Known limits
 
+- The scripted demo model is not a language model: it answers on its own only when the question's words match a knowledge base passage. Free conversation needs a real provider key in Settings.
 - Limits are per network address: an office behind one address shares them.
 - The failed-jobs view shows the 25 most recent per queue and has no alert; someone has to look.
 - Retention deletes logs, not customer data: erasing a customer on request is not built.

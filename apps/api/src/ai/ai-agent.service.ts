@@ -34,7 +34,7 @@ import { forModel, type InvokeResult, ToolGatewayService } from '../tools/tool-g
 import { type AgentTool, ToolsService } from '../tools/tools.service';
 import { AiRunsService } from './ai-runs.service';
 import { LanguageService } from './language.service';
-import { assess, handoverMessage, handoverNote } from './policy';
+import { assess, handoverMessage, handoverNote, waitingMessage } from './policy';
 import {
   AGENT_PROMPT_VERSION,
   agentSystemPrompt,
@@ -113,6 +113,14 @@ const LOCK_MS = 120_000;
 const HISTORY_TAIL = 8;
 const SUMMARIZE_AFTER = 14;
 const LIVE_CHANNELS = new Set(['webchat', 'whatsapp', 'voice']);
+/** Live channels where a draft leaves the customer waiting in silence (a call never drafts). */
+const WAITING_CHANNELS = new Set(['webchat', 'whatsapp']);
+
+/** Whether the last thing the customer was sent is our "a person will reply" message. */
+function toldToWait(rows: Array<{ direction: string; metadata: unknown }>): boolean {
+  const last = [...rows].reverse().find((m) => m.direction === 'outbound');
+  return (last?.metadata as { holding?: boolean } | null)?.holding === true;
+}
 
 /**
  * The first-line AI agent (ADR 0011). One turn answers the customer's latest
@@ -256,6 +264,7 @@ export class AiAgentService {
         language,
         lastCustomerBody: lastCustomer?.body ?? '',
         aiReplies: rows.filter((m) => m.authorType === 'ai').length,
+        toldToWait: toldToWait(rows),
         mode,
         behaviour,
         triggerMessageId: approvalId,
@@ -384,6 +393,7 @@ export class AiAgentService {
       language,
       lastCustomerBody: lastRow.body,
       aiReplies: rows.filter((m) => m.authorType === 'ai').length,
+      toldToWait: toldToWait(rows),
       mode,
       behaviour,
       triggerMessageId,
@@ -399,6 +409,8 @@ export class AiAgentService {
     language: string | null;
     lastCustomerBody: string;
     aiReplies: number;
+    /** The customer already has our "a person will reply" message and no answer since. */
+    toldToWait: boolean;
     mode: AiChannelMode;
     behaviour: AiBehaviour;
     triggerMessageId: string | null;
@@ -441,6 +453,16 @@ export class AiAgentService {
       }
       let replyMessageId: string | null = null;
       if ((r.decision === 'sent' || r.decision === 'drafted') && r.reply) {
+        // The draft waits for a person; say so once, instead of leaving a live chat silent.
+        // Written first, so the draft stays the last thing in the agent's timeline.
+        if (
+          r.decision === 'drafted' &&
+          mode === 'auto' &&
+          WAITING_CHANNELS.has(conv.channel) &&
+          !p.toldToWait
+        ) {
+          await this.outbound.holdingReply(tx, conv.id, waitingMessage(replyLanguage));
+        }
         const message = await this.outbound.aiReply(
           AI_CTX,
           conv.id,

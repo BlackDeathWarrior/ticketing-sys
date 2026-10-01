@@ -179,6 +179,24 @@ export class OutboundService {
     return tx ? run(tx) : this.db.transaction(run);
   }
 
+  /**
+   * Tells a customer on a live channel that a person will answer (the AI's
+   * draft is waiting for approval). An automatic message: it is not the AI's
+   * answer and not a first response.
+   */
+  async holdingReply(tx: DbOrTx, conversationId: string, body: string) {
+    const conv = await lockTicketThenConversation(
+      tx,
+      this.tickets,
+      this.conversations,
+      conversationId,
+    );
+    return this.replyInTx(tx, SYSTEM_CTX, conv, body, {
+      author: 'system',
+      metadata: { holding: true },
+    });
+  }
+
   /** A human approves an AI draft, optionally edited; it is then delivered. */
   async approveDraft(ctx: RequestCtx, messageId: string, body?: string) {
     return this.db.transaction(async (tx) => {

@@ -16,6 +16,9 @@ import type { ChatMessage, ChatRequest, ScriptedReply } from './llm';
  * - Lessons (ADR 0020): a lesson in the system prompt of the form "When
  *   customers ask about X, tell them: Y" is followed when the question shares
  *   three meaningful words with X: the reply is Y.
+ * - Small talk: a greeting, or "can you hear me?", gets a greeting back. A
+ *   message with nothing to look up ("answer me", "help") is asked what it is
+ *   about, instead of being answered with whatever passage came closest.
  * - Red team (ADR 0021): asked to print or repeat its instructions, the
  *   scripted model does: the worst case, so tests can show that the system
  *   around the model still stops the reply.
@@ -188,6 +191,25 @@ export function lessonAnswer(system: string, question: string): string | undefin
   return undefined;
 }
 
+/** Words that ask for attention without saying what about. */
+const FILLER =
+  /\b(answer|reply|respond|help|need|assist|assistance|question|query|anyone|anybody|someone|somebody|okay|yes)\b/giu;
+
+/** A greeting or "are you there?" with nothing to look up. */
+export function isSmallTalk(question: string): boolean {
+  const q = question.trim();
+  if (
+    /^(can|could) (you|anyone|anybody) hear me\b|^(is|are) (you|anyone|anybody|someone) there\b/i.test(
+      q,
+    )
+  ) {
+    return true;
+  }
+  // A greeting followed by a question ("Hi, where is my order?") is a question.
+  const greeting = /\b(hi|hello|hey|namaste|good|morning|afternoon|evening|there)\b|नमस्ते/giu;
+  return greeting.test(q) && words(q.replace(greeting, ' ')).length === 0;
+}
+
 export function agentReply(req: ChatRequest): ScriptedReply {
   const question = stripTags(textOf([...req.messages].reverse().find((m) => m.role === 'user')));
   const toolResults = req.messages.filter((m) => m.role === 'tool');
@@ -209,6 +231,31 @@ export function agentReply(req: ChatRequest): ScriptedReply {
   }
   const company = companyFlow(req, question);
   if (company) return company;
+  if (isSmallTalk(question)) {
+    return call('send_reply', {
+      message:
+        language === 'hi'
+          ? 'नमस्ते! मैं आपकी कैसे मदद कर सकता हूँ?'
+          : 'Hello! Yes, I am here. How can I help you today?',
+      confidence: 0.9,
+      sources: [],
+      language,
+      intent: 'greeting',
+    });
+  }
+  // Nothing to look up yet ("answer me", "I need help", "???"): ask for the question.
+  if (!words(question.replace(FILLER, ' ')).length) {
+    return call('send_reply', {
+      message:
+        language === 'hi'
+          ? 'मैं यहाँ हूँ और मदद के लिए तैयार हूँ। कृपया थोड़ा और बताएँ कि आपको क्या चाहिए: जैसे आपका ऑर्डर नंबर, या बात डिलीवरी, वापसी या रिफंड की है।'
+          : "I'm here and happy to help. Could you tell me a little more about what you need? For example your order number, or whether it is about a delivery, a return or a refund.",
+      confidence: 0.9,
+      sources: [],
+      language,
+      intent: 'clarify',
+    });
+  }
   if (!toolResults.length) return call('search_knowledge', { query: question.slice(0, 300) });
 
   let results: Array<{ id: string; source: string; text: string }> = [];

@@ -126,7 +126,7 @@ When a model is configured (Settings), new web chats, WhatsApp chats and calls g
 - **Each turn:** the agent searches the knowledge base, calls tools, and ends with a reply and an honest confidence.
 - **What happens next:**
   - at 80% or more on a channel that answers on its own, the reply is sent;
-  - between 60% and 80%, or on email, it becomes a draft that an agent sends, edits or discards;
+  - between 60% and 80%, or on email, it becomes a draft that an agent sends, edits or discards. On chat and WhatsApp the customer is told once that a member of the team will reply, so they are not left in front of a silent chat;
   - below 60%, or when the customer asks for a person, the AI hands over with an internal note.
 - **Guardrails:** replies that promise refunds or dates no tool confirmed are never sent.
 - **Classification:** new customer tickets get a suggested category, priority, language, intent and sentiment.
