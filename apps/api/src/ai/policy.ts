@@ -7,6 +7,8 @@ import type { AiBehaviour, AiChannelMode, AiDecision, AiRule } from '@tms/shared
  * - The model's own confidence is the starting point (0.5 when it gave none).
  * - A reply that states facts (numbers, amounts, dates) without citing a
  *   knowledge source can't be sent on its own: capped just below `sendAt`.
+ * - A reply on a topic, or from a document, that customers rated badly
+ *   (ADR 0020) can't be sent on its own either: a person sees it first.
  * - A reply that promises money or dates no tool confirmed is capped below
  *   `handoverBelow`, which hands the conversation over.
  * - Below `handoverBelow`: hand over. Too many unconfident turns in one
@@ -23,6 +25,8 @@ export interface AssessInput {
   behaviour: Pick<AiBehaviour, 'sendAt' | 'handoverBelow' | 'maxFailedTurns'>;
   /** A voice call: nobody can approve a draft while the caller waits, so a person takes it. */
   spoken?: boolean;
+  /** Customers rated the AI's answers on this topic or from these sources badly. */
+  poorFeedback?: boolean;
 }
 
 export interface Assessment {
@@ -48,6 +52,10 @@ export function assess(i: AssessInput): Assessment {
   if (i.citedSources === 0 && FACTUAL.test(i.reply) && c >= sendAt) {
     c = Math.max(0, sendAt - 0.01);
     rules.push('no_sources');
+  }
+  if (i.poorFeedback && c >= sendAt) {
+    c = Math.max(0, sendAt - 0.01);
+    rules.push('poor_feedback');
   }
   if (makesPromise(i.reply) && !i.confirmedByTool) {
     c = Math.min(c, Math.max(0, handoverBelow - 0.01));

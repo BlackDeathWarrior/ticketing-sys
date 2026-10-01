@@ -69,6 +69,11 @@ test.describe('reports', () => {
     }
     await expect(compare.getByRole('row', { name: /Customer rating/ })).toContainText(/4\.\d \/ 5/);
 
+    // Ratings per agent, with the AI's own on the first line.
+    const byAgent = page.getByRole('region', { name: 'Ratings by agent' });
+    await expect(byAgent.locator('tr[data-agent="ai"]')).toContainText('The AI alone');
+    await expect(byAgent.locator('tbody tr')).not.toHaveCount(1);
+
     const cost = page.getByRole('region', { name: 'AI cost' });
     await expect(cost.getByRole('list', { name: 'Cost by provider' })).toContainText(
       'Demo model (scripted)',

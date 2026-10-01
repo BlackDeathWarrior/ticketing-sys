@@ -5,6 +5,7 @@ import {
   type AiChannelMode,
   type AiDecision,
   type AiRule,
+  cautionText,
   AI_RULE_LABELS,
   asksForHuman,
   type SimulateAiInput,
@@ -16,6 +17,7 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat/completio
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import { OutboundService } from '../channels/outbound.service';
+import { lockTicketThenConversation } from '../channels/lock-order';
 import { AI_CTX, SYSTEM_CTX } from '../common/request-context';
 import { ConversationsService } from '../conversations/conversations.service';
 import { CustomersService } from '../customers/customers.service';
@@ -25,6 +27,7 @@ import { LlmClientService, LlmUnavailableError } from '../llm/llm-client.service
 import { OrgService } from '../org/org.service';
 import { AiBehaviourService } from '../settings/ai-behaviour.service';
 import { HandoverService } from '../handover/handover.service';
+import { LearningService } from '../learning/learning.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { ApprovalsService } from '../tools/approvals.service';
 import { forModel, type InvokeResult, ToolGatewayService } from '../tools/tool-gateway.service';
@@ -69,6 +72,8 @@ interface ThinkInput {
     subject: string;
     status: string;
     category: string | null;
+    /** The top-level category, for lessons and ratings that are about a topic. */
+    categoryId?: string | null;
   };
   customer: { name: string; type: string };
   language: string | null;
@@ -138,6 +143,7 @@ export class AiAgentService {
     private readonly gateway: ToolGatewayService,
     private readonly approvals: ApprovalsService,
     private readonly handover: HandoverService,
+    private readonly learning: LearningService,
   ) {}
 
   /** Answers the conversation's unanswered customer message(s), if the AI still owns it. */
@@ -224,6 +230,7 @@ export class AiAgentService {
             subject: ticket.subject,
             status: ticket.status,
             category: ticket.category?.name ?? null,
+            categoryId: ticket.category?.id ?? null,
           },
           customer: { name: customer.displayName, type: customer.customerType },
           language,
@@ -354,6 +361,7 @@ export class AiAgentService {
         category: ticket.category?.id
           ? `${ticket.category.name}${ticket.subcategory?.id ? ` > ${ticket.subcategory.name}` : ''}`
           : null,
+        categoryId: ticket.category?.id ?? null,
       },
       customer: { name: customer.displayName, type: customer.customerType },
       language,
@@ -406,7 +414,12 @@ export class AiAgentService {
     const replyLanguage = r.language ?? language;
     const decision = await this.db.transaction(async (tx): Promise<AiDecision> => {
       // A person may have taken over while the model was thinking: then the AI stays quiet.
-      const current = await this.conversations.lock(tx, conv.id);
+      const current = await lockTicketThenConversation(
+        tx,
+        this.tickets,
+        this.conversations,
+        conv.id,
+      );
       if (current.controller !== 'ai') {
         await this.runs.record(tx, {
           kind: p.kind,
@@ -554,6 +567,10 @@ export class AiAgentService {
 
     const knowledge = await search(last, 3).catch(() => []);
     const categories = await this.categoryLabels();
+    // What staff taught the AI after reading customer ratings (ADR 0020).
+    const lessons = await this.learning
+      .lessonsFor(i.ticket.categoryId ?? null)
+      .catch(() => [] as string[]);
     const companyTools: AgentTool[] = await this.tools.agentTools().catch(() => []);
     /** Company-system results the reply may rest on; they count as sources. */
     const toolSources: Array<{ chunkId: string; label: string }> = [];
@@ -573,6 +590,7 @@ export class AiAgentService {
           categories,
           companyTools: companyTools.length > 0,
           update: i.update,
+          lessons,
         }),
       },
       ...i.transcript.map<ChatCompletionMessageParam>((l) =>
@@ -704,6 +722,10 @@ export class AiAgentService {
     }
     const a = final.args;
     const cited = a.sources.filter((id) => labels.has(id));
+    // Customers rated answers like this one badly: a person sees it before the customer does.
+    const caution = await this.learning
+      .cautionFor({ categoryId: i.ticket.categoryId ?? null, chunkIds: cited })
+      .catch(() => []);
     const verdict = assess({
       selfConfidence: a.confidence,
       reply: a.message,
@@ -713,7 +735,11 @@ export class AiAgentService {
       mode: i.mode,
       behaviour: i.behaviour,
       spoken: i.channel === 'voice',
+      poorFeedback: caution.length > 0,
     });
+    if (verdict.rules.includes('poor_feedback')) {
+      out.tools.push({ name: 'feedback', summary: caution.map(cautionText).join('; ') });
+    }
     out.decision = verdict.decision;
     out.confidence = verdict.confidence;
     out.selfConfidence = a.confidence;

@@ -48,6 +48,7 @@ const report = (over: Partial<PerformanceReport> = {}): PerformanceReport => ({
     ai: { responses: 5, average: 4.6, satisfied: 0.8 },
     human: { responses: 7, average: 4, satisfied: 5 / 7 },
     asked: 30,
+    byAgent: [{ agent: 'Jonah Reyes', responses: 4, average: 4.5, satisfied: 1 }],
   },
   cost: { totalUsd: 1.234, calls: 210, byProvider: [], perAiResolvedUsd: 0.0686 },
   daily: [],

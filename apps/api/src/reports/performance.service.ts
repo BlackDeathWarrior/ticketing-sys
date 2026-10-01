@@ -61,7 +61,7 @@ export class PerformanceService {
     const s = scope(q, now);
     const inPeriod = (column: SQL) => sql`${column} >= ${s.start} and ${column} < ${s.end}`;
 
-    const [resolved, created, sla, csat, asked, cost, settings] = await Promise.all([
+    const [resolved, created, sla, csat, asked, cost, settings, byAgent] = await Promise.all([
       this.rows<{ day: string; channel: Channel; handled_by: HandledBy; minutes: number }>(sql`
         select to_char(t.resolved_at at time zone 'UTC', 'YYYY-MM-DD') as day,
                t.channel,
@@ -169,6 +169,17 @@ export class PerformanceService {
         order by 2 desc, 1`,
       ),
       this.experience.get(),
+      this.rows<{ agent: string; responses: number; total: number; satisfied: number }>(sql`
+        select coalesce(u.name, 'No assignee') as agent,
+               count(*)::int as responses,
+               sum(cr.rating)::int as total,
+               count(*) filter (where cr.rating >= 4)::int as satisfied
+        from csat_responses cr
+        join tickets t on t.id = cr.ticket_id
+        left join users u on u.id = cr.assignee_id
+        where ${inPeriod(sql`cr.created_at`)} and cr.handling <> 'ai' ${s.where}
+        group by 1
+        order by 2 desc, 1`),
     ]);
 
     const count = (by: HandledBy) => resolved.filter((r) => r.handled_by === by).length;
@@ -255,6 +266,12 @@ export class PerformanceService {
         ai: csatSummary(csat.filter((r) => r.ai)),
         human: csatSummary(csat.filter((r) => !r.ai)),
         asked: asked[0]?.asked ?? 0,
+        byAgent: byAgent.map((a) => ({
+          agent: a.agent,
+          responses: a.responses,
+          average: round(a.total / a.responses, 2),
+          satisfied: rate(a.satisfied, a.responses),
+        })),
       },
       cost: {
         totalUsd: round(totalUsd, 6),

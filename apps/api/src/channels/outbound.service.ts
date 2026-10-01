@@ -20,6 +20,7 @@ import { TicketsService } from '../tickets/tickets.service';
 import { replySubject } from './email/email.util';
 import { isValidE164 } from './whatsapp/phone-utils';
 import { isBusinessScopedUserId } from './whatsapp/wa-identity';
+import { lockTicketThenConversation } from './lock-order';
 import { WhatsAppTemplatesService } from './whatsapp/whatsapp-templates.service';
 
 /**
@@ -43,7 +44,12 @@ export class OutboundService {
 
   async reply(ctx: RequestCtx, conversationId: string, body: string) {
     return this.db.transaction(async (tx) => {
-      const conv = await this.conversations.lock(tx, conversationId);
+      const conv = await lockTicketThenConversation(
+        tx,
+        this.tickets,
+        this.conversations,
+        conversationId,
+      );
       if (conv.channel === 'voice') {
         // A typed reply can't be heard: on a call, people talk.
         throw new BadRequestException(
@@ -63,7 +69,12 @@ export class OutboundService {
     await this.requireWhatsApp();
     const { send, preview } = await this.templates.prepare(input);
     return this.db.transaction(async (tx) => {
-      const conv = await this.conversations.lock(tx, conversationId);
+      const conv = await lockTicketThenConversation(
+        tx,
+        this.tickets,
+        this.conversations,
+        conversationId,
+      );
       if (conv.channel !== 'whatsapp') {
         throw new BadRequestException('Templates can only be sent on WhatsApp conversations');
       }
@@ -108,7 +119,12 @@ export class OutboundService {
    */
   async agentSpoke(ctx: RequestCtx, conversationId: string, body: string) {
     return this.db.transaction(async (tx) => {
-      const conv = await this.conversations.lock(tx, conversationId);
+      const conv = await lockTicketThenConversation(
+        tx,
+        this.tickets,
+        this.conversations,
+        conversationId,
+      );
       if (conv.channel !== 'voice') throw new BadRequestException('Not a voice conversation');
       return this.replyInTx(tx, ctx, conv, body);
     });
@@ -148,7 +164,12 @@ export class OutboundService {
     tx?: DbOrTx,
   ) {
     const run = async (t: DbOrTx) => {
-      const conv = await this.conversations.lock(t, conversationId);
+      const conv = await lockTicketThenConversation(
+        t,
+        this.tickets,
+        this.conversations,
+        conversationId,
+      );
       return this.replyInTx(t, ctx, conv, body, {
         author: 'ai',
         draft: opts.draft,
@@ -161,8 +182,16 @@ export class OutboundService {
   /** A human approves an AI draft, optionally edited; it is then delivered. */
   async approveDraft(ctx: RequestCtx, messageId: string, body?: string) {
     return this.db.transaction(async (tx) => {
+      // Ticket and conversation first, the draft last: the same order a reply that
+      // supersedes the draft takes them in.
+      const peek = await this.conversations.getMessage(messageId);
+      const conv = await lockTicketThenConversation(
+        tx,
+        this.tickets,
+        this.conversations,
+        peek.message.conversationId,
+      );
       const message = await this.draft(tx, messageId);
-      const conv = await this.conversations.lock(tx, message.conversationId);
       await this.conversations.reviewDraft(tx, messageId, {
         status: 'pending',
         body,
@@ -238,7 +267,12 @@ export class OutboundService {
     const config = await this.channels.email();
     if (!config?.enabled) return null;
     return this.db.transaction(async (tx) => {
-      const conv = await this.conversations.lock(tx, conversationId);
+      const conv = await lockTicketThenConversation(
+        tx,
+        this.tickets,
+        this.conversations,
+        conversationId,
+      );
       const messageId = `<ack-${receivedMessageId}@${config.address.split('@')[1]}>`;
       if (await this.conversations.findMessageByChannelId(tx, 'web_form', messageId)) return null;
       const ticket = await this.tickets.lockRow(tx, conv.ticketId);

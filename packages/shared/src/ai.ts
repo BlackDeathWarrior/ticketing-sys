@@ -49,6 +49,11 @@ export const aiBehaviourSchema = z
      * many hours, is resolved (a later reply reopens it). 0 never resolves.
      */
     autoResolveHours: z.coerce.number().int().min(0).max(720).default(72),
+    /**
+     * Learn from customer ratings (ADR 0020): follow the lessons staff wrote,
+     * and send answers on badly rated topics and documents to a person first.
+     */
+    learnFromRatings: z.boolean().default(true),
   })
   .refine((b) => b.handoverBelow <= b.sendAt, {
     message: 'The handover threshold must not be above the send threshold',
@@ -75,6 +80,7 @@ export const AI_RULES = [
   'no_answer',
   'approval_expired',
   'action_failed',
+  'poor_feedback',
 ] as const;
 export type AiRule = (typeof AI_RULES)[number];
 
@@ -92,6 +98,7 @@ export const AI_RULE_LABELS: Record<AiRule, string> = {
   no_answer: 'The model gave no answer',
   approval_expired: 'An approval request expired',
   action_failed: 'An approved action failed',
+  poor_feedback: 'Customers rated answers like this one badly',
 };
 
 export const SENTIMENTS = ['positive', 'neutral', 'negative'] as const;

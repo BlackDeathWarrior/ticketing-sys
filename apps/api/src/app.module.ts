@@ -14,6 +14,7 @@ import { CustomersModule } from './customers/customers.module';
 import { HealthController } from './health/health.controller';
 import { InfraModule } from './infra/infra.module';
 import { KbModule } from './kb/kb.module';
+import { LearningModule } from './learning/learning.module';
 import { LlmModule } from './llm/llm.module';
 import { loggerModule } from './logging';
 import { OrgModule } from './org/org.module';
@@ -59,6 +60,7 @@ const env = loadEnv();
     WebFormModule,
     CsatModule,
     PortalModule,
+    LearningModule,
     ToolsModule,
     SlaModule,
     RoutingModule,

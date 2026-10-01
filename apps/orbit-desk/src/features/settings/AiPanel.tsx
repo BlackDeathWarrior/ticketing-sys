@@ -144,6 +144,19 @@ export function AiPanel() {
               onChange={(e) => setForm({ ...form, autoResolveHours: Number(e.target.value) })}
               required
             />
+            <Select
+              id="ai-learn"
+              label="Learn from customer ratings"
+              value={form.learnFromRatings ? 'yes' : 'no'}
+              onChange={(e) => setForm({ ...form, learnFromRatings: e.target.value === 'yes' })}
+              options={[
+                {
+                  value: 'yes',
+                  label: 'Yes: follow lessons, and ask a person on badly rated topics',
+                },
+                { value: 'no', label: 'No' },
+              ]}
+            />
             <p className={styles.note}>
               Only tickets the AI answered and still owns. A later reply from the customer reopens
               the ticket. These count as “resolved by the AI alone” in Reports.

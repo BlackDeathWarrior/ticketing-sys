@@ -13,6 +13,9 @@ import type { ChatMessage, ChatRequest, ScriptedReply } from './llm';
  *   `…__order_status` tool, or `…__issue_refund` when it asks for a refund.
  *   A refund waiting for approval is reported as "with the team"; an
  *   <approval_update> in the system prompt is reported to the customer.
+ * - Lessons (ADR 0020): a lesson in the system prompt of the form "When
+ *   customers ask about X, tell them: Y" is followed when the question shares
+ *   three meaningful words with X: the reply is Y.
  * - Classifier: picks the category whose words best match the ticket.
  * - Summarizer: the first sentence of each customer message.
  */
@@ -161,6 +164,27 @@ function companyFlow(req: ChatRequest, question: string): ScriptedReply | undefi
   return undefined;
 }
 
+/**
+ * The answer a staff lesson prescribes for this question, if one applies.
+ * Lessons are lines under "Lessons from reviewed customer feedback".
+ */
+export function lessonAnswer(system: string, question: string): string | undefined {
+  const block = /Lessons from reviewed customer feedback[^\n]*\n((?:- [^\n]*\n?)+)/.exec(
+    system,
+  )?.[1];
+  if (!block) return undefined;
+  const q = new Set(words(question));
+  for (const line of block.split('\n')) {
+    const lesson = line.replace(/^- /, '').trim();
+    const say = /\b(?:tell them|say|answer)\s*:\s*(.+)$/i.exec(lesson);
+    if (!say) continue;
+    const when = lesson.slice(0, say.index);
+    // Three shared words: "refund" and "card" alone must not trigger a lesson about gift cards.
+    if (new Set(words(when).filter((w) => q.has(w))).size >= 3) return say[1]!.trim();
+  }
+  return undefined;
+}
+
 export function agentReply(req: ChatRequest): ScriptedReply {
   const question = stripTags(textOf([...req.messages].reverse().find((m) => m.role === 'user')));
   const toolResults = req.messages.filter((m) => m.role === 'tool');
@@ -180,6 +204,17 @@ export function agentReply(req: ChatRequest): ScriptedReply {
       (JSON.parse(textOf(toolResults.at(-1))) as { results?: typeof results }).results ?? [];
   } catch {
     results = [];
+  }
+  const lesson = lessonAnswer(textOf(req.messages.find((m) => m.role === 'system')), question);
+  if (lesson) {
+    return call('send_reply', {
+      message: lesson,
+      confidence: 0.9,
+      sources: results[0] ? [results[0].id] : [],
+      language,
+      intent,
+      resolves_issue: true,
+    });
   }
   if (!results.length) {
     return call('send_reply', {

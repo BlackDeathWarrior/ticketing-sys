@@ -160,6 +160,10 @@ describe('GET /reports/performance', () => {
     expect(r.csat.all).toEqual({ responses: 2, average: 3.5, satisfied: 0.5 });
     expect(r.csat.ai).toEqual({ responses: 1, average: 5, satisfied: 1 });
     expect(r.csat.human).toEqual({ responses: 1, average: 2, satisfied: 0 });
+    // Ratings of tickets people handled, by assignee; the AI's own are not listed here.
+    expect(r.csat.byAgent).toEqual([
+      { agent: 'No assignee', responses: 1, average: 2, satisfied: 0 },
+    ]);
 
     expect(r.sla.firstResponse.ai).toEqual({ met: 1, breached: 0, compliance: 1 });
     expect(r.sla.resolution.human).toEqual({ met: 0, breached: 1, compliance: 0 });

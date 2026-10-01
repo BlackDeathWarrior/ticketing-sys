@@ -246,6 +246,48 @@ export function ReportsPage({ onOpenTicket }: { onOpenTicket: (id: string) => vo
             </Card>
           </div>
 
+          <Card padding="md" aria-labelledby="agents-rating-title">
+            <CardHeader
+              id="agents-rating-title"
+              title="Ratings by agent"
+              subtitle="How customers rated each person’s tickets, next to the AI’s own. For coaching, not for ranking: a few ratings say little."
+            />
+            {r.csat.all.responses === 0 ? (
+              <p className={styles.note}>No ratings in this period.</p>
+            ) : (
+              <div className={styles.scroller}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th scope="col">Handled by</th>
+                      <th scope="col">Ratings</th>
+                      <th scope="col">Average</th>
+                      <th scope="col">Happy customers</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.csat.ai.responses > 0 && (
+                      <tr data-agent="ai">
+                        <th scope="row">The AI alone</th>
+                        <td className="tabular">{r.csat.ai.responses}</td>
+                        <td className="tabular">{ratingText(r.csat.ai.average)}</td>
+                        <td className="tabular">{percent(r.csat.ai.satisfied)}</td>
+                      </tr>
+                    )}
+                    {r.csat.byAgent.map((a) => (
+                      <tr key={a.agent} data-agent={a.agent}>
+                        <th scope="row">{a.agent}</th>
+                        <td className="tabular">{a.responses}</td>
+                        <td className="tabular">{ratingText(a.average)}</td>
+                        <td className="tabular">{percent(a.satisfied)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
           <Card padding="md" aria-labelledby="channels-title">
             <CardHeader
               id="channels-title"

@@ -138,6 +138,19 @@ export class CsatService {
     return row ? view(row) : null;
   }
 
+  /** The rating with who had the ticket when it was given (for the learning loop). */
+  async detail(
+    ticketId: string,
+  ): Promise<{ rating: number; comment: string | null; handling: HandledBy } | null> {
+    const [row] = await this.db
+      .select()
+      .from(csatResponses)
+      .where(eq(csatResponses.ticketId, ticketId));
+    return row
+      ? { rating: row.rating, comment: row.comment, handling: row.handling as HandledBy }
+      : null;
+  }
+
   /** Ratings by ticket id, for lists. */
   async ratings(ticketIds: string[]): Promise<Map<string, number>> {
     if (!ticketIds.length) return new Map();

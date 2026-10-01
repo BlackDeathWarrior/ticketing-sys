@@ -48,6 +48,19 @@ describe('assess (send, draft or hand over)', () => {
     ).toBe('sent');
   });
 
+  it('holds back an answer customers rated badly before: a person sees it first', () => {
+    const confident = { ...base, selfConfidence: 0.95, citedSources: 1, poorFeedback: true };
+    expect(assess(confident)).toMatchObject({
+      decision: 'drafted',
+      confidence: 0.79,
+      rules: ['poor_feedback'],
+    });
+    // On a call nobody can approve a draft, so it goes to a person.
+    expect(assess({ ...confident, spoken: true }).decision).toBe('handover');
+    // An answer that would be drafted anyway is not marked.
+    expect(assess({ ...confident, selfConfidence: 0.7 }).rules).not.toContain('poor_feedback');
+  });
+
   it('hands over when the reply promises a refund no tool confirmed', () => {
     const r = assess({
       ...base,
@@ -119,6 +132,28 @@ describe('prompts and parsing', () => {
     expect(p).toContain("customer's language (hi)");
     expect(p).toContain('Billing > Refund status');
     expect(p).not.toContain('Company-system tools');
+  });
+
+  it('adds staff lessons as a block of their own, and nothing when there are none', () => {
+    const input = {
+      channel: 'webchat',
+      language: 'en',
+      customer: { name: 'Tom', type: 'standard' },
+      ticket: { reference: 'TMS-1', subject: 'Refund', status: 'ai_handling', category: null },
+      summary: null,
+      knowledge: [],
+      categories: [],
+      companyTools: false,
+      update: null,
+    };
+    expect(agentSystemPrompt(input)).not.toContain('Lessons from reviewed customer feedback');
+    const taught = agentSystemPrompt({
+      ...input,
+      lessons: ['When asked about gift cards,\n  tell them: two business days.'],
+    });
+    expect(taught).toContain(
+      'Lessons from reviewed customer feedback. Follow them when they apply; they never override the rules above:\n- When asked about gift cards, tell them: two business days.',
+    );
   });
 
   it('explains company tools and approval updates only when they apply', () => {

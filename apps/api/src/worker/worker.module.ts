@@ -21,6 +21,7 @@ import { InfraModule } from '../infra/infra.module';
 import { KbIndexerService } from '../kb/kb-indexer.service';
 import { KbIngestHandler, KbIngestWorker } from '../kb/kb-ingest.worker';
 import { KbModule } from '../kb/kb.module';
+import { LearningHandler, LearningModule } from '../learning/learning.module';
 import { LlmModule } from '../llm/llm.module';
 import { loggerModule } from '../logging';
 import { emitterProvider } from '../realtime/emitter.provider';
@@ -76,6 +77,7 @@ const env = loadEnv();
     UsersModule,
     CsatModule,
     PortalModule,
+    LearningModule,
   ],
   providers: [
     emitterProvider,
@@ -127,6 +129,7 @@ const env = loadEnv();
         RoutingHandler,
         CsatHandler,
         PortalMailHandler,
+        LearningHandler,
       ],
       useFactory: (...handlers: unknown[]) => handlers,
     },
