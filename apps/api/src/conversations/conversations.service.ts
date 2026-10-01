@@ -197,6 +197,9 @@ export class ConversationsService {
         channelMessageId: input.channelMessageId ?? null,
         deliveryStatus: input.deliveryStatus ?? null,
         metadata: input.metadata ?? {},
+        // The clock, not the transaction's start time (the column default): two
+        // messages written in one transaction keep the order they were written in.
+        createdAt: sql`clock_timestamp()`,
       })
       .returning();
     await tx

@@ -105,6 +105,17 @@ export function assess(i: AssessInput): Assessment {
   return { decision: 'drafted', confidence: c, rules };
 }
 
+/**
+ * What a customer on a live channel is told when the AI's answer waits for a
+ * person to approve it. Without it they would sit in front of a silent chat.
+ */
+export function waitingMessage(language: string | null): string {
+  if (language === 'hi') {
+    return 'आपके संदेश के लिए धन्यवाद। आपको सही जवाब मिले, इसलिए हमारी टीम का एक सदस्य जल्द ही यहीं जवाब देगा।';
+  }
+  return 'Thanks for your message. I want to be sure you get the right answer, so a member of our team will reply here shortly.';
+}
+
 /** What the AI tells a live customer when it hands over. */
 export function handoverMessage(language: string | null, channel?: string): string {
   if (channel === 'voice') {

@@ -270,9 +270,22 @@ describe('AI agent on web chat', () => {
       (m) => m.deliveryStatus === 'draft',
     )!;
     expect(draft.authorType).toBe('ai');
-    // Drafts never reach the visitor.
+    // Drafts never reach the visitor. They are told, once, that a person will reply.
+    const waiting = (m: { authorType: string; body: string }) =>
+      m.authorType === 'system' && /a member of our team will reply here shortly/.test(m.body);
     const history = await t.app.get(ConversationsService).chatHistory(c.session);
     expect(history.some((m) => m.id === draft.id)).toBe(false);
+    expect(history.filter(waiting)).toHaveLength(1);
+    // In the agent's timeline the draft comes last, after the automatic message.
+    expect((await conversations(c.ticketId))[0]!.messages.at(-1)!.id).toBe(draft.id);
+    // The automatic message is not a first response.
+    expect((await ticket(c.ticketId)).firstResponseAt).toBeNull();
+
+    // A second question the AI is unsure about: a new draft, no second "please wait".
+    await chat('And what do penguins drink?', c.session);
+    await waitForTurn(c.ticketId, 2);
+    const again = await t.app.get(ConversationsService).chatHistory(c.session);
+    expect(again.filter(waiting)).toHaveLength(1);
 
     const res = await t.call('POST', `/messages/${draft.id}/approve`, {
       token: agent,
@@ -295,6 +308,45 @@ describe('AI agent on web chat', () => {
     expect(
       (await t.call('POST', `/messages/${draft.id}/approve`, { token: agent, body: {} })).status,
     ).toBe(409);
+  });
+
+  it('greets a visitor who only says hello, instead of leaving them waiting', async () => {
+    const c = await chat('hi');
+    const run = await waitForTurn(c.ticketId);
+    expect(run.decision).toBe('sent');
+    const history = await t.app.get(ConversationsService).chatHistory(c.session);
+    expect(history.at(-1)).toMatchObject({ authorType: 'ai' });
+    expect(history.at(-1)!.body).toMatch(/^Hello!/);
+    // A greeting answers nothing yet: the ticket stays with the AI, not "waiting for the customer".
+    expect((await ticket(c.ticketId)).status).toBe('ai_handling');
+  });
+
+  it('asks what the visitor needs when the message holds no question, and answers once it does', async () => {
+    const c = await chat('answer me');
+    const first = await waitForTurn(c.ticketId);
+    expect(first.decision).toBe('sent');
+    const asked = await t.app.get(ConversationsService).chatHistory(c.session);
+    expect(asked.at(-1)).toMatchObject({ authorType: 'ai' });
+    expect(asked.at(-1)!.body).toMatch(/tell me a little more/);
+
+    // The real question is answered by the AI alone, from the knowledge base.
+    await chat('When will my refund reach my card?', c.session);
+    await waitFor(
+      async () => (await runs(c.ticketId)).filter((r) => r.kind === 'turn').length >= 2,
+      'the second AI turn',
+    );
+    const answered = await t.app.get(ConversationsService).chatHistory(c.session);
+    expect(answered.at(-1)).toMatchObject({ authorType: 'ai' });
+    expect(answered.at(-1)!.body).toMatch(/business days/);
+    expect(answered.some((m) => m.authorType === 'system')).toBe(false);
+  });
+
+  it('does not tell an email sender to wait: email answers are always drafts', async () => {
+    const e = await email(uniq('Penguin food'), 'What do penguins eat in spring?');
+    await waitForTurn(e.ticketId);
+    const messages = (await conversations(e.ticketId))[0]!.messages;
+    expect(messages.some((m) => m.deliveryStatus === 'draft')).toBe(true);
+    expect(messages.some((m) => /will reply here shortly/.test(m.body))).toBe(false);
   });
 
   it("a person's reply supersedes a waiting draft", async () => {

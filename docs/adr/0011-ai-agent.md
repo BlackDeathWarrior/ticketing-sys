@@ -48,6 +48,7 @@ The AI agent answers customers first and hands over to people when it should. Th
 
 - **Sent:** an `ai`-authored message goes through the normal delivery path (`pending` → worker → channel). A confident answer that settles the question moves the ticket to `pending_customer`.
 - **Drafted:** stored as `draft` and never delivered. Agents with `message:approve_draft` send it as is, edit then send, or discard it. Visitors never see drafts in chat history.
+  - Added 2026-10-01: on web chat and WhatsApp (channels in `auto` mode) the customer is told once that a member of the team will reply (`OutboundService.holdingReply`, `waitingMessage` in `ai/policy.ts`). It is an automatic message (author `system`): not the AI's answer, not a first response, and not sent again until someone has actually answered. Before this a visitor whose question the AI was unsure about saw nothing at all.
 - **Handed over:** the conversation goes back to the queue (`controller = none`) and the ticket to `human_assigned`. An AI-authored internal note gives the reasons, the last customer message, the knowledge consulted and any unsent answer. On live channels the customer is told a colleague will reply.
 
 **Records**
