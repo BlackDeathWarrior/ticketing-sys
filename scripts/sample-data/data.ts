@@ -1091,6 +1091,18 @@ export const tools = {
   token: 'demo-store-token',
   /** Tools the AI may use; issue_refund keeps its "needs approval" tier. */
   enable: ['lookup_customer', 'order_status', 'payment_status', 'issue_refund'],
+  /** A custom (HTTP) tool, next to the MCP ones: a plain request to the sample server. */
+  custom: {
+    name: 'systems_status',
+    title: 'Store systems status',
+    description:
+      'Whether the Demo Store order and payment systems are up. Use it when a customer says the shop or checkout is not working.',
+    method: 'GET',
+    path: '/health',
+    parameters: [],
+    tier: 'read',
+    enabled: true,
+  },
 };
 
 /**

@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Put,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   type CreateUserInput,
@@ -42,5 +52,42 @@ export class UsersController {
     @Body(new ZodPipe(updateUserSchema)) body: UpdateUserInput,
   ) {
     return this.users.update(ctx, id, body);
+  }
+}
+
+/**
+ * Roles and the few permissions an admin can hand to them (ADR 0017). The
+ * permissions that make up each role are otherwise fixed in code.
+ */
+@ApiTags('users')
+@ApiBearerAuth()
+@Controller('roles')
+export class RolesController {
+  constructor(private readonly users: UsersService) {}
+
+  @Get()
+  @RequirePermission('user:manage')
+  list() {
+    return this.users.listRoles();
+  }
+
+  @Put(':key/permissions/:permission')
+  @RequirePermission('user:manage')
+  grant(
+    @Ctx() ctx: RequestCtx,
+    @Param('key') key: string,
+    @Param('permission') permission: string,
+  ) {
+    return this.users.setRolePermission(ctx, key, permission, true);
+  }
+
+  @Delete(':key/permissions/:permission')
+  @RequirePermission('user:manage')
+  revoke(
+    @Ctx() ctx: RequestCtx,
+    @Param('key') key: string,
+    @Param('permission') permission: string,
+  ) {
+    return this.users.setRolePermission(ctx, key, permission, false);
   }
 }

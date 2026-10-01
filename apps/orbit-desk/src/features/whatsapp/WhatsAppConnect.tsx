@@ -212,7 +212,7 @@ export function WhatsAppConnect({ view, onChanged }: Props) {
       {steps && (
         <ul className={settings.checkList} aria-label="Connection result">
           {steps.map((s) => (
-            <li key={s.key} className={settings.check} data-state={s.state}>
+            <li key={s.key} className={settings.healthRow} data-state={s.state}>
               <StatusLight state={s.state} compact />
               <span className={settings.checkLabel}>{s.label}</span>
               <span className={settings.checkDetail}>{s.detail}</span>

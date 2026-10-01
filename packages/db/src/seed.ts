@@ -1,6 +1,11 @@
 import argon2 from 'argon2';
-import { and, eq, sql } from 'drizzle-orm';
-import { DEFAULT_STATUSES, DEFAULT_TRANSITIONS, SYSTEM_ROLES } from '@tms/shared';
+import { and, eq, notInArray, sql } from 'drizzle-orm';
+import {
+  DEFAULT_STATUSES,
+  DEFAULT_TRANSITIONS,
+  DELEGABLE_PERMISSIONS,
+  SYSTEM_ROLES,
+} from '@tms/shared';
 import type { Database } from './client';
 import {
   categories,
@@ -40,10 +45,19 @@ export async function seedDatabase(db: Database, opts: SeedOptions): Promise<voi
           set: { name: def.name, description: def.description, isSystem: true },
         })
         .returning({ id: roles.id });
-      await tx.delete(rolePermissions).where(eq(rolePermissions.roleId, role!.id));
+      // Permissions an admin granted to this role (the delegable ones) survive a redeploy.
+      await tx
+        .delete(rolePermissions)
+        .where(
+          and(
+            eq(rolePermissions.roleId, role!.id),
+            notInArray(rolePermissions.permission, [...DELEGABLE_PERMISSIONS]),
+          ),
+        );
       await tx
         .insert(rolePermissions)
-        .values(def.permissions.map((permission) => ({ roleId: role!.id, permission })));
+        .values(def.permissions.map((permission) => ({ roleId: role!.id, permission })))
+        .onConflictDoNothing();
     }
 
     // Workflow: only inserted when the table is empty so admin edits survive.

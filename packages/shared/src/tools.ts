@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { CustomToolDetails } from './custom-tools';
 
 /**
  * Company-system tools for the AI agent (ADR 0013). Tools come from MCP
@@ -138,6 +139,8 @@ export interface ToolView {
   customerArg: string | null;
   /** The tool disappeared from the server at the last sync. */
   missing: boolean;
+  /** Set for custom (HTTP) tools; null for tools listed by an MCP server. */
+  custom: CustomToolDetails | null;
 }
 
 export interface ApprovalView {

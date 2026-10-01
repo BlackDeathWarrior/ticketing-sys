@@ -9,7 +9,13 @@ import {
   userRoles,
   users,
 } from '@tms/db';
-import type { CreateUserInput, CurrentUser, UpdateUserInput } from '@tms/shared';
+import {
+  type CreateUserInput,
+  type CurrentUser,
+  isDelegable,
+  type RoleView,
+  type UpdateUserInput,
+} from '@tms/shared';
 import argon2 from 'argon2';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
@@ -113,6 +119,83 @@ export class UsersService {
         ),
       );
     return rows;
+  }
+
+  // ---- roles ----
+
+  async listRoles(): Promise<RoleView[]> {
+    const rows = await this.db
+      .select({ role: roles, permission: rolePermissions.permission })
+      .from(roles)
+      .leftJoin(rolePermissions, eq(rolePermissions.roleId, roles.id));
+    const byKey = new Map<string, RoleView>();
+    for (const { role, permission } of rows) {
+      const view = byKey.get(role.key) ?? {
+        key: role.key,
+        name: role.name,
+        description: role.description,
+        permissions: [],
+        locked: role.key === 'admin',
+      };
+      if (permission) view.permissions.push(permission);
+      byKey.set(role.key, view);
+    }
+    // Least to most powerful, so "who else may do this" reads naturally.
+    return [...byKey.values()]
+      .map((r) => ({ ...r, permissions: r.permissions.sort() }))
+      .sort((a, b) => a.permissions.length - b.permissions.length);
+  }
+
+  /**
+   * Gives a role one of the delegable permissions, or takes it back. The
+   * permissions that define each system role stay fixed in code; administrators
+   * always have everything.
+   */
+  async setRolePermission(
+    ctx: RequestCtx,
+    roleKey: string,
+    permission: string,
+    granted: boolean,
+  ): Promise<RoleView> {
+    if (!isDelegable(permission)) {
+      throw new BadRequestException(`${permission} cannot be granted to other roles`);
+    }
+    const [role] = await this.db.select().from(roles).where(eq(roles.key, roleKey));
+    if (!role) throw new NotFoundException('Role not found');
+    if (role.key === 'admin') {
+      throw new BadRequestException('Administrators always have every permission');
+    }
+    await this.db.transaction(async (tx) => {
+      const changed = granted
+        ? await tx
+            .insert(rolePermissions)
+            .values({ roleId: role.id, permission })
+            .onConflictDoNothing()
+            .returning({ permission: rolePermissions.permission })
+        : await tx
+            .delete(rolePermissions)
+            .where(
+              and(eq(rolePermissions.roleId, role.id), eq(rolePermissions.permission, permission)),
+            )
+            .returning({ permission: rolePermissions.permission });
+      if (!changed.length) return;
+      const data = { role: role.key, permission, granted };
+      await this.audit.record(tx, ctx, {
+        action: granted ? 'role.permission_granted' : 'role.permission_revoked',
+        targetType: 'role',
+        targetId: role.id,
+        data,
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'role.permissions_changed',
+        aggregateType: 'role',
+        aggregateId: role.id,
+        payload: data,
+      });
+    });
+    // Signed-in users pick the change up on their next request.
+    this.authCache.clear();
+    return (await this.listRoles()).find((r) => r.key === role.key)!;
   }
 
   async get(id: string) {

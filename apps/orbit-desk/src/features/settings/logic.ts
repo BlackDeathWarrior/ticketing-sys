@@ -9,12 +9,18 @@ import type {
 export type SettingsTab =
   'providers' | 'models' | 'ai' | 'channels' | 'tools' | 'routing' | 'sla' | 'usage';
 
-export const SETTINGS_TABS: Array<{ value: SettingsTab; label: string; needs: Permission[] }> = [
+export const SETTINGS_TABS: Array<{
+  value: SettingsTab;
+  label: string;
+  needs: Permission[];
+  /** Any one of these also opens the tab (it then shows only what that permission covers). */
+  anyOf?: Permission[];
+}> = [
   { value: 'providers', label: 'AI providers', needs: ['settings:llm'] },
   { value: 'models', label: 'Models & roles', needs: ['settings:llm'] },
   { value: 'ai', label: 'AI behaviour', needs: ['settings:ai'] },
   { value: 'channels', label: 'Channels', needs: ['settings:channels'] },
-  { value: 'tools', label: 'Tools & MCP', needs: ['tool:manage'] },
+  { value: 'tools', label: 'Tools & MCP', needs: ['tool:manage'], anyOf: ['tool:create'] },
   { value: 'routing', label: 'Routing', needs: ['settings:routing'] },
   { value: 'sla', label: 'SLA', needs: ['settings:sla'] },
   { value: 'usage', label: 'Usage', needs: ['settings:llm'] },
@@ -22,7 +28,7 @@ export const SETTINGS_TABS: Array<{ value: SettingsTab; label: string; needs: Pe
 
 /** Tabs the user may open, in display order. */
 export function visibleTabs(can: (p: Permission) => boolean) {
-  return SETTINGS_TABS.filter((t) => t.needs.every(can));
+  return SETTINGS_TABS.filter((t) => t.needs.every(can) || !!t.anyOf?.some(can));
 }
 
 /** Whether the Settings link should show at all. */
