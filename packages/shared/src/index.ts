@@ -17,3 +17,4 @@ export * from './routing';
 export * from './sla';
 export * from './notifications';
 export * from './whatsapp';
+export * from './channel-health';

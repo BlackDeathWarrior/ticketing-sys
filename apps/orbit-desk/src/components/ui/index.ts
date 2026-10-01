@@ -15,3 +15,4 @@ export { StatusPill, StatusGlyph, statusLabels } from './StatusPill';
 export { PriorityGlyph, priorityLabels } from './PriorityGlyph';
 export { SlaIndicator } from './SlaIndicator';
 export { Sparkline } from './Sparkline';
+export { StatusLight } from './StatusLight';

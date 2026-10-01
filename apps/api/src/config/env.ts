@@ -71,6 +71,11 @@ const envSchema = z
     APPROVAL_TTL_MINUTES: z.coerce.number().int().min(1).max(10_080).default(1440),
     /** How often the worker checks SLA timers for at-risk and breached tickets. */
     SLA_SWEEP_SECONDS: z.coerce.number().int().min(5).max(3600).default(30),
+    /**
+     * How often the worker checks that the mail server and Meta still accept
+     * our credentials, for the channel status lights. 0 turns the checks off.
+     */
+    CHANNEL_CHECK_SECONDS: z.coerce.number().int().min(0).max(86_400).default(300),
 
     // Worker
     OUTBOX_POLL_MS: z.coerce.number().int().min(50).default(1000),

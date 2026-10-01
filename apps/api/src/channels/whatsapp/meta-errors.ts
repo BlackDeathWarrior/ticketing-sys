@@ -67,7 +67,16 @@ const BY_CODE: Record<number, string> = {
   132012: 'A template variable has the wrong format.',
   132015: 'Meta paused this template because of low quality. Pick another one.',
   132016: 'Meta disabled this template because of low quality. Pick another one.',
-  133010: 'The phone number is not registered with the WhatsApp Cloud API.',
+  133005:
+    'The two-step verification PIN is wrong. Use the 6-digit PIN set in WhatsApp Manager → Phone numbers → Two-step verification.',
+  133006: 'Meta requires this phone number to be verified again in WhatsApp Manager.',
+  133008: 'Meta has locked PIN attempts for this number after too many wrong guesses. Try later.',
+  133009: 'Meta has locked PIN attempts for this number after too many wrong guesses. Try later.',
+  133010:
+    'The phone number is not registered with the WhatsApp Cloud API. Connect again with its two-step verification PIN.',
+  133015: 'This phone number was deleted recently and cannot be registered yet. Try later.',
+  136025:
+    'The two-step verification PIN is wrong. Use the 6-digit PIN set in WhatsApp Manager → Phone numbers → Two-step verification.',
 };
 
 function isMetaErrorLike(err: unknown): err is MetaErrorLike {

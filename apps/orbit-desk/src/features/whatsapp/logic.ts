@@ -94,18 +94,3 @@ export const TEMPLATE_STATUS_LABELS: Record<string, string> = {
   IN_APPEAL: 'In appeal',
   PENDING_DELETION: 'Being deleted',
 };
-
-/** What is still missing before WhatsApp can receive and send. */
-export function setupGaps(view: {
-  config: Record<string, unknown> | null;
-  secrets: Array<{ key: string; set: boolean }>;
-}): string[] {
-  const has = (key: string) => view.secrets.some((s) => s.key === key && s.set);
-  const gaps: string[] = [];
-  if (!view.config?.phoneNumberId) gaps.push('Save the phone number ID');
-  else if (!view.config.enabled) gaps.push('Turn the channel on');
-  if (!has('whatsapp.access_token')) gaps.push('Add the access token (needed to send)');
-  if (!has('whatsapp.app_secret')) gaps.push('Add the app secret (needed to receive)');
-  if (!has('whatsapp.verify_token')) gaps.push('Choose a webhook verify token');
-  return gaps;
-}

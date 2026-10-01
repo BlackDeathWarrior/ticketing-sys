@@ -1,14 +1,7 @@
 import { waWindow, type WaTemplateView } from '@tms/shared';
 import { describe, expect, it } from 'vitest';
 import { deliveryLabel } from '../../data/adapters';
-import {
-  setupGaps,
-  templateFields,
-  templateInput,
-  templateLabel,
-  templateReady,
-  windowNote,
-} from './logic';
+import { templateFields, templateInput, templateLabel, templateReady, windowNote } from './logic';
 
 const template = (over: Partial<WaTemplateView> = {}): WaTemplateView => ({
   id: '0b9d2f0e-6f0a-4c59-9d4d-3a4e0c1b2a3f',
@@ -93,33 +86,6 @@ describe('template picker', () => {
 
   it('labels templates readably', () => {
     expect(templateLabel(template())).toBe('ticket update · en_US');
-  });
-});
-
-describe('WhatsApp setup', () => {
-  const secrets = (set: string[]) =>
-    ['whatsapp.access_token', 'whatsapp.app_secret', 'whatsapp.verify_token'].map((key) => ({
-      key,
-      set: set.includes(key),
-    }));
-
-  it('lists what is missing', () => {
-    expect(setupGaps({ config: null, secrets: secrets([]) })).toHaveLength(4);
-    expect(
-      setupGaps({
-        config: { enabled: false, phoneNumberId: '1055512345' },
-        secrets: secrets(['whatsapp.access_token', 'whatsapp.app_secret', 'whatsapp.verify_token']),
-      }),
-    ).toEqual(['Turn the channel on']);
-  });
-
-  it('is empty when everything is saved', () => {
-    expect(
-      setupGaps({
-        config: { enabled: true, phoneNumberId: '1055512345' },
-        secrets: secrets(['whatsapp.access_token', 'whatsapp.app_secret', 'whatsapp.verify_token']),
-      }),
-    ).toEqual([]);
   });
 });
 

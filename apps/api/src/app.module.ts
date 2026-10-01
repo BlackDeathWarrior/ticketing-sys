@@ -3,6 +3,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { AiModule } from './ai/ai.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { ChannelHealthModule } from './channels/health/channel-health.controller';
 import { ChannelsModule } from './channels/channels.module';
 import { ChatModule } from './chat/chat.module';
 import { AllExceptionsFilter } from './common/exception.filter';
@@ -46,6 +47,7 @@ const env = loadEnv();
     ChannelsModule,
     RealtimeModule,
     ChatModule,
+    ChannelHealthModule,
     ReportsModule,
     LlmModule,
     KbModule,

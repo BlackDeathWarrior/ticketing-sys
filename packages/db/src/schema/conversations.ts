@@ -72,6 +72,8 @@ export const messages = pgTable(
   },
   (t) => [
     index('messages_conversation_idx').on(t.conversationId, t.createdAt),
+    /** Recent traffic per channel, for the channel status lights. */
+    index('messages_channel_created_idx').on(t.channel, t.createdAt),
     uniqueIndex('messages_channel_msg_uq').on(t.channel, t.channelMessageId),
   ],
 );

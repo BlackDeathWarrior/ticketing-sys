@@ -21,6 +21,7 @@ Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp
 | 6     | Tools over MCP (Demo Store sample server), risk tiers, supervisor approvals, AI follow-ups (ADR 0013)                                                 | Done    |
 | 7     | Handover with context packs, take-over/hand-back, routing (rules, skills, presence), SLA timers, notifications, copilot, AI-vs-human views (ADR 0014) | Done    |
 | 8     | WhatsApp on the Meta Cloud API (ported from whatsapp-crm): signed webhook, media, delivery and read reports, 24-hour window, templates (ADR 0015)     | Done    |
+| 8b    | Channel status lights (green, amber, red, grey) with per-channel checks, a connection monitor, and one-step "Connect WhatsApp" (ADR 0016)             | Done    |
 | 9     | Voice agent on Sarvam STT/TTS, in the browser (see `docs/research/voice-sarvam.md`)                                                                   | Next    |
 | 10    | Reporting (AI vs human, SLA, CSAT), admin settings, customer portal (sign-in link, my tickets, reply, rate)                                           | Planned |
 | 11    | Hardening for the demo                                                                                                                                | Planned |
@@ -108,7 +109,10 @@ Admins manage AI providers, models and channel credentials in Orbit Desk under *
 - **Models & roles:** register models (capabilities and prices come from LiteLLM) and decide what each AI feature uses.
   - By default a role uses the cheapest capable model and falls back to the next one.
   - Providers over their cap are skipped.
-- **Channels:** IMAP/SMTP, WhatsApp and Sarvam settings, with write-only secrets and "Test connection". The WhatsApp card also shows the webhook address for Meta and the synced templates.
+- **Channels:** a status light for every channel, and the settings for email, WhatsApp and Sarvam.
+  - **Lights:** green means working, amber means working but something needs a look, red means not working, grey means off. Each channel lists what was checked and why a check failed. **Check now** tries the mail server and Meta at once; the worker also checks every five minutes and notifies admins when a working channel stops.
+  - **Connect WhatsApp:** one form for the IDs and keys from Meta. They are checked with Meta and saved only when Meta accepts them. The card also shows the webhook address for Meta and the synced templates.
+  - Keys are write-only.
 - **Usage:** spend by provider and role, and the recent calls.
 
 Keys are admin-only (`settings:secrets`), encrypted, and every change is audited. See ADR 0008 and ADR 0009. The sample data registers the scripted **Demo model** provider, so everything works offline. Walkthrough: [`docs/runbooks/phase-3-demo.md`](docs/runbooks/phase-3-demo.md).

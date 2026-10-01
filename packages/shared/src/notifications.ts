@@ -9,6 +9,8 @@ export const NOTIFICATION_KINDS = [
   'approval.requested',
   'ticket.escalated',
   'llm.budget_warning',
+  /** A channel that was working stopped working (to people who manage channels). */
+  'channel.down',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

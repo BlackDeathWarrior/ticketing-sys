@@ -332,7 +332,7 @@ describe('WhatsApp channel', () => {
     const res = await t.call('POST', '/settings/channels/whatsapp/test', { token: admin });
     expect(res.body.ok, JSON.stringify(res.body)).toBe(true);
     expect(res.body.detail).toMatch(/\+1 555 010 0199 \(Demo Store\), quality green/);
-    expect(graphCalls[0]!.auth).toBe(`Bearer ${ACCESS_TOKEN}`);
+    expect(graphCalls.every((c) => c.auth === `Bearer ${ACCESS_TOKEN}`)).toBe(true);
 
     override = () => json({ error: { message: 'Invalid OAuth access token', code: 190 } }, 401);
     const bad = await t.call('POST', '/settings/channels/whatsapp/test', { token: admin });
@@ -621,7 +621,9 @@ describe('WhatsApp channel', () => {
       const sync = await t.call('POST', '/whatsapp/templates/sync', { token: admin });
       expect(sync.status, JSON.stringify(sync.body)).toBe(200);
       expect(sync.body).toEqual({ total: 2, approved: 1, removed: 0 });
-      expect(graphCalls[0]!.path).toContain(`/v23.0/${WABA_ID}/message_templates`);
+      expect(graphCalls.some((c) => c.path.includes(`/v23.0/${WABA_ID}/message_templates`))).toBe(
+        true,
+      );
 
       const approved = await t.call('GET', '/whatsapp/templates', { token: agent.token });
       expect(approved.body.map((x: { name: string }) => x.name)).toEqual(['ticket_update']);
@@ -801,10 +803,9 @@ describe('WhatsApp channel', () => {
       );
       const res = await t.call('POST', '/whatsapp/subscribe', { token: admin });
       expect(res.status).toBe(200);
-      expect(graphCalls[0]).toMatchObject({
-        method: 'POST',
-        path: `/v23.0/${WABA_ID}/subscribed_apps`,
-      });
+      expect(graphCalls).toContainEqual(
+        expect.objectContaining({ method: 'POST', path: `/v23.0/${WABA_ID}/subscribed_apps` }),
+      );
     });
   });
 

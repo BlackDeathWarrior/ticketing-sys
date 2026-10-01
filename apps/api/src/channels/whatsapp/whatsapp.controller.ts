@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   ForbiddenException,
   Get,
@@ -12,9 +13,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { type ParsedWhatsappConnect, whatsappConnectSchema } from '@tms/shared';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Ctx, Public, type RequestCtx, RequirePermission } from '../../common/request-context';
+import { ZodPipe } from '../../common/zod.pipe';
+import { ChannelSignalsService } from '../../settings/channel-signals.service';
 import type { WaWebhookPayload } from './webhook-payload';
+import { WhatsAppConnectService } from './whatsapp-connect.service';
 import { WhatsAppTemplatesService } from './whatsapp-templates.service';
 import { WhatsAppWebhookQueue } from './whatsapp-webhook.queue';
 import { WhatsAppService } from './whatsapp.service';
@@ -32,6 +37,7 @@ export class WhatsAppWebhookController {
   constructor(
     private readonly whatsapp: WhatsAppService,
     private readonly queue: WhatsAppWebhookQueue,
+    private readonly signals: ChannelSignalsService,
   ) {}
 
   /** The subscription handshake: echo `hub.challenge` when the verify token matches. */
@@ -44,6 +50,7 @@ export class WhatsAppWebhookController {
       query['hub.mode'] === 'subscribe' &&
       (await this.whatsapp.verifyToken(query['hub.verify_token']));
     if (!ok) throw new ForbiddenException('Verification failed');
+    await this.signals.touch('whatsapp', 'handshakeAt');
     // Meta expects the bare challenge, not JSON.
     void res.type('text/plain; charset=utf-8');
     return query['hub.challenge'] ?? '';
@@ -66,6 +73,7 @@ export class WhatsAppWebhookController {
     const payload = req.body as WaWebhookPayload | undefined;
     if (!payload || typeof payload !== 'object') throw new BadRequestException('Expected JSON');
     await this.queue.add(raw, payload);
+    await this.signals.touch('whatsapp', 'webhookAt');
     return { received: true };
   }
 }
@@ -74,7 +82,24 @@ export class WhatsAppWebhookController {
 @ApiBearerAuth()
 @Controller('whatsapp')
 export class WhatsAppController {
-  constructor(private readonly templates: WhatsAppTemplatesService) {}
+  constructor(
+    private readonly templates: WhatsAppTemplatesService,
+    private readonly connector: WhatsAppConnectService,
+  ) {}
+
+  /**
+   * Connects a number in one step: checks the values with Meta, saves them,
+   * and subscribes the account. It stores keys, so it needs both permissions.
+   */
+  @Post('connect')
+  @HttpCode(200)
+  @RequirePermission('settings:channels', 'settings:secrets')
+  connect(
+    @Ctx() ctx: RequestCtx,
+    @Body(new ZodPipe(whatsappConnectSchema)) body: ParsedWhatsappConnect,
+  ) {
+    return this.connector.connect(ctx, body);
+  }
 
   /** Approved templates for the reply box; `all=true` adds the ones Meta hasn't approved. */
   @Get('templates')

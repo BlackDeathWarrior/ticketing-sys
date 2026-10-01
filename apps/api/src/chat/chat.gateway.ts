@@ -5,6 +5,7 @@ import {
   type OnGatewayConnection,
   SubscribeMessage,
   WebSocketGateway,
+  WebSocketServer,
 } from '@nestjs/websockets';
 import {
   CHAT_NAMESPACE,
@@ -13,7 +14,7 @@ import {
   chatRoom,
   type ChatMessageView,
 } from '@tms/shared';
-import type { Socket } from 'socket.io';
+import type { Namespace, Socket } from 'socket.io';
 import { InboundService } from '../channels/inbound.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { type ChatSession, ChatSessionService } from './chat-session.service';
@@ -33,11 +34,19 @@ type Nack = { ok: false; error: string };
 export class ChatGateway implements OnGatewayConnection {
   private readonly logger = new Logger(ChatGateway.name);
 
+  @WebSocketServer()
+  private readonly server?: Namespace;
+
   constructor(
     private readonly sessions: ChatSessionService,
     private readonly inbound: InboundService,
     private readonly conversations: ConversationsService,
   ) {}
+
+  /** Visitors with the chat open on this API instance; null before the server is up. */
+  connected(): number | null {
+    return this.server?.sockets?.size ?? null;
+  }
 
   async handleConnection(socket: Socket) {
     const auth = chatHandshakeSchema.safeParse(socket.handshake.auth ?? {});

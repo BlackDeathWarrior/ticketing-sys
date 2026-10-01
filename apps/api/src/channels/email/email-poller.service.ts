@@ -15,6 +15,7 @@ import {
   ChannelConfigService,
   type ResolvedEmailConfig,
 } from '../../settings/channel-config.service';
+import { ChannelSignalsService } from '../../settings/channel-signals.service';
 import { StorageService } from '../../storage/storage.service';
 import { InboundService } from '../inbound.service';
 import { emailToEnvelope } from './email.util';
@@ -46,6 +47,7 @@ export class EmailPollerService implements OnApplicationBootstrap, BeforeApplica
     private readonly channels: ChannelConfigService,
     private readonly inbound: InboundService,
     private readonly storage: StorageService,
+    private readonly signals: ChannelSignalsService,
   ) {}
 
   onApplicationBootstrap() {
@@ -85,6 +87,7 @@ export class EmailPollerService implements OnApplicationBootstrap, BeforeApplica
       if (!config?.enabled) {
         await this.releaseLock();
         this.config = undefined;
+        await this.report('off');
         await this.idle(30_000);
         continue;
       }
@@ -100,9 +103,18 @@ export class EmailPollerService implements OnApplicationBootstrap, BeforeApplica
         await this.watch(config);
       } catch (err) {
         this.logger.warn(`IMAP session ended: ${(err as Error).message}`);
+        await this.report(
+          'error',
+          `${config.imapHost}:${config.imapPort}: ${(err as Error).message}`,
+        );
       }
       if (!this.stopped) await this.idle(5_000);
     }
+  }
+
+  /** Tells the status lights what the mailbox reader is doing. */
+  private report(state: 'watching' | 'error' | 'off', detail?: string) {
+    return this.signals.set('email', 'poller', { state, detail, at: new Date().toISOString() });
   }
 
   /** Sleeps, unless restart() or shutdown wakes it early. */
@@ -133,6 +145,7 @@ export class EmailPollerService implements OnApplicationBootstrap, BeforeApplica
     await client.mailboxOpen(config.imapMailbox);
     this.client = client;
     this.logger.log(`watching ${config.imapUser}/${config.imapMailbox}`);
+    await this.report('watching');
 
     client.on('exists', () => void this.poll());
     const fallback = setInterval(() => void this.poll(), config.pollSeconds * 1000);
@@ -140,7 +153,10 @@ export class EmailPollerService implements OnApplicationBootstrap, BeforeApplica
       if (!(await this.renewLock())) {
         this.logger.warn('lost the mailbox lock; disconnecting');
         await client.logout().catch(() => client.close());
+        return;
       }
+      // Still connected: keeps the status light fresh.
+      if (client.usable) await this.report('watching');
     }, LOCK_TTL_MS / 3);
 
     await this.poll();
