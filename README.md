@@ -110,7 +110,7 @@ Admins manage AI providers, models and channel credentials in Orbit Desk under *
 - **AI providers:** add a key for Anthropic, OpenAI, Gemini, Mistral, Groq, NVIDIA NIM, OpenRouter, Sarvam, a local Ollama or any OpenAI-compatible endpoint.
   - Keys go to LiteLLM and are never shown again; only the last four characters appear.
   - Each provider can have a spending cap per day, week or month.
-- **Models & roles:** register models (capabilities and prices come from LiteLLM) and decide what each AI feature uses.
+- **Models & roles:** register models and decide what each AI feature uses. **Add model** lists the provider's chat and embedding models with their prices (from LiteLLM's model list), **Test model** asks the provider whether your key may use one before you add it, and a name the list lacks can still be typed.
   - By default a role uses the cheapest capable model and falls back to the next one.
   - Providers over their cap are skipped.
 - **Channels:** a status light for every channel, and the settings for email, WhatsApp and Sarvam.

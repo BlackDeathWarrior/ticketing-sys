@@ -47,7 +47,16 @@ test.describe('Settings: AI, channels and keys', () => {
       await page.getByRole('button', { name: 'Add model' }).click();
       const form = page.getByRole('dialog');
       await form.locator('#model-provider').selectOption({ label });
+      // A model can be tried with the provider's key before it is added: one the
+      // provider refuses says why, one it serves answers.
+      await form.getByLabel('Model name').fill('always-fails');
+      await form.getByRole('button', { name: 'Test model' }).click();
+      await expect(form.getByRole('status')).toContainText(
+        'The provider did not accept always-fails:',
+      );
       await form.getByLabel('Model name').fill('scripted-cheap');
+      await form.getByRole('button', { name: 'Test model' }).click();
+      await expect(form.getByRole('status')).toContainText('scripted-cheap answered in');
       await form.getByLabel('Display name (optional)').fill(`${label} model`);
       await form.getByLabel('Tool calling and JSON').selectOption('yes');
       // Cheaper than the demo models, so cheapest-first routing picks it.
@@ -71,6 +80,71 @@ test.describe('Settings: AI, channels and keys', () => {
       for (const p of providers.filter((x) => x.label === label)) {
         await call(admin, 'DELETE', `/settings/llm/providers/${p.id}`);
       }
+    }
+  });
+
+  test('chooses a model from the provider’s own list instead of typing its name', async ({
+    page,
+  }) => {
+    const admin = (await login()).accessToken;
+    const label = `E2E catalogue ${Date.now().toString(36)}`;
+    // A placeholder key: listing and registering a model never calls the provider.
+    const provider = await call<{ id: string }>(admin, 'POST', '/settings/llm/providers', {
+      provider: 'anthropic',
+      label,
+      apiKey: 'e2e-placeholder-key-000000abcd',
+    });
+    try {
+      await signInOrbit(page);
+      await openSettings(page);
+      await page.getByRole('tab', { name: 'Models & roles' }).click();
+      await page.getByRole('button', { name: 'Add model' }).click();
+      const form = page.getByRole('dialog');
+      await form.locator('#model-provider').selectOption({ label });
+
+      // The list is the provider's chat models, each with its price; no name field yet.
+      const choice = form.locator('#model-choice');
+      await expect(choice).toBeEnabled();
+      const options = choice.locator('option');
+      await expect(options.filter({ hasText: /^claude-.* in \/ .* out$/ }).first()).toBeAttached();
+      await expect(form.getByLabel('Model name')).toHaveCount(0);
+      await expect(form.getByRole('button', { name: 'Add model' })).toBeDisabled();
+
+      const picked = (await options
+        .filter({ hasText: /^claude-.* in \/ / })
+        .first()
+        .getAttribute('value'))!;
+      await choice.selectOption(picked);
+      await expect(form.getByTestId('model-facts')).toContainText('Can use tools');
+      // The long names in the list do not push the form wider than a phone.
+      await page.setViewportSize({ width: 390, height: 844 });
+      const box = (await form.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(390);
+      expect(await form.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await form.getByLabel('Display name (optional)').fill(`${label} model`);
+      await form.getByRole('button', { name: 'Add model' }).click();
+
+      const row = page.getByRole('row', { name: new RegExp(`${label} model`) });
+      await expect(row).toContainText(`anthropic/${picked}`);
+      await expect(row).toContainText('from LiteLLM');
+
+      // Asked again, the list says it is there already; a name it lacks can still be typed.
+      await page.getByRole('button', { name: 'Add model' }).click();
+      await form.locator('#model-provider').selectOption({ label });
+      await expect(choice).toBeEnabled();
+      await choice.selectOption(picked);
+      await expect(form.getByTestId('model-facts')).toContainText('already added');
+      await expect(form.getByRole('button', { name: 'Add model' })).toBeDisabled();
+      await choice.selectOption({ label: 'Another model: type its name' });
+      await expect(form.getByLabel('Model name')).toBeVisible();
+      await form.getByLabel('Kind').selectOption('embedding');
+      // Anthropic has no embedding models in the list: the name is typed.
+      await expect(form.getByLabel('Model name')).toBeVisible();
+      await expect(choice).toHaveCount(0);
+    } finally {
+      await call(admin, 'DELETE', `/settings/llm/providers/${provider.id}`);
     }
   });
 

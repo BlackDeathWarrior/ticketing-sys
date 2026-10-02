@@ -2,6 +2,8 @@ import type { Permission } from '@tms/shared';
 import { describe, expect, it } from 'vitest';
 import {
   canOpenSettings,
+  catalogueFacts,
+  catalogueOption,
   formatPerMTok,
   formatUsd,
   maskedKey,
@@ -75,6 +77,55 @@ describe('formatting', () => {
     expect(formatPerMTok(0.075)).toBe('$0.075');
     expect(formatPerMTok(15)).toBe('$15.00');
     expect(formatPerMTok(null)).toBe('unknown');
+  });
+
+  it('describes a model that can be chosen', () => {
+    const flash = {
+      model: 'gemini-flash-latest',
+      mode: 'chat' as const,
+      supportsTools: true,
+      supportsJson: true,
+      supportsVision: true,
+      contextWindow: 1_048_576,
+      inputCostPerMTok: 0.3,
+      outputCostPerMTok: 2.5,
+      retiresOn: '2027-02-05',
+      added: false,
+    };
+    expect(catalogueOption(flash)).toBe('gemini-flash-latest · $0.3 in / $2.50 out');
+    expect(catalogueFacts(flash)).toBe(
+      'Can use tools, JSON, images · reads up to 1,048,576 tokens · the provider retires it on 2027-02-05.',
+    );
+    const embedding = {
+      ...flash,
+      model: 'gemini-embedding-001',
+      mode: 'embedding' as const,
+      supportsTools: false,
+      supportsJson: false,
+      supportsVision: false,
+      contextWindow: 2048,
+      inputCostPerMTok: 0.15,
+      outputCostPerMTok: 0,
+      retiresOn: null,
+      added: true,
+    };
+    expect(catalogueOption(embedding)).toBe('gemini-embedding-001 · $0.15 per 1M · already added');
+    expect(catalogueFacts(embedding)).toBe('reads up to 2,048 tokens.');
+    const unknown = {
+      ...flash,
+      model: 'new-model',
+      supportsTools: false,
+      supportsJson: false,
+      supportsVision: false,
+      contextWindow: null,
+      inputCostPerMTok: null,
+      outputCostPerMTok: null,
+      retiresOn: null,
+    };
+    expect(catalogueOption(unknown)).toBe('new-model');
+    expect(catalogueFacts(unknown)).toBe(
+      'No tool calling: the AI agent cannot use it · price unknown: set one below.',
+    );
   });
 
   it('masks keys to the last four characters', () => {
