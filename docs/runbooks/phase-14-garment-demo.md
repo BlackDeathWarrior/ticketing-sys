@@ -14,7 +14,7 @@ Nothing in it is simulated. Every scenario below happens through the app's real 
   pip install -r ..\garment-web-scraper\scraper\requirements.txt
   ```
 
-- For scenario 6 only (a real scrape): the scraper's browser, `python -m playwright install firefox`. Without it a scrape fails at once, which is itself an incident you can show.
+- For scenario 6 only (a real scrape): the scraper's browser, `python -m playwright install firefox`. Without it a scrape fails at once, which is itself an incident you can show. Installing it can remove other Playwright browser builds from the machine; if the end-to-end specs then cannot find Chromium, run `pnpm --filter @tms/e2e exec playwright install chromium`.
 - No AWS credentials on the machine. The app uploads its catalogue to a fixed production bucket whenever it finds credentials.
 
 ## Start it
