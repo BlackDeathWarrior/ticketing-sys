@@ -9,8 +9,11 @@ import type { ChatMessage, ChatRequest, ScriptedReply } from './llm';
  *   least two meaningful words with the question, 0.7 when it shares fewer
  *   (the agent drafts), and 0.3 when nothing was found (it hands over).
  *   Asking for a person calls request_human.
- * - Company tools (Phase 6): a message naming an order (DS-12345) calls the
- *   `…__order_status` tool, or `…__issue_refund` when it asks for a refund.
+ * - Company tools (Phase 6): a message naming an order (DS-12345, ET-100123)
+ *   calls the `…__order_status` tool, `…__issue_refund` when it asks for a
+ *   refund, or `…__cancel_order` when it asks to cancel. Without a number,
+ *   the `order_id` in the ticket context is the order meant; with neither,
+ *   asking where "my order" is calls `…__list_orders`.
  *   A refund waiting for approval is reported as "with the team"; an
  *   <approval_update> in the system prompt is reported to the customer.
  * - A catalogue site (ADR 0027): a message that says prices look old calls
@@ -72,7 +75,8 @@ export function isAgentRequest(req: ChatRequest): boolean {
   return !!req.tools?.some((t) => t.function.name === 'send_reply');
 }
 
-const ORDER = /\b(DS-\d{4,6})\b/i;
+const ORDER = /\b((?:DS|ET)-\d{4,9})\b/i;
+const CANCEL = /\bcancel\b/i;
 const REFUND = /\b(refund|money back|charged (?:me )?twice|double charge|charged two times)\b/i;
 const WHERE = /\b(where|status|track|tracking|shipped|deliver(?:y|ed)?|arriv(?:e|ing|al))\b/i;
 
@@ -135,14 +139,19 @@ function companyFlow(req: ChatRequest, question: string): ScriptedReply | undefi
   const results = req.messages.filter((m) => m.role === 'tool');
   const last = results.at(-1);
   const lastName = last ? toolNameOf(req, last) : '';
-  if (last && /__(order_status|issue_refund|payment_status|lookup_customer)$/.test(lastName)) {
+  if (
+    last &&
+    /__(order_status|issue_refund|payment_status|lookup_customer|cancel_order|list_orders)$/.test(
+      lastName,
+    )
+  ) {
     let r: Record<string, unknown> = {};
     try {
       r = JSON.parse(textOf(last)) as Record<string, unknown>;
     } catch {
       r = {};
     }
-    const order = ORDER.exec(question)?.[1]?.toUpperCase() ?? 'your order';
+    const order = orderIn(req, question) ?? 'your order';
     if (r.status === 'pending_approval' || r.status === 'simulated') {
       return reply(
         `I've sent your refund request for order ${order} to our team for approval. You'll get an update here as soon as it has been reviewed.`,
@@ -155,7 +164,28 @@ function companyFlow(req: ChatRequest, question: string): ScriptedReply | undefi
         reason: `The order system could not help: ${String(r.error ?? 'unknown error')}`,
       });
     }
-    const o = (r.result ?? {}) as Record<string, unknown>;
+    let o = (r.result ?? {}) as Record<string, unknown>;
+    if (lastName.endsWith('__cancel_order')) {
+      const refunded =
+        typeof o.amount === 'number'
+          ? ` Your refund of ${o.amount.toFixed(2)} ${String(o.currency ?? '')}`.trimEnd() +
+            ` (reference ${String(o.refund_id ?? '')}) is on its way.`
+          : ' Nothing was charged for it.';
+      return reply(`Order ${String(o.order_id ?? order)} is cancelled.${refunded}`, 0.92, {
+        intent: 'order_cancellation',
+        resolves_issue: true,
+      });
+    }
+    if (lastName.endsWith('__list_orders')) {
+      const recent = (o.orders ?? []) as Array<Record<string, unknown>>;
+      if (!recent.length) {
+        return reply("I can't find any orders on your account yet.", 0.9, {
+          intent: 'order_status',
+        });
+      }
+      // The newest order is what "my order" most likely means.
+      o = recent[0]!;
+    }
     const parts = [
       `Order ${String(o.order_id ?? order)} is ${String(o.status ?? 'being processed')}`,
     ];
@@ -163,11 +193,20 @@ function companyFlow(req: ChatRequest, question: string): ScriptedReply | undefi
     if (o.tracking_number) parts.push(`the tracking number is ${String(o.tracking_number)}`);
     if (o.estimated_delivery)
       parts.push(`the carrier's estimate is ${String(o.estimated_delivery)}`);
+    if (o.delayed) parts.push('it is delayed with the carrier at the moment');
     return reply(`${parts.join('; ')}.`, 0.92, { intent: 'order_status', resolves_issue: true });
   }
 
-  const orderId = ORDER.exec(question)?.[1]?.toUpperCase();
-  if (!orderId || results.length) return undefined;
+  const orderId = orderIn(req, question);
+  if (results.length) return undefined;
+  if (!orderId) {
+    const list = companyTool(req, 'list_orders');
+    return list && WHERE.test(question) && /\border\b/i.test(question) ? call(list, {}) : undefined;
+  }
+  const cancel = companyTool(req, 'cancel_order');
+  if (CANCEL.test(question) && cancel) {
+    return call(cancel, { order_id: orderId, reason: `Customer asked: ${question.slice(0, 150)}` });
+  }
   const refund = companyTool(req, 'issue_refund');
   if (REFUND.test(question) && refund) {
     return call(refund, { order_id: orderId, reason: `Customer asked: ${question.slice(0, 150)}` });
@@ -175,6 +214,21 @@ function companyFlow(req: ChatRequest, question: string): ScriptedReply | undefi
   const status = companyTool(req, 'order_status');
   if (WHERE.test(question) && status) return call(status, { order_id: orderId });
   return undefined;
+}
+
+/** One `key: value` line of the ticket's context (what the app said the customer has open). */
+function contextValue(req: ChatRequest, key: string): string | undefined {
+  const system = textOf(req.messages.find((m) => m.role === 'system'));
+  const block = /<ticket_context>\n([\s\S]*?)\n<\/ticket_context>/.exec(system)?.[1] ?? '';
+  return new RegExp(`^${key}: (\\S+)$`, 'm').exec(block)?.[1];
+}
+
+/** The order the customer means: the number they wrote, else the order their request is about. */
+function orderIn(req: ChatRequest, question: string): string | undefined {
+  const written = ORDER.exec(question)?.[1];
+  if (written) return written.toUpperCase();
+  const open = contextValue(req, 'order_id');
+  return open && ORDER.test(open) ? open.toUpperCase() : undefined;
 }
 
 const OLD =
@@ -201,7 +255,6 @@ function freshness(c: Record<string, unknown>): string {
  * the message is not about how fresh the catalogue is, a refresh or a listing.
  */
 function siteFlow(req: ChatRequest, question: string): ScriptedReply | undefined {
-  const system = textOf(req.messages.find((m) => m.role === 'system'));
   const results = req.messages.filter((m) => m.role === 'tool');
   const read = (m: ChatMessage): Record<string, unknown> => {
     try {
@@ -265,9 +318,7 @@ function siteFlow(req: ChatRequest, question: string): ScriptedReply | undefined
   const catalogue = companyTool(req, 'catalog_status');
   if (STALE.test(question) && catalogue) return call(catalogue, {});
   const lookup = companyTool(req, 'product_lookup');
-  const productId = /^product_id: (\S+)$/m.exec(
-    /<ticket_context>\n([\s\S]*?)\n<\/ticket_context>/.exec(system)?.[1] ?? '',
-  )?.[1];
+  const productId = contextValue(req, 'product_id');
   if (ABOUT_LISTING.test(question) && lookup && productId) {
     return call(lookup, { product_id: productId });
   }
