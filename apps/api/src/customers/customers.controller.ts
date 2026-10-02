@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
+  type ClearCustomerFlagInput,
+  clearCustomerFlagSchema,
   type CreateCustomerInput,
   createCustomerSchema,
   type IdentityInput,
@@ -62,6 +64,18 @@ export class CustomersController {
     @Body(new ZodPipe(identityInputSchema)) body: IdentityInput,
   ) {
     return this.customers.addIdentity(ctx, id, body);
+  }
+
+  /** Clears a flag the AI put on the customer for misuse; the note says why. */
+  @Post(':id/flags/:flagId/clear')
+  @RequirePermission('customer:write')
+  clearFlag(
+    @Ctx() ctx: RequestCtx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('flagId', ParseUUIDPipe) flagId: string,
+    @Body(new ZodPipe(clearCustomerFlagSchema)) body: ClearCustomerFlagInput,
+  ) {
+    return this.customers.clearFlag(ctx, id, flagId, body.note);
   }
 
   /** Look up a customer by channel identity, creating one if unknown. */

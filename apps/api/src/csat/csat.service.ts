@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { csatRequests, csatResponses, type Database } from '@tms/db';
 import {
+  type AiClosure,
+  CONDUCT_CLOSURES,
   CSAT_WINDOW_DAYS,
   type CsatPrompt,
   type CsatSource,
@@ -163,6 +165,10 @@ export class CsatService {
 
   /** Null when the ticket can be rated now; otherwise the reason, for the customer. */
   async whyNotRatable(ticket: Ticket): Promise<string | null> {
+    // A conversation the AI ended for misuse was not a piece of service to rate.
+    if (ticket.aiClosure && CONDUCT_CLOSURES.includes(ticket.aiClosure as AiClosure)) {
+      return 'This request was closed and cannot be rated.';
+    }
     const { category } = await this.workflow.status(ticket.status);
     if (category !== 'resolved' && category !== 'closed') {
       return 'This request is still open. You can rate it once it is solved.';

@@ -169,6 +169,13 @@
       "when": 1790980401365,
       "tag": "0023_closing_and_reasons",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790981186929,
+      "tag": "0024_guardrails",
+      "breakpoints": true
     }
   ]
 }

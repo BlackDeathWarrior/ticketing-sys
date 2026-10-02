@@ -46,6 +46,8 @@ export const modelIdFromAlias = (alias: string | null | undefined) =>
   alias?.startsWith('tms-') ? alias.slice(4) : null;
 
 const DEFAULT_ROLE: RoleConfig = { mode: 'cheapest', modelIds: [] };
+/** How old the routing snapshot a model call uses may be. */
+const SNAPSHOT_TTL_MS = 3_000;
 
 /**
  * Providers, models and roles (ADR 0008). Keys go to LiteLLM and are never
@@ -403,6 +405,27 @@ export class LlmSettingsService {
   }
 
   // ---- Routing inputs and usage ----
+
+  /**
+   * The routing snapshot, at most a few seconds old. Every model call needs
+   * it twice (to choose a model, then to price the call) and each read is
+   * four queries; a turn makes several calls. Settings pages read the fresh
+   * one, so a change shows at once; a call picks it up within seconds.
+   */
+  async recentSnapshot(): Promise<Awaited<ReturnType<LlmSettingsService['routingSnapshot']>>> {
+    const now = Date.now();
+    if (!this.recent || now - this.recent.at > SNAPSHOT_TTL_MS) {
+      this.recent = { at: now, value: this.routingSnapshot() };
+      // A failed read is not kept.
+      this.recent.value.catch(() => (this.recent = undefined));
+    }
+    return this.recent.value;
+  }
+
+  private recent?: {
+    at: number;
+    value: ReturnType<LlmSettingsService['routingSnapshot']>;
+  };
 
   /** What the router needs: models, providers with current-period spend, role configs. */
   async routingSnapshot() {

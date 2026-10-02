@@ -37,6 +37,7 @@ import { windowNote } from '../whatsapp/logic';
 import { TemplateComposer } from '../whatsapp/TemplateComposer';
 import kbStyles from '../kb/Kb.module.css';
 import { useGet } from '../../lib/useGet';
+import { CustomerFlags } from './CustomerFlags';
 import {
   Avatar,
   Badge,
@@ -428,6 +429,7 @@ function DrawerContent({
               <dd className="tabular">{relativeTime(minutesSince(ticket.createdAt))}</dd>
             </div>
           </dl>
+          <CustomerFlags customerId={ticket.customer.id} liveTick={liveTick} />
         </section>
 
         <TicketContext ticket={ticket} liveTick={liveTick} />

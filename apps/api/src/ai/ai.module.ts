@@ -14,6 +14,7 @@ import { AiClassifierService } from './ai-classifier.service';
 import { AiCopilotService } from './ai-copilot.service';
 import { AiRunsModule } from './ai-runs.module';
 import { AiController } from './ai.controller';
+import { AiFastPathsService } from './fast-paths.service';
 import { LanguageService } from './language.service';
 
 /**
@@ -41,7 +42,14 @@ import { LanguageService } from './language.service';
     AiCopilotService,
     LanguageService,
     AiAutoResolveService,
+    AiFastPathsService,
   ],
-  exports: [AiAgentService, AiClassifierService, AiRunsModule, AiAutoResolveService],
+  exports: [
+    AiAgentService,
+    AiClassifierService,
+    AiRunsModule,
+    AiAutoResolveService,
+    AiFastPathsService,
+  ],
 })
 export class AiModule {}

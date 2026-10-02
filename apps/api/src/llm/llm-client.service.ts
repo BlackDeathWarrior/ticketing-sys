@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { type Database, llmCalls } from '@tms/db';
 import type { ModelRole } from '@tms/shared';
 import { lt } from 'drizzle-orm';
+import type Redis from 'ioredis';
 import OpenAI from 'openai';
 import type {
   ChatCompletion,
@@ -10,7 +12,7 @@ import type {
   ChatCompletionTool,
 } from 'openai/resources/chat/completions';
 import type { Env } from '../config/env';
-import { DB, ENV } from '../infra/tokens';
+import { DB, ENV, REDIS } from '../infra/tokens';
 import { currentTrace, currentTraceId, SpanKind, withSpan } from '../telemetry/tracing';
 import { rankCandidates, routeOrder } from './llm-router';
 import { LlmSettingsService, modelAlias, modelIdFromAlias } from './llm-settings.service';
@@ -55,6 +57,10 @@ export interface CallMeta {
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+/** Short texts only: a question, an FAQ title, a tool description. */
+const EMBED_CACHE_MAX_CHARS = 600;
+const EMBED_CACHE_SECONDS = 7 * 86_400;
+const EMBED_CACHE_PREFIX = 'tms:llm:emb:';
 
 /**
  * Every LLM call in the app goes through here (ADR 0003, 0008). TMS picks the
@@ -77,6 +83,7 @@ export class LlmClientService {
   constructor(
     @Inject(DB) private readonly db: Database,
     @Inject(ENV) env: Env,
+    @Inject(REDIS) private readonly redis: Redis,
     private readonly settings: LlmSettingsService,
   ) {
     this.client = new OpenAI({
@@ -122,12 +129,64 @@ export class LlmClientService {
     );
   }
 
+  /**
+   * Embeds short texts, such as a customer's question, through a cache in
+   * Redis: the same words asked again cost nothing. Texts already cached are
+   * left out of the request; when all are, no model is called at all.
+   * Documents being indexed (long texts, large batches) are not cached.
+   */
   async embed(
     input: string[],
     ctx: CallContext & { dimensions?: number } = {},
   ): Promise<{ vectors: number[][] } & CallMeta> {
-    const req = { ...ctx, role: 'embedding' as const };
     const order = await this.order('embedding');
+    const cacheable = input.every((t) => t.length <= EMBED_CACHE_MAX_CHARS);
+    if (!cacheable) return this.embedNow(input, ctx, order);
+
+    const started = Date.now();
+    const keys = input.map(
+      (t) =>
+        `${EMBED_CACHE_PREFIX}${order[0]}:${ctx.dimensions ?? 0}:${createHash('sha256').update(t).digest('hex')}`,
+    );
+    const found = await this.redis.mget(keys).catch(() => keys.map(() => null));
+    const vectors: Array<number[] | null> = found.map((raw) => {
+      try {
+        return raw ? (JSON.parse(raw) as number[]) : null;
+      } catch {
+        return null;
+      }
+    });
+    const missing = vectors.flatMap((v, i) => (v ? [] : [i]));
+    if (!missing.length) {
+      return {
+        vectors: vectors as number[][],
+        modelId: order[0]!,
+        model: modelAlias(order[0]!),
+        costUsd: 0,
+        latencyMs: Date.now() - started,
+        fallbacksAttempted: 0,
+      };
+    }
+    const fresh = await this.embedNow(
+      missing.map((i) => input[i]!),
+      ctx,
+      order,
+    );
+    const write = this.redis.multi();
+    missing.forEach((at, n) => {
+      vectors[at] = fresh.vectors[n]!;
+      write.set(keys[at]!, JSON.stringify(fresh.vectors[n]), 'EX', EMBED_CACHE_SECONDS);
+    });
+    await write.exec().catch(() => undefined);
+    return { ...fresh, vectors: vectors as number[][] };
+  }
+
+  private async embedNow(
+    input: string[],
+    ctx: CallContext & { dimensions?: number },
+    order: string[],
+  ): Promise<{ vectors: number[][] } & CallMeta> {
+    const req = { ...ctx, role: 'embedding' as const };
     const started = Date.now();
     try {
       const { data, response } = await this.client.embeddings
@@ -154,7 +213,7 @@ export class LlmClientService {
 
   /** Model ids to try for the role, or throws LlmUnavailableError. */
   async order(role: ModelRole): Promise<string[]> {
-    const snap = await this.settings.routingSnapshot();
+    const snap = await this.settings.recentSnapshot();
     const candidates = rankCandidates(
       role,
       snap.roles.get(role) ?? { mode: 'cheapest', modelIds: [] },
@@ -177,7 +236,7 @@ export class LlmClientService {
     status: 'ok',
     tokens: { prompt?: number; completion?: number },
   ): Promise<CallMeta> {
-    const snap = await this.settings.routingSnapshot();
+    const snap = await this.settings.recentSnapshot();
     const modelId = modelIdFromAlias(headers.get('x-litellm-model-id')) ?? firstChoice;
     const model = snap.modelById.get(modelId);
     // Manual prices (models LiteLLM doesn't know) are applied here; otherwise LiteLLM's cost.

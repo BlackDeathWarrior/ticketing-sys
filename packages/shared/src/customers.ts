@@ -65,6 +65,32 @@ export const resolveCustomerSchema = z.object({
 });
 export type ResolveCustomerInput = z.infer<typeof resolveCustomerSchema>;
 
+/** Why the AI flagged a customer (ADR 0029). */
+export const CUSTOMER_FLAG_KINDS = ['jailbreak', 'abuse', 'spam', 'off_topic'] as const;
+export type CustomerFlagKind = (typeof CUSTOMER_FLAG_KINDS)[number];
+
+export const CUSTOMER_FLAG_LABELS: Record<CustomerFlagKind, string> = {
+  jailbreak: "Tried to override the AI's instructions",
+  abuse: 'Abusive language',
+  spam: 'Spam',
+  off_topic: 'Kept asking about unrelated things',
+};
+
+export interface CustomerFlagView {
+  id: string;
+  kind: CustomerFlagKind;
+  ticketId: string | null;
+  createdAt: string;
+  clearedAt: string | null;
+  clearNote: string | null;
+}
+
+export const clearCustomerFlagSchema = z.object({
+  /** Why the flag no longer applies; kept with it. */
+  note: z.string().trim().min(3).max(500),
+});
+export type ClearCustomerFlagInput = z.infer<typeof clearCustomerFlagSchema>;
+
 export const mergeCustomersSchema = z.object({
   sourceId: z.string().uuid(),
   targetId: z.string().uuid(),

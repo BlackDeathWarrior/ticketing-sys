@@ -6,19 +6,28 @@ import {
   type OnApplicationBootstrap,
 } from '@nestjs/common';
 import type { Database } from '@tms/db';
-import { type AiDecision, quietTimeMs } from '@tms/shared';
+import {
+  AI_CLOSURE_LABELS,
+  type AiClosure,
+  type AiDecision,
+  type AiRule,
+  type CustomerFlagKind,
+  quietTimeMs,
+} from '@tms/shared';
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { OutboundService } from '../channels/outbound.service';
 import { AI_CTX } from '../common/request-context';
 import type { Env } from '../config/env';
 import { ConversationsService } from '../conversations/conversations.service';
+import { CustomersService } from '../customers/customers.service';
 import { DB, ENV } from '../infra/tokens';
 import { AiBehaviourService } from '../settings/ai-behaviour.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { ApprovalsService } from '../tools/approvals.service';
 import { AiRunsService } from './ai-runs.service';
-import { closedForSilence, closingThanks } from './policy';
+import { AiFastPathsService } from './fast-paths.service';
+import { closedForSilence, closingThanks, conductClosed } from './policy';
 import { AGENT_PROMPT_VERSION } from './prompts';
 
 const QUEUE = 'ai-auto-resolve';
@@ -61,7 +70,76 @@ export class AiAutoResolveService {
     private readonly outbound: OutboundService,
     private readonly approvals: ApprovalsService,
     private readonly runs: AiRunsService,
+    private readonly customers: CustomersService,
+    private readonly fast: AiFastPathsService,
   ) {}
+
+  /**
+   * Ends a conversation for misuse: an attempt to override the AI's
+   * instructions, abuse, spam, or questions that stayed off topic after a
+   * warning (ADR 0029). The customer is told it is closed, the ticket is
+   * closed for good, and the customer is flagged when asked. No model is
+   * involved in any of it.
+   */
+  async closeForConduct(i: {
+    ticketId: string;
+    conversationId: string;
+    customerId: string;
+    language: string | null;
+    closure: 'jailbreak' | 'abuse' | 'spam' | 'off_topic';
+    /** The guard pattern that matched, for the record; never the customer's words. */
+    pattern: string | null;
+    rules: AiRule[];
+    flag: boolean;
+    triggerMessageId: string | null;
+  }): Promise<AiDecision> {
+    return this.db.transaction(async (tx) => {
+      const closed = await this.tickets.closeForConductInTx(
+        tx,
+        AI_CTX,
+        i.ticketId,
+        AI_CLOSURE_LABELS[i.closure as AiClosure],
+        i.closure,
+      );
+      if (!closed) return 'skipped';
+      const message = await this.outbound.aiReply(
+        AI_CTX,
+        i.conversationId,
+        conductClosed(i.language, i.closure),
+        { draft: false, notice: true, metadata: { closing: true, conduct: i.closure } },
+        tx,
+      );
+      if (i.flag) {
+        await this.customers.flagInTx(tx, AI_CTX, i.customerId, {
+          kind: i.closure as CustomerFlagKind,
+          pattern: i.pattern,
+          ticketId: i.ticketId,
+          conversationId: i.conversationId,
+        });
+      }
+      await this.runs.record(tx, {
+        kind: 'turn',
+        ticketId: i.ticketId,
+        conversationId: i.conversationId,
+        triggerMessageId: i.triggerMessageId,
+        decision: 'closed',
+        confidence: 1,
+        rules: i.rules,
+        promptVersion: AGENT_PROMPT_VERSION,
+        tools: [
+          {
+            name: 'guard',
+            summary: `${AI_CLOSURE_LABELS[i.closure as AiClosure]}${i.pattern ? ` (${i.pattern})` : ''}${i.flag ? '; customer flagged' : ''}; no model was asked`,
+          },
+        ],
+        replyMessageId: message.id,
+        language: i.language,
+        intent: i.closure,
+      });
+      void this.fast.count('guard');
+      return 'closed';
+    });
+  }
 
   /**
    * The customer said nothing else is needed. No model is asked: the ticket
@@ -109,6 +187,7 @@ export class AiAutoResolveService {
         language: i.language,
         intent: 'nothing_else',
       });
+      void this.fast.count('closing');
       return 'sent';
     });
   }

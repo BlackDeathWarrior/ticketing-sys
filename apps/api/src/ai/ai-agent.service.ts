@@ -9,6 +9,7 @@ import {
   AI_RULE_LABELS,
   asksForHuman,
   declinesMoreHelp,
+  smallTalk,
   type SimulateAiInput,
   type SimulateAiResult,
   describeArgs,
@@ -36,13 +37,20 @@ import { forModel, type InvokeResult, ToolGatewayService } from '../tools/tool-g
 import { type AgentTool, ToolsService } from '../tools/tools.service';
 import { AiAutoResolveService } from './ai-auto-resolve';
 import { AiRunsService } from './ai-runs.service';
+import { AiFastPathsService, type FastAnswer } from './fast-paths.service';
+import { acceptsOffer, type GuardHit, screenInbound } from './guard';
 import { LanguageService } from './language.service';
 import {
   approvalOutcomeMessage,
   assess,
+  clarifyMessage,
   closingQuestion,
+  conductWarning,
   handoverMessage,
   handoverNote,
+  offTopicWarning,
+  personOffer,
+  smallTalkReply,
   waitingMessage,
   withClosingQuestion,
 } from './policy';
@@ -64,6 +72,25 @@ import {
   sendReplyArgs,
   updateTicketArgs,
 } from './tools';
+
+/** Channels answered by email: no fixed one-liners, no warnings or closing by the AI alone. */
+const BY_EMAIL = new Set(['email', 'web_form']);
+/** A request for a person this short says nothing else: it gets the fixed offer. */
+const PERSON_ONLY_CHARS = 60;
+
+type ConductClosure = 'jailbreak' | 'abuse' | 'spam' | 'off_topic';
+const CONDUCT_RULE: Record<ConductClosure, AiRule> = {
+  jailbreak: 'jailbreak_attempt',
+  abuse: 'abusive_language',
+  spam: 'spam',
+  off_topic: 'off_topic',
+};
+
+/** How often this conversation has been warned (kept on the conversation, `metadata.guard`). */
+function guardState(metadata: Record<string, unknown>): { abuse: number; offTopic: number } {
+  const g = (metadata.guard ?? {}) as { abuse?: unknown; offTopic?: unknown };
+  return { abuse: Number(g.abuse) || 0, offTopic: Number(g.offTopic) || 0 };
+}
 
 /** Thrown when another turn holds the conversation; the queue retries shortly. */
 export class ConversationBusyError extends Error {
@@ -103,6 +130,13 @@ interface ThinkInput {
   update: { tool: string; status: 'done' | 'rejected'; detail: string; reason: string } | null;
   /** The outcome being reported was confirmed by a company system. */
   confirmedByTool: boolean;
+  /**
+   * The customer asked for a person and is being helped first: the model
+   * answers what they wrote and says a colleague is available.
+   */
+  personAsked?: boolean;
+  /** The integration whose ticket this is: answers are only reused within one. */
+  integration?: string | null;
 }
 
 export interface ThinkResult {
@@ -115,6 +149,8 @@ export interface ThinkResult {
   language: string | null;
   intent: string | null;
   resolves: boolean;
+  /** The model says the message has nothing to do with the company. */
+  offTopic: boolean;
   ticketUpdate: { category?: string; priority?: 'urgent' | 'high' | 'normal' | 'low' };
   tools: Array<{ name: string; summary: string }>;
   sources: Array<{ chunkId: string; label: string }>;
@@ -174,6 +210,7 @@ export class AiAgentService {
     private readonly handover: HandoverService,
     private readonly learning: LearningService,
     private readonly autoResolve: AiAutoResolveService,
+    private readonly fast: AiFastPathsService,
   ) {}
 
   /** Answers the conversation's unanswered customer message(s), if the AI still owns it. */
@@ -464,8 +501,122 @@ export class AiAgentService {
     const lastHandover = conv.metadata.lastHandoverAt
       ? new Date(String(conv.metadata.lastHandoverAt))
       : undefined;
+    const send = (r: ThinkResult) =>
+      this.apply({
+        conv,
+        ticket,
+        r,
+        language,
+        lastCustomerBody: lastRow.body,
+        aiReplies: rows.filter((m) => m.authorType === 'ai').length,
+        toldToWait: toldToWait(rows),
+        mode,
+        behaviour,
+        triggerMessageId,
+        kind: 'turn',
+      });
+    /** A reply that needs no model: fixed wording, sent as it is. */
+    const fixed = (reply: string, rules: AiRule[], summary: string): ThinkResult => ({
+      ...blankResult(language),
+      decision: 'sent',
+      reply,
+      confidence: 1,
+      selfConfidence: 1,
+      rules,
+      tools: [{ name: 'no_model', summary }],
+    });
+    // Where the AI answers by itself in a place the customer is reading: only there does it
+    // warn, offer or close on its own. Elsewhere (email, drafts) a person decides, and a
+    // caller on the phone is put through.
+    const live = mode === 'auto' && !BY_EMAIL.has(conv.channel) && conv.channel !== 'voice';
+    const guard = behaviour.guardrails;
+    const strikes = guardState(conv.metadata);
+    const flagged = () =>
+      this.customers.flaggedSince(customer.id, new Date(Date.now() - guard.flagHours * 3_600_000));
+    const endFor = (closure: ConductClosure, hit: GuardHit | null, repeat: boolean) =>
+      this.autoResolve.closeForConduct({
+        ticketId: ticket.id,
+        conversationId: conv.id,
+        customerId: customer.id,
+        language,
+        closure,
+        pattern: hit?.pattern ?? null,
+        rules: [CONDUCT_RULE[closure], ...(repeat ? (['repeat_offender'] as AiRule[]) : [])],
+        // An attempt on the AI's instructions is flagged; so is someone closed twice.
+        flag: closure === 'jailbreak' || closure === 'abuse' || repeat,
+        triggerMessageId,
+      });
 
-    const r = await this.think({
+    // ---- Conduct: what the message is, before any model sees it (ADR 0029) ----
+    if (guard.enabled && conv.channel !== 'voice') {
+      const earlier = rows
+        .slice(0, -1)
+        .filter((m) => m.authorType === 'customer')
+        .map((m) => m.body);
+      const hit = screenInbound(lastRow.body, earlier);
+      // Someone flagged recently gets no benefit of the doubt and no second warning.
+      const repeat = hit ? await flagged() : false;
+      if (hit && (hit.strength === 'strong' || repeat)) {
+        if (!live) {
+          return send({
+            ...blankResult(language),
+            rules: [CONDUCT_RULE[hit.kind]],
+            handoverReason: `The message matched the guard pattern "${hit.pattern}"`,
+          });
+        }
+        const count = strikes.abuse + 1;
+        const close =
+          repeat || (hit.kind === 'jailbreak' ? guard.closeOnJailbreak : count >= guard.abuseLimit);
+        if (close) {
+          const done = await endFor(hit.kind, hit, repeat);
+          if (done !== 'skipped') return done;
+        } else if (hit.kind !== 'jailbreak') {
+          await this.conversations.updateAiState(this.db, conv.id, {
+            metadata: { guard: { ...strikes, abuse: count } },
+          });
+          return send(
+            fixed(
+              conductWarning(language, hit.kind),
+              [CONDUCT_RULE[hit.kind]],
+              `Warned the customer (${hit.kind}, ${count} of ${guard.abuseLimit}); no model was asked`,
+            ),
+          );
+        }
+        // An attempt on the instructions with closing switched off goes to the model, where
+        // the customer's text is data like any other.
+      }
+    }
+
+    // ---- A request for a person: the AI offers to sort it out first (ADR 0029) ----
+    const offered = (previous?.metadata as { ai?: { personOffer?: boolean } } | null)?.ai
+      ?.personOffer;
+    const insists = !!offered && acceptsOffer(lastRow.body);
+    let personAsked = false;
+    if ((asksForHuman(lastRow.body) || insists) && live) {
+      const asks = Number(conv.metadata.humanAsks ?? 0) + 1;
+      await this.conversations.updateAiState(this.db, conv.id, { metadata: { humanAsks: asks } });
+      if (insists || asks >= behaviour.handover.personRequestsBeforeHandover) {
+        return send({ ...blankResult(language), rules: ['asked_for_human'] });
+      }
+      if (lastRow.body.trim().length <= PERSON_ONLY_CHARS) {
+        return send(
+          fixed(
+            personOffer(language),
+            ['person_offered'],
+            'The customer asked for a person: offered to sort it out first; no model was asked',
+          ),
+        );
+      }
+      // They said what it is about as well: answer that, and say a colleague is available.
+      personAsked = true;
+    }
+
+    const unconfidentBefore = await this.runs.unconfidentTurns(
+      conv.id,
+      behaviour.sendAt,
+      lastHandover,
+    );
+    let r = await this.think({
       channel: conv.channel,
       mode,
       behaviour,
@@ -484,31 +635,55 @@ export class AiAgentService {
       },
       customer: { name: customer.displayName, type: customer.customerType },
       language,
-      unconfidentTurnsBefore: await this.runs.unconfidentTurns(
-        conv.id,
-        behaviour.sendAt,
-        lastHandover,
-      ),
+      unconfidentTurnsBefore: unconfidentBefore,
       conversationId: conv.id,
       customerEmail: boundEmail(ticket, customer, conv),
       dryRun: false,
       update: null,
       confirmedByTool: false,
+      personAsked,
+      integration: ticket.integration?.slug ?? null,
     });
+    if (personAsked && r.decision === 'sent') r.rules = [...r.rules, 'person_offered'];
 
-    return this.apply({
-      conv,
-      ticket,
-      r,
-      language,
-      lastCustomerBody: lastRow.body,
-      aiReplies: rows.filter((m) => m.authorType === 'ai').length,
-      toldToWait: toldToWait(rows),
-      mode,
-      behaviour,
-      triggerMessageId,
-      kind: 'turn',
-    });
+    // ---- Nothing to do with the company: a redirect, a warning, then closed ----
+    if (r.offTopic && guard.enabled && live && r.decision === 'sent') {
+      const count = strikes.offTopic + 1;
+      const repeat = await flagged();
+      if (repeat || count >= guard.offTopicLimit) {
+        const done = await endFor('off_topic', null, repeat);
+        if (done !== 'skipped') return done;
+      }
+      await this.conversations.updateAiState(this.db, conv.id, {
+        metadata: { guard: { ...strikes, offTopic: count } },
+      });
+      r.rules = [...r.rules, 'off_topic'];
+      r.resolves = false;
+      if (count === guard.offTopicLimit - 1 && r.reply) {
+        r.reply = `${r.reply}\n\n${offTopicWarning(language)}`;
+      }
+    }
+
+    // ---- Unsure: ask the customer to say more before giving up on them ----
+    // A person is for when the AI has tried and failed, not for its first doubt.
+    const unsure =
+      r.decision === 'handover' &&
+      r.rules.length > 0 &&
+      r.rules.every((rule) => rule === 'low_confidence' || rule === 'no_answer');
+    if (unsure && live && unconfidentBefore + 1 < behaviour.maxFailedTurns) {
+      r = {
+        ...r,
+        decision: 'sent',
+        reply: clarifyMessage(language),
+        // Stays below the send threshold on record, so it counts towards "tried and failed".
+        confidence: Math.min(r.confidence ?? 0, Math.max(0, behaviour.sendAt - 0.01)),
+        rules: ['clarifying'],
+        handoverReason: null,
+        resolves: false,
+      };
+    }
+
+    return send(r);
   }
 
   /** Sends, drafts or hands over as the turn decided, and records the run, in one transaction. */
@@ -593,6 +768,7 @@ export class AiAgentService {
                 rules: r.rules,
                 sources: r.sources,
                 ...(asks ? { closingQuestion: true } : {}),
+                ...(r.rules.includes('person_offered') ? { personOffer: true } : {}),
               },
             },
           },
@@ -698,10 +874,33 @@ export class AiAgentService {
     const finish = () => ({ ...out, latencyMs: Date.now() - started });
     const last = [...i.transcript].reverse().find((l) => l.author === 'customer')?.body ?? '';
 
-    if (asksForHuman(last)) {
+    if (asksForHuman(last) && !i.personAsked) {
       out.rules = ['asked_for_human'];
       return finish();
     }
+
+    // ---- Answers that need no model (ADR 0030). An email wants an email, so not there. ----
+    const paths = i.behaviour.fastPaths;
+    const quick = !i.update && !i.personAsked && !BY_EMAIL.has(i.channel);
+    const customerLines = i.transcript.filter((l) => l.author === 'customer').length;
+    /** The opening question of a conversation with nothing attached: the same for anyone who asks it. */
+    const general = quick && customerLines === 1 && !i.summary && !i.ticket.context;
+    const scope = `${AGENT_PROMPT_VERSION}|${i.integration ?? '-'}|${i.channel}|${i.language ?? '-'}`;
+    let fast: FastAnswer | null = null;
+    const talk = quick && paths.smallTalk ? smallTalk(last) : null;
+    if (talk) {
+      fast = {
+        route: 'smalltalk',
+        reply: smallTalkReply(talk, i.language),
+        confidence: 1,
+        intent: talk,
+        resolves: talk === 'thanks',
+        sources: [],
+        summary: `A ${talk === 'help' ? 'request with no question in it' : talk}: fixed reply; no model was asked`,
+      };
+    }
+    if (!fast && quick) fast = await this.fast.faq(last, paths, { ticketId: i.ticket.id });
+    if (!fast && general) fast = await this.fast.cached(last, scope, paths);
 
     const labels = new Map<string, string>();
     const search = async (query: string, limit: number) => {
@@ -716,13 +915,23 @@ export class AiAgentService {
     };
 
     // A follow-up reports a decision; the last question was answered in an earlier turn.
-    const knowledge = i.update ? [] : await search(last, 3).catch(() => []);
-    const categories = await this.categoryLabels();
+    const knowledge = i.update || fast ? [] : await search(last, 3).catch(() => []);
+    // The list is only needed to choose a category; a ticket that has one saves the tokens.
+    const categories = i.ticket.category ? [] : await this.categoryLabels();
     // What staff taught the AI after reading customer ratings (ADR 0020).
     const lessons = await this.learning
       .lessonsFor(i.ticket.categoryId ?? null)
       .catch(() => [] as string[]);
-    const companyTools: AgentTool[] = await this.tools.agentTools().catch(() => []);
+    const allTools: AgentTool[] = fast ? [] : await this.tools.agentTools().catch(() => []);
+    // Tools that act for a customer are refused without one the channel vouched for: leaving
+    // them out saves their descriptions on every step, and the model a call that cannot work.
+    const companyTools = allTools.filter((t) => i.customerEmail || !t.tool.customerArg);
+    const builtIn = AGENT_TOOLS.filter(
+      (t) => !(t.type === 'function' && t.function.name === 'update_ticket') || !i.ticket.category,
+    );
+    let usedCompanyTool = false;
+    /** A company system answered this turn: what it said may be passed on. */
+    let readByTool = false;
     /** Company-system results the reply may rest on; they count as sources. */
     const toolSources: Array<{ chunkId: string; label: string }> = [];
     if (i.update)
@@ -741,6 +950,8 @@ export class AiAgentService {
           knowledge: knowledge.map((k) => ({ id: k.id, label: k.source, text: k.text })),
           categories,
           companyTools: companyTools.length > 0,
+          unverified: allTools.length > companyTools.length,
+          personAsked: !!i.personAsked,
           update: i.update,
           lessons,
         }),
@@ -757,6 +968,19 @@ export class AiAgentService {
       | { kind: 'reply'; args: ReturnType<typeof sendReplyArgs.parse> }
       | { kind: 'human'; reason: string }
       | null = null;
+    if (fast) {
+      final = {
+        kind: 'reply',
+        args: sendReplyArgs.parse({
+          message: fast.reply,
+          confidence: fast.confidence,
+          intent: fast.intent,
+          resolves_issue: fast.resolves,
+        }),
+      };
+      toolSources.push(...fast.sources);
+      out.tools.push({ name: 'no_model', summary: fast.summary });
+    }
     /** An answer the model gave as plain text; it is asked once to send it with the reply tool. */
     let plain: string | null = null;
     for (let step = 0; step < i.behaviour.maxSteps && !final; step++) {
@@ -765,7 +989,7 @@ export class AiAgentService {
         const r = await this.llm.chat({
           role: i.channel === 'voice' ? 'chat_agent_voice' : 'chat_agent',
           messages,
-          tools: [...AGENT_TOOLS, ...companyTools.map((t) => t.definition)],
+          tools: [...builtIn, ...companyTools.map((t) => t.definition)],
           // The reply is short; the rest is room for models that reason before they answer.
           maxTokens: 1200,
           temperature: 0.2,
@@ -866,6 +1090,8 @@ export class AiAgentService {
               });
             }
             if (res.status === 'ok' && ct.tool.tier !== 'read') confirmed = true;
+            if (res.status === 'ok') readByTool = true;
+            usedCompanyTool = true;
           }
         }
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
@@ -874,7 +1100,7 @@ export class AiAgentService {
 
     out.seenSources = [...new Set(labels.values())];
     if (!final && plain) {
-      final = { kind: 'reply', args: sendReplyArgs.parse({ message: plain, confidence: 0.5 }) };
+      final = { kind: 'reply', args: sendReplyArgs.parse({ message: plain }) };
     }
     if (!final) {
       out.rules = ['no_answer'];
@@ -891,11 +1117,15 @@ export class AiAgentService {
     const caution = await this.learning
       .cautionFor({ categoryId: i.ticket.categoryId ?? null, chunkIds: cited })
       .catch(() => []);
+    const grounded = cited.length + toolSources.length > 0;
     const verdict = assess({
-      selfConfidence: a.confidence,
+      // A model that gave no confidence is judged on what it stood on: with a source it is
+      // sent, without one a person sees it first. It used to count as 0.5 either way.
+      selfConfidence: a.confidence ?? (grounded ? i.behaviour.sendAt : i.behaviour.handoverBelow),
       reply: a.message,
       citedSources: cited.length + toolSources.length,
       confirmedByTool: confirmed,
+      readByTool,
       unconfidentTurnsBefore: i.unconfidentTurnsBefore,
       mode: i.mode,
       behaviour: i.behaviour,
@@ -907,14 +1137,35 @@ export class AiAgentService {
     }
     out.decision = verdict.decision;
     out.confidence = verdict.confidence;
-    out.selfConfidence = a.confidence;
+    out.selfConfidence = a.confidence ?? null;
     out.rules = verdict.rules;
     // An unsafe reply is not sent, drafted or quoted in the handover note.
     out.reply = verdict.rules.includes('unsafe_output') ? null : a.message || null;
     out.language = a.language?.split('-')[0] ?? i.language;
     out.intent = a.intent ?? null;
     out.resolves = !!a.resolves_issue;
+    out.offTopic = !!a.off_topic;
     out.sources = [...cited.map((id) => ({ chunkId: id, label: labels.get(id)! })), ...toolSources];
+    if (fast) {
+      if (!i.dryRun) await this.fast.count(fast.route);
+    } else if (
+      general &&
+      !i.dryRun &&
+      out.decision === 'sent' &&
+      out.resolves &&
+      !out.offTopic &&
+      cited.length > 0 &&
+      !usedCompanyTool &&
+      out.reply
+    ) {
+      // A sourced answer to an opening question: the next person who asks it gets this one.
+      await this.fast.remember(last, scope, paths, {
+        reply: out.reply,
+        confidence: verdict.confidence,
+        intent: out.intent,
+        sources: out.sources,
+      });
+    }
     return finish();
   }
 
@@ -1095,6 +1346,7 @@ function blankResult(language: string | null): ThinkResult {
     language,
     intent: null,
     resolves: false,
+    offTopic: false,
     ticketUpdate: {},
     tools: [],
     sources: [],

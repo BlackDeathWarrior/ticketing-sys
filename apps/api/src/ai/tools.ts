@@ -42,10 +42,16 @@ export const AGENT_TOOLS: ChatCompletionTool[] = [
     function: {
       name: 'request_human',
       description:
-        'Hand the conversation to a human colleague. Use when you cannot answer from the knowledge base, the customer asks for a person, or an action is needed.',
+        'Bring in a human colleague. A last resort, never for being unsure: only when the customer still wants a person after your offer to help, the matter is legal, a safety risk, fraud or a compromised account, it needs an action no tool offers, or a tool keeps failing.',
       parameters: {
         type: 'object',
-        properties: { reason: { type: 'string', description: 'Why, in a short sentence' } },
+        properties: {
+          reason: { type: 'string', description: 'Why, in a short sentence' },
+          category: {
+            type: 'string',
+            enum: ['customer_insists', 'legal_or_safety', 'needs_action', 'tool_failure'],
+          },
+        },
         required: ['reason'],
       },
     },
@@ -78,6 +84,11 @@ export const AGENT_TOOLS: ChatCompletionTool[] = [
             type: 'boolean',
             description: 'True when this reply fully answers the customer’s question',
           },
+          off_topic: {
+            type: 'boolean',
+            description:
+              'True when the customer’s message has nothing to do with the company, its products, orders or services',
+          },
         },
         required: ['message', 'confidence'],
       },
@@ -93,11 +104,13 @@ export const updateTicketArgs = z.object({
 export const requestHumanArgs = z.object({ reason: z.string().trim().max(500).default('') });
 export const sendReplyArgs = z.object({
   message: z.string().trim().max(5_000),
-  confidence: z.coerce.number().min(0).max(1).catch(0.5),
+  // Left out or unusable: the turn judges the reply on its sources instead (see think()).
+  confidence: z.coerce.number().min(0).max(1).optional().catch(undefined),
   sources: z.array(z.string()).max(20).default([]),
   language: z.string().trim().max(10).optional(),
   intent: z.string().trim().max(60).optional(),
   resolves_issue: z.boolean().optional(),
+  off_topic: z.boolean().optional().catch(undefined),
 });
 
 /** Parses a tool call's JSON arguments; returns the zod error message on failure. */
