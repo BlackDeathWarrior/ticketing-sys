@@ -144,6 +144,7 @@ function describeConditions(r: RoutingRuleView): string {
     c.priority && `${c.priority} priority`,
     c.language && `language ${c.language}`,
     c.customerType && `${c.customerType} customers`,
+    c.tag && `tagged ${c.tag}`,
     c.categoryId && 'a category',
   ].filter(Boolean);
   return parts.length ? parts.join(', ') : 'Everything';
@@ -271,6 +272,7 @@ function RuleForm({
     priority: rule?.conditions.priority ?? '',
     language: rule?.conditions.language ?? '',
     customerType: rule?.conditions.customerType ?? '',
+    tag: rule?.conditions.tag ?? '',
   });
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof v) => (value: string | boolean) =>
@@ -278,11 +280,15 @@ function RuleForm({
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const conditions = Object.fromEntries(
-      (['channel', 'priority', 'language', 'customerType'] as const)
-        .filter((k) => v[k])
-        .map((k) => [k, v[k]]),
-    );
+    const conditions = {
+      // A category condition is set through the API; editing a rule here keeps it.
+      ...(rule?.conditions.categoryId ? { categoryId: rule.conditions.categoryId } : {}),
+      ...Object.fromEntries(
+        (['channel', 'priority', 'language', 'customerType', 'tag'] as const)
+          .filter((k) => v[k].trim())
+          .map((k) => [k, v[k].trim()]),
+      ),
+    };
     const body: RoutingRuleInput = {
       name: v.name,
       teamId: v.teamId,
@@ -368,6 +374,13 @@ function RuleForm({
           placeholder="e.g. vip"
           value={v.customerType}
           onChange={(e) => set('customerType')(e.target.value)}
+        />
+        <Input
+          id="rule-tag"
+          label="Tag"
+          placeholder="e.g. incident"
+          value={v.tag}
+          onChange={(e) => set('tag')(e.target.value)}
         />
       </div>
       <Select

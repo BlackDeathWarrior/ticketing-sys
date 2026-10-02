@@ -187,6 +187,90 @@ describe('routing settings and presence', () => {
     expect(mine.map((r: { name: string }) => r.name)).toEqual(['Hindi chats', 'All web chats']);
     expect(mine[0].requiredSkill).toBe('hindi');
   });
+
+  it('routes by tag: an incident an app reports goes to the team that runs the app', async () => {
+    // A team of its own: the other tests count on who is online in theirs.
+    const opsTeamId = await makeTeam(t, admin, uniq('Operations'));
+    const rule = await t.call('POST', '/routing/rules', {
+      token: admin,
+      body: { name: 'Incidents', conditions: { tag: 'incident' }, teamId: opsTeamId },
+    });
+    expect(rule.status, JSON.stringify(rule.body)).toBe(201);
+    expect(rule.body.conditions).toEqual({ tag: 'incident' });
+    ruleIds.push(rule.body.id);
+
+    const app = await t.call('POST', '/integrations', {
+      token: admin,
+      body: { slug: uniq('app-'), name: 'Routed app' },
+    });
+    const key = await t.call('POST', `/integrations/${app.body.id}/keys`, {
+      token: admin,
+      body: { name: 'Worker', scopes: ['integration:event', 'integration:ticket'] },
+    });
+    const onCall = await makeUser(t, admin, 'agent', {
+      name: 'Omar OnCall',
+      teamIds: [opsTeamId],
+    });
+    await t.call('PUT', `/routing/agents/${onCall.id}/presence`, {
+      token: admin,
+      body: { status: 'online', capacity: 3 },
+    });
+    const fingerprint = uniq('job.failed:');
+    const reported = await t.call('POST', '/integration/events', {
+      token: key.body.key,
+      body: { fingerprint, title: 'Nightly job failed', severity: 'error' },
+    });
+    expect(reported.status, JSON.stringify(reported.body)).toBe(202);
+    const routed = await waitFor(async () => {
+      const tk = await ticket(reported.body.incident.ticket);
+      return tk.assignee ? tk : undefined;
+    }, 'the incident ticket to be routed');
+    expect(routed.team.id).toBe(opsTeamId);
+    expect(routed.assignee.id).toBe(onCall.id);
+    expect(routed.tags).toContain('incident');
+
+    // Routing gave it to someone, but no person has touched it: a recovery still resolves it.
+    const recovered = await t.call('POST', '/integration/events', {
+      token: key.body.key,
+      body: { fingerprint, status: 'resolved' },
+    });
+    expect(recovered.body.action).toBe('resolved');
+    expect((await ticket(routed.id)).status).toBe('resolved');
+
+    // The next one, the on-call agent starts on: now the recovery leaves it to them.
+    const second = uniq('job.failed:');
+    const again = await t.call('POST', '/integration/events', {
+      token: key.body.key,
+      body: { fingerprint: second, title: 'Nightly job failed again', severity: 'error' },
+    });
+    const taken = await waitFor(async () => {
+      const tk = await ticket(again.body.incident.ticket);
+      return tk.assignee ? tk : undefined;
+    }, 'the second incident ticket to be routed');
+    await t.call('POST', `/tickets/${taken.id}/notes`, {
+      token: onCall.token,
+      body: { body: 'Looking at the job logs.' },
+    });
+    await t.call('POST', '/integration/events', {
+      token: key.body.key,
+      body: { fingerprint: second, status: 'resolved' },
+    });
+    expect((await ticket(taken.id)).status).not.toBe('resolved');
+
+    // A ticket the same app raises for a user carries no such tag: the rule leaves it alone.
+    const asked = await t.call('POST', '/integration/tickets', {
+      token: key.body.key,
+      body: {
+        customer: { externalId: uniq('user-') },
+        subject: 'A question from a user',
+        body: 'How do I change my address?',
+        ai: 'off',
+      },
+    });
+    expect(asked.status).toBe(201);
+    await new Promise((r) => setTimeout(r, 1500));
+    expect((await ticket(asked.body.reference)).team?.id).not.toBe(opsTeamId);
+  });
 });
 
 describe('AI handover', () => {
@@ -209,6 +293,11 @@ describe('AI handover', () => {
     const tk = await ticket(c.ticketId);
     expect(tk).toMatchObject({ handling: 'handed_over', status: 'human_assigned' });
     expect(tk.assignee.id).toBe(hindi.id);
+    // The AI told the customer a person will reply. That is not an answer: the
+    // first-response clock keeps running until a person does.
+    const said = (await conv(c.ticketId)).messages.filter((m) => m.authorType === 'ai');
+    expect(said).toHaveLength(1);
+    expect(tk.firstResponseAt).toBeNull();
     const inbox = await waitFor(async () => {
       const n = (await t.call('GET', '/notifications', { token: hindi.token })).body;
       return n.items.find((x: { kind: string }) => x.kind === 'handover.requested');

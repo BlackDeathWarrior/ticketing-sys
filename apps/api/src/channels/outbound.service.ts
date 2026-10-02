@@ -160,7 +160,12 @@ export class OutboundService {
     ctx: RequestCtx,
     conversationId: string,
     body: string,
-    opts: { draft: boolean; metadata?: Record<string, unknown> },
+    opts: {
+      draft: boolean;
+      metadata?: Record<string, unknown>;
+      /** The AI says a person will answer (a handover): not an answer, so not a first response. */
+      notice?: boolean;
+    },
     tx?: DbOrTx,
   ) {
     const run = async (t: DbOrTx) => {
@@ -174,6 +179,7 @@ export class OutboundService {
         author: 'ai',
         draft: opts.draft,
         metadata: opts.metadata,
+        notice: opts.notice,
       });
     };
     return tx ? run(tx) : this.db.transaction(run);
@@ -328,6 +334,8 @@ export class OutboundService {
       metadata?: Record<string, unknown>;
       /** A fixed email Message-ID (acknowledgements); otherwise a random one. */
       messageId?: string;
+      /** Only says that someone will answer: the first-response clock keeps running. */
+      notice?: boolean;
     } = {},
   ) {
     const author = opts.author ?? 'agent';
@@ -356,8 +364,9 @@ export class OutboundService {
       await this.conversations.setThreadKey(tx, conv.id, email.messageId);
     }
 
-    // Automatic messages (acknowledgements) are not a first response.
-    if (!opts.draft && author !== 'system') {
+    // Automatic messages (acknowledgements) and "a person will reply" notices are not a
+    // first response: the customer has not been answered yet.
+    if (!opts.draft && author !== 'system' && !opts.notice) {
       await this.tickets.recordAgentReply(tx, ctx, ticket, { byAi });
     }
     // A person replying takes the conversation over (from nobody, or from the AI),

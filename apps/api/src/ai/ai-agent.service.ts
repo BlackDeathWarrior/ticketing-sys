@@ -511,7 +511,7 @@ export class AiAgentService {
             AI_CTX,
             conv.id,
             handoverMessage(replyLanguage, conv.channel),
-            { draft: false },
+            { draft: false, notice: true },
             tx,
           );
           replyMessageId = m.id;

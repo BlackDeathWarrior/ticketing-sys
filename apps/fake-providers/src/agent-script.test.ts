@@ -156,6 +156,142 @@ describe('lessons from staff', () => {
   });
 });
 
+describe('a catalogue site (the Ethnic Threads tools)', () => {
+  const siteTools = [
+    ...tools,
+    ...['catalog_status', 'scraper_status', 'product_lookup', 'trigger_rescrape'].map((name) => ({
+      type: 'function',
+      function: { name: `custom__${name}` },
+    })),
+  ];
+  /** A turn with the tool calls made so far and what each returned. */
+  const turn = (
+    question: string,
+    done: Array<[tool: string, result: unknown]> = [],
+    system = 'rules',
+  ): ChatRequest => ({
+    model: 'scripted-cheap',
+    tools: siteTools,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: `<customer_message>\n${question}\n</customer_message>` },
+      ...done.flatMap(([tool, result], i) => [
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [{ id: `call-${i}`, function: { name: `custom__${tool}` } }],
+        },
+        { role: 'tool', tool_call_id: `call-${i}`, content: JSON.stringify(result) },
+      ]),
+    ],
+  });
+  const stale = {
+    ok: true,
+    result: {
+      products: 8433,
+      newest_scraped_at: '2026-04-18T18:47:49+00:00',
+      age_days: 166.7,
+      stale: true,
+    },
+  };
+
+  it('checks how fresh the catalogue is, then what the scraper is doing', () => {
+    const question = 'Why are the prices on your site so old?';
+    expect(agentReply(turn(question)).toolCalls![0]!.name).toBe('custom__catalog_status');
+    expect(agentReply(turn(question, [['catalog_status', stale]])).toolCalls![0]!.name).toBe(
+      'custom__scraper_status',
+    );
+    const r = agentReply(
+      turn(question, [
+        ['catalog_status', stale],
+        ['scraper_status', { ok: true, result: { running: false, last_exit_code: 1 } }],
+      ]),
+    );
+    expect(r.toolCalls![0]!.name).toBe('send_reply');
+    expect(String(args(r).message)).toContain('last refreshed on 2026-04-18, 166.7 days ago');
+    expect(String(args(r).message)).toContain('its last run ended with an error');
+    expect(args(r).confidence).toBe(0.9);
+  });
+
+  it('answers straight away when the catalogue is fresh', () => {
+    const r = agentReply(
+      turn('The price here is different from the store', [
+        [
+          'catalog_status',
+          { ok: true, result: { newest_scraped_at: '2026-10-02T09:00:00+00:00', stale: false } },
+        ],
+      ]),
+    );
+    expect(String(args(r).message)).toContain('refreshed on 2026-10-02');
+    expect(args(r).resolves_issue).toBe(true);
+  });
+
+  it('asks for a refresh, which waits for a supervisor, and reports the outcome', () => {
+    const question = 'Please refresh the prices';
+    const asked = agentReply(turn(question));
+    expect(asked.toolCalls![0]!.name).toBe('custom__trigger_rescrape');
+    const waiting = agentReply(
+      turn(question, [['trigger_rescrape', { status: 'pending_approval' }]]),
+    );
+    expect(String(args(waiting).message)).toContain('asked our team to approve a refresh');
+
+    const update =
+      'rules\n<approval_update tool="custom__trigger_rescrape" status="done">\n{"started":true}\n</approval_update>';
+    const told = agentReply(turn(question, [], update));
+    expect(String(args(told).message)).toContain('the catalogue refresh has started');
+  });
+
+  it('looks up the listing the shopper has open', () => {
+    const context =
+      'rules\n<ticket_context>\nproduct_id: b18e1b5c-ee0\ntitle: Anarkali Kurta\n</ticket_context>';
+    const asked = agentReply(turn('Is this one in stock?', [], context));
+    expect(asked.toolCalls![0]).toEqual({
+      name: 'custom__product_lookup',
+      arguments: { product_id: 'b18e1b5c-ee0' },
+    });
+    const r = agentReply(
+      turn(
+        'Is this one in stock?',
+        [
+          [
+            'product_lookup',
+            {
+              ok: true,
+              result: {
+                title: 'Anarkali Kurta',
+                source: 'amazon',
+                price_current: 799,
+                in_stock: true,
+                scraped_at: '2026-04-18T18:47:49+00:00',
+              },
+            },
+          ],
+        ],
+        context,
+      ),
+    );
+    expect(String(args(r).message)).toBe(
+      "Anarkali Kurta is listed at ₹799 on amazon, and was in stock when we last checked on 2026-04-18. The store's own page shows the current price.",
+    );
+    // With no listing in the context there is nothing to look up: the knowledge base is searched.
+    expect(agentReply(turn('Is this one in stock?')).toolCalls![0]!.name).toBe('search_knowledge');
+  });
+
+  it('hands over when the site cannot be reached', () => {
+    const r = agentReply(
+      turn('Why are the prices old?', [['catalog_status', { ok: false, error: 'timed out' }]]),
+    );
+    expect(r.toolCalls![0]!.name).toBe('request_human');
+  });
+
+  it('leaves other questions to the knowledge base, and sites without these tools alone', () => {
+    expect(agentReply(turn('Do you sell sarees?')).toolCalls![0]!.name).toBe('search_knowledge');
+    expect(agentReply(agent('Why are the prices so old?')).toolCalls![0]!.name).toBe(
+      'search_knowledge',
+    );
+  });
+});
+
 describe('scripted classifier', () => {
   it('picks the best-matching category and flags urgency', () => {
     const r = classifierReply({

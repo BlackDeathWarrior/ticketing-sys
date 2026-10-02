@@ -13,6 +13,11 @@ import type { ChatMessage, ChatRequest, ScriptedReply } from './llm';
  *   `…__order_status` tool, or `…__issue_refund` when it asks for a refund.
  *   A refund waiting for approval is reported as "with the team"; an
  *   <approval_update> in the system prompt is reported to the customer.
+ * - A catalogue site (ADR 0027): a message that says prices look old calls
+ *   `…__catalog_status`, then `…__scraper_status` when the catalogue is stale;
+ *   asking for a refresh calls `…__trigger_rescrape` (which waits for
+ *   approval); a question about price or stock, with a `product_id` in the
+ *   ticket context, calls `…__product_lookup`.
  * - Lessons (ADR 0020): a lesson in the system prompt of the form "When
  *   customers ask about X, tell them: Y" is followed when the question shares
  *   three meaningful words with X: the reply is Y.
@@ -119,7 +124,9 @@ function companyFlow(req: ChatRequest, question: string): ScriptedReply | undefi
     return reply(
       d.refund_id
         ? `Good news: your refund${money ? ` of ${money}` : ''} for order ${String(d.order_id ?? '')} has been issued (reference ${String(d.refund_id)}). It should arrive in ${String(d.arrives_in ?? '5 to 7 business days')}.`
-        : 'Good news: your request has been approved and completed.',
+        : d.started
+          ? 'Good news: the catalogue refresh has started. New prices appear on the site as each store finishes.'
+          : 'Good news: your request has been approved and completed.',
       0.92,
       { intent: 'approval_outcome', resolves_issue: true },
     );
@@ -167,6 +174,103 @@ function companyFlow(req: ChatRequest, question: string): ScriptedReply | undefi
   }
   const status = companyTool(req, 'order_status');
   if (WHERE.test(question) && status) return call(status, { order_id: orderId });
+  return undefined;
+}
+
+const OLD =
+  'old|older|outdated|out of date|stale|wrong|different|higher|lower|not (?:been )?updated';
+const STALE = new RegExp(
+  `\\b(?:${OLD})\\b[^.?!]*\\bprices?\\b|\\bprices?\\b[^.?!]*\\b(?:${OLD})\\b`,
+  'i',
+);
+const REFRESH =
+  /\b(refresh|re-?scrape|rescan|update)\b[^.?!]*\b(prices?|catalogue|catalog|listings?|site)\b/i;
+const ABOUT_LISTING = /\b(in stock|available|sold out|how much|price|cost)\b/i;
+const SITE_TOOL = /__(catalog_status|scraper_status|product_lookup|trigger_rescrape)$/;
+
+const day = (iso: unknown) => String(iso ?? '').slice(0, 10) || 'an unknown date';
+
+function freshness(c: Record<string, unknown>): string {
+  return c.stale
+    ? `Our catalogue was last refreshed on ${day(c.newest_scraped_at)}, ${String(c.age_days ?? 'several')} days ago, so prices and stock shown on the site may no longer match the stores. The store's price is the one you pay.`
+    : `Our catalogue was refreshed on ${day(c.newest_scraped_at)}, so the prices shown should be current. A store can still change a price at any time; the store's price is the one you pay.`;
+}
+
+/**
+ * Flows for a site that shows a scraped catalogue (ADR 0027); undefined when
+ * the message is not about how fresh the catalogue is, a refresh or a listing.
+ */
+function siteFlow(req: ChatRequest, question: string): ScriptedReply | undefined {
+  const system = textOf(req.messages.find((m) => m.role === 'system'));
+  const results = req.messages.filter((m) => m.role === 'tool');
+  const read = (m: ChatMessage): Record<string, unknown> => {
+    try {
+      return JSON.parse(textOf(m)) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  };
+  const last = results.at(-1);
+  const lastName = last ? toolNameOf(req, last) : '';
+
+  if (last && SITE_TOOL.test(lastName)) {
+    const r = read(last);
+    if (r.status === 'pending_approval' || r.status === 'simulated') {
+      return reply(
+        "I've asked our team to approve a refresh of the catalogue. You'll get an update here as soon as it has been reviewed.",
+        0.9,
+        { intent: 'catalogue_refresh' },
+      );
+    }
+    if (r.ok === false || r.error) {
+      return call('request_human', {
+        reason: `The site's systems could not help: ${String(r.error ?? 'unknown error')}`,
+      });
+    }
+    const o = (r.result ?? {}) as Record<string, unknown>;
+    if (lastName.endsWith('__catalog_status')) {
+      const scraper = companyTool(req, 'scraper_status');
+      // A stale catalogue raises the next question: is anything refreshing it?
+      if (o.stale && scraper) return call(scraper, {});
+      return reply(freshness(o), 0.9, { intent: 'catalogue_freshness', resolves_issue: true });
+    }
+    if (lastName.endsWith('__scraper_status')) {
+      const earlier = results.find((m) => toolNameOf(req, m).endsWith('__catalog_status'));
+      const catalogue = earlier ? ((read(earlier).result ?? {}) as Record<string, unknown>) : null;
+      const state = o.running
+        ? 'A refresh is running now, so newer prices will appear as each store finishes.'
+        : o.last_exit_code
+          ? 'The program that refreshes it is not running, and its last run ended with an error.'
+          : 'No refresh is running at the moment.';
+      return reply(`${catalogue ? `${freshness(catalogue)} ` : ''}${state}`, 0.9, {
+        intent: 'catalogue_freshness',
+      });
+    }
+    if (lastName.endsWith('__product_lookup')) {
+      const price = typeof o.price_current === 'number' ? ` at ₹${o.price_current}` : '';
+      const stock = o.in_stock === false ? 'was sold out' : 'was in stock';
+      return reply(
+        `${String(o.title ?? 'That listing')} is listed${price} on ${String(o.source ?? 'the store')}, and ${stock} when we last checked on ${day(o.scraped_at)}. The store's own page shows the current price.`,
+        0.9,
+        { intent: 'listing_question', resolves_issue: true },
+      );
+    }
+  }
+  if (results.length) return undefined;
+
+  const refresh = companyTool(req, 'trigger_rescrape');
+  if (REFRESH.test(question) && refresh) {
+    return call(refresh, { reason: `Shopper asked: ${question.slice(0, 100)}` });
+  }
+  const catalogue = companyTool(req, 'catalog_status');
+  if (STALE.test(question) && catalogue) return call(catalogue, {});
+  const lookup = companyTool(req, 'product_lookup');
+  const productId = /^product_id: (\S+)$/m.exec(
+    /<ticket_context>\n([\s\S]*?)\n<\/ticket_context>/.exec(system)?.[1] ?? '',
+  )?.[1];
+  if (ABOUT_LISTING.test(question) && lookup && productId) {
+    return call(lookup, { product_id: productId });
+  }
   return undefined;
 }
 
@@ -229,7 +333,7 @@ export function agentReply(req: ChatRequest): ScriptedReply {
       intent: 'instructions',
     });
   }
-  const company = companyFlow(req, question);
+  const company = companyFlow(req, question) ?? siteFlow(req, question);
   if (company) return company;
   if (isSmallTalk(question)) {
     return call('send_reply', {

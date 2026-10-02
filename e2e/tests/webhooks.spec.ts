@@ -115,9 +115,8 @@ test.describe('webhooks', () => {
       await log.getByRole('button', { name: 'Refresh' }).click();
       const again = log.getByRole('button', { name: 'Send again' }).first();
       if (await row.getByText(/Failed after/).isVisible()) await again.click();
-      await expect(log.getByRole('row', { name: /Delivered/ }).first()).toBeVisible({
-        timeout: 1000,
-      });
+      // The newest ticket.created row, not the test delivery above it, which was delivered long ago.
+      await expect(row).toContainText('Delivered', { timeout: 1000 });
     }).toPass({ timeout: 90_000 });
     const delivered = received.filter(
       (r) => r.body.type === 'ticket.created' && r.body.data.ticket?.reference === ticket.reference,

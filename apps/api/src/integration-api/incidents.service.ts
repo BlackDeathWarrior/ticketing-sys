@@ -235,11 +235,15 @@ export class IncidentsService {
       open.ticketId,
       input.message ? `${summary}\n${input.message}` : summary,
     );
-    // Only when nobody has picked it up: a person working on it decides when it is done.
+    // Only when no person has started on it: someone working on it decides when it is done.
+    // An assignee alone does not say so, because routing rules assign tickets by themselves;
+    // a person who assigned it, moved it or wrote a note is in the audit log.
     const ticket = await this.tickets.lockRow(tx, open.ticketId);
-    const unattended =
-      !ticket.assigneeId && ticket.handling !== 'human' && ticket.handling !== 'handed_over';
-    if (unattended) await this.tickets.resolveOpenInTx(tx, ctx, open.ticketId, summary);
+    const pickedUp =
+      ticket.handling === 'human' ||
+      ticket.handling === 'handed_over' ||
+      (await this.audit.hasActor(tx, 'ticket', open.ticketId, 'user'));
+    if (!pickedUp) await this.tickets.resolveOpenInTx(tx, ctx, open.ticketId, summary);
     return row;
   }
 
