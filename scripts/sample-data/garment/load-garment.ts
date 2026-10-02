@@ -144,7 +144,7 @@ async function main() {
   console.log('');
   if (!kbLoaded) {
     console.log(
-      'The knowledge base is not loaded yet: no embedding model is set up. Add a provider with a chat and an embedding model under Settings → Providers and Models, then run this again.',
+      'No embedding model is set up, so the knowledge base was left as it is: documents already there are searched by keywords only, and new ones cannot be added. For search by meaning, add an embedding model under Settings → Models & roles, choose it for "Knowledge base embeddings", then run this again.',
     );
   }
   console.log(

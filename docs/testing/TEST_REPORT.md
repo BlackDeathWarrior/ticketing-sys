@@ -92,6 +92,31 @@ By hand, with the real Gemini key on the demo stack: the provider's test now rea
 
 Known limit: the list is LiteLLM's catalogue, so it can offer a model a particular key may not use (as with `gemini-2.5-flash` here). **Test model** is how to find out.
 
+### Added that night: a live run with real, free-tier models
+
+The demo was run with the models its owner had set up: `gemma-4-26b-a4b-it` on a Google AI Studio key for every chat role, a Groq model switched off, and no embedding model. Three questions were put through the shop's chat by Playwright, and the result read from `ai_runs`.
+
+| What happened                                                                                                     | Cause                                                                                                                        | Now                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| "Where is my order?" was handed to a person although the order tool had answered and the model's answer was right | The model wrote its answer as plain text instead of calling `send_reply`; plain text has no confidence, so it counted as 0.5 | The model is reminded once to use the reply tool (prompt `agent-v6`, ADR 0011). The same question is answered and sent                  |
+| Every ticket: "classifier returned unusable output"                                                               | The model reasons before it answers; 300 tokens ran out mid-JSON                                                             | The classifier has 1,500 tokens and the agent 1,200. Classification worked (0.95)                                                       |
+| **Try it** on a role showed an empty answer                                                                       | The same, with 50 tokens                                                                                                     | 400 tokens                                                                                                                              |
+| The Groq provider showed "Failed" with a good key                                                                 | Its built-in test model, `llama-3.1-8b-instant`, is gone from Groq                                                           | A provider is tested with one of its own models when it has any; Groq's built-in test model is `openai/gpt-oss-20b`                     |
+| The third question in a minute was handed over: "The AI model failed"                                             | Google's free-tier quota for the model (HTTP 429), and no second model to fall back to                                       | Not a defect: the router falls back when another model is enabled. With one free-tier model the AI answers about two questions a minute |
+| The loader said "the knowledge base is not loaded yet"                                                            | It checks for an embedding model; the documents were there and are searched by keywords without one                          | The message says so                                                                                                                     |
+
+| Step                                                     | Result                                                                                     |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `format:check`, `lint`, `build`, `typecheck` (in Docker) | pass                                                                                       |
+| `pnpm test`                                              | 401 passed (api 200, Orbit Desk 111, shared 34, fake providers 35, SDK 11, help center 10) |
+| `pnpm test:int`                                          | 297 passed (25 files), against a scripted model built from this branch (`TMS_FAKE_HOST`)   |
+
+New tests: two for the scripted model (it answers in plain text when asked "in plain words", uses the tool when reminded, and not when told to "stay in plain words"), one integration test (the reminded answer is sent with its sources and the reminder never reaches the customer; the stubborn one is handed over with the answer in the note), and one golden conversation.
+
+A trap found on the way: the integration tests talk to whatever scripted model is running, and the one on the test network had been built from another checkout a day earlier. The new test half-passed against it for the wrong reason. `scripts/check-in-docker.sh` takes `TMS_FAKE_HOST` now.
+
+Not tested: the Groq model in a full conversation (it is switched off in the demo; a direct two-step tool call through the gateway worked), and the Mistral provider (switched off, and rate-limited when its owner tested it).
+
 ## Phase 14: the Ethnic Threads demo (the app as a storefront over a scraped catalogue)
 
 Run on 2 October 2026, branch `feat/phase-14-garment-demo`, against the demo stack (`scripts/demo/garment-demo.ps1 up`, then `load -Llm scripted`) with the garment-web-scraper app (branch `feat/support-desk-integration`) running on the same machine.
