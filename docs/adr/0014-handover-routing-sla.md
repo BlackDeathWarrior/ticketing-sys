@@ -115,6 +115,7 @@ It also included notifications and every AI-vs-human view: badges, a separate la
 ## Consequences
 
 - Handover is now a pipeline (route → notify → pack) rather than a status change. A crashed worker retries it: routing keeps an existing assignee, and notices are deduplicated.
+- Since 2026-10-03 the pipeline also tells the customer, between routing and notifying: "I'm passing this to my colleague Meera" when routing chose a person (first name only, as on that person's replies), "to a member of our team" when the ticket waits in a queue. The AI turn used to send that message itself, before anyone was chosen, and only on chat and WhatsApp; a request raised through the integration API said nothing. It is sent on web chat, WhatsApp and `api` tickets where the AI answers by itself, once per handover (`metadata.handoverId`), and not after a person has already replied. A phone call still hears "please stay on the line" at once, from the turn. Email is unchanged: no message.
 - Presence is explicit: an agent who forgets to go online gets nothing routed. Automatic presence from socket connections is left for later, because a closed laptop tab shouldn't reroute work mid-shift.
 - The SLA is only as live as the sweep interval (30 seconds by default), which is plenty for minute-level targets.
 - The ticket-level `handling` and SLA summary are denormalised for fast queues; they are always written with, or reconciled from, their sources.

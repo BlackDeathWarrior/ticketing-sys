@@ -85,6 +85,17 @@ const conversations = async (ticketId: string) =>
 const runs = async (ticketId: string) =>
   (await t.call('GET', `/tickets/${ticketId}/ai-runs`, { token: admin })).body as Run[];
 
+/** The AI's "a person will reply" message. It follows routing, a moment after the turn. */
+const handoverNotice = (ticketId: string) =>
+  waitFor(
+    async () =>
+      (await conversations(ticketId))[0]!.messages.find(
+        (m) => m.authorType === 'ai' && /I'm passing this to/.test(m.body),
+      ),
+    `handover notice on ${ticketId}`,
+    20_000,
+  );
+
 async function waitForTurn(ticketId: string, count = 1) {
   return waitFor(
     async () => {
@@ -213,7 +224,7 @@ describe('AI agent on web chat', () => {
     expect(run).toMatchObject({
       decision: 'sent',
       model: 'openai/scripted-cheap',
-      promptVersion: 'agent-v6',
+      promptVersion: 'agent-v7',
     });
     expect(run.sources.length).toBeGreaterThan(0);
     const reply = await waitFor(async () => {
@@ -399,12 +410,13 @@ describe('AI agent on web chat', () => {
 
   it('hands over when the customer asks for a person', async () => {
     const c = await chat('Can I talk to a real person please?');
+    // The channel hears that the AI answers this conversation (the chat widget shows it writing).
+    expect(c.answeredByAi).toBe(true);
     const run = await waitForTurn(c.ticketId);
     expect(run).toMatchObject({ decision: 'handover', rules: ['asked_for_human'] });
     const conv = (await conversations(c.ticketId))[0]!;
     expect(conv.controller).toBe('none');
-    expect(conv.messages.at(-1)).toMatchObject({ authorType: 'ai' });
-    expect(conv.messages.at(-1)!.body).toMatch(/member of our team/);
+    await handoverNotice(c.ticketId);
     expect((await ticket(c.ticketId)).status).toBe('human_assigned');
     const notes = (await t.call('GET', `/tickets/${c.ticketId}/notes`, { token: admin })).body;
     expect(notes[0]).toMatchObject({ authorType: 'ai' });
@@ -541,7 +553,7 @@ describe('AI agent on tickets an integration raises', () => {
     const ticketId = (await ticket(made.body.reference)).id as string;
 
     const run = await waitForTurn(ticketId);
-    expect(run).toMatchObject({ decision: 'drafted', promptVersion: 'agent-v6' });
+    expect(run).toMatchObject({ decision: 'drafted', promptVersion: 'agent-v7' });
     expect(run.rules).toContain('draft_channel');
     const draft = (await conversations(ticketId))[0]!.messages.find(
       (m) => m.deliveryStatus === 'draft',
@@ -644,7 +656,7 @@ describe('red team: what the system does when the model is talked round', () => 
     expect(all).not.toContain('first-line support assistant');
     expect(all).not.toContain('send_reply');
     // The customer gets the usual handover line, and the note doesn't quote the leak.
-    expect(conv.messages.at(-1)!.body).toMatch(/member of our team/);
+    await handoverNotice(c.ticketId);
     const notes = (await t.call('GET', `/tickets/${c.ticketId}/notes`, { token: admin })).body;
     expect(JSON.stringify(notes)).not.toContain('first-line support assistant');
     expect(notes[0].body).toContain('internal instructions or a secret');

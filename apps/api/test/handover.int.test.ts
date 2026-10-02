@@ -297,6 +297,9 @@ describe('AI handover', () => {
     // first-response clock keeps running until a person does.
     const said = (await conv(c.ticketId)).messages.filter((m) => m.authorType === 'ai');
     expect(said).toHaveLength(1);
+    // Routing had chosen who by then, so the customer is told their first name.
+    expect(said[0]!.body).toContain('सहयोगी Hema');
+    expect(said[0]!.body).not.toContain('Hindi');
     expect(tk.firstResponseAt).toBeNull();
     const inbox = await waitFor(async () => {
       const n = (await t.call('GET', '/notifications', { token: hindi.token })).body;
@@ -321,9 +324,96 @@ describe('AI handover', () => {
       const c = await chat('Can I talk to a real person please?');
       const h = await waitFor(async () => (await handovers(c.ticketId))[0]?.routedUser, 'routed');
       picks.push(h.id);
+      const told = await waitFor(
+        async () => (await conv(c.ticketId)).messages.find((m) => m.authorType === 'ai'),
+        'the customer to be told who answers',
+      );
+      expect(told.body).toContain(`my colleague ${h.name.split(' ')[0]},`);
     }
     expect(new Set(picks).size).toBe(2);
     expect(picks).not.toContain(offline.id);
+  });
+});
+
+describe('AI handover on a ticket an app raised', () => {
+  // The AI speaks to an app's customers by itself only where the workspace lets it.
+  beforeAll(async () => {
+    await t.call('PUT', '/settings/ai', { token: admin, body: { channels: { api: 'auto' } } });
+  });
+  afterAll(async () => {
+    await t.call('PUT', '/settings/ai', { token: admin, body: {} });
+  });
+
+  it('tells the customer in the app that a person answers now, once', async () => {
+    const app = await t.call('POST', '/integrations', {
+      token: admin,
+      body: { slug: uniq('shop-'), name: 'Handover app' },
+    });
+    const key = await t.call('POST', `/integrations/${app.body.id}/keys`, {
+      token: admin,
+      body: { name: 'Server', scopes: ['integration:ticket'] },
+    });
+    const raised = await t.call('POST', '/integration/tickets', {
+      token: key.body.key,
+      body: {
+        customer: { externalId: uniq('user-'), name: 'App Customer' },
+        subject: 'Help with my account',
+        body: 'Can I talk to a real person please?',
+      },
+    });
+    expect(raised.status, JSON.stringify(raised.body)).toBe(201);
+    const reference = raised.body.reference as string;
+    type Seen = Array<{ from: string; body: string }>;
+    const seen = async () =>
+      (await t.call('GET', `/integration/tickets/${reference}/messages`, { token: key.body.key }))
+        .body as Seen;
+    const notice = await waitFor(
+      async () => (await seen()).find((m) => m.from === 'assistant'),
+      'the handover message in the app',
+      20_000,
+    );
+    // No rule sends this channel to a team, so nobody is named.
+    expect(notice.body).toMatch(/I'm passing this to a member of our team/);
+    const tk = await ticket(reference);
+    expect(tk).toMatchObject({ handling: 'handed_over', status: 'human_assigned' });
+    // A notice, not an answer.
+    expect(tk.firstResponseAt).toBeNull();
+    await waitFor(
+      async () => ((await handovers(tk.id))[0]?.packStatus === 'ready' ? true : undefined),
+      'context pack',
+      20_000,
+    );
+    expect((await seen()).filter((m) => m.from === 'assistant')).toHaveLength(1);
+  });
+
+  it('says nothing by itself where the AI only drafts', async () => {
+    await t.call('PUT', '/settings/ai', { token: admin, body: { channels: { api: 'draft' } } });
+    const app = await t.call('POST', '/integrations', {
+      token: admin,
+      body: { slug: uniq('shop-'), name: 'Draft app' },
+    });
+    const key = await t.call('POST', `/integrations/${app.body.id}/keys`, {
+      token: admin,
+      body: { name: 'Server', scopes: ['integration:ticket'] },
+    });
+    const raised = await t.call('POST', '/integration/tickets', {
+      token: key.body.key,
+      body: {
+        customer: { externalId: uniq('user-') },
+        subject: 'Help with my account',
+        body: 'Can I talk to a real person please?',
+      },
+    });
+    const tk = await ticket(raised.body.reference);
+    await waitFor(
+      async () => ((await handovers(tk.id))[0]?.packStatus === 'ready' ? true : undefined),
+      'context pack',
+      20_000,
+    );
+    const seen = await t.call('GET', `/integration/tickets/${raised.body.reference}/messages`, {
+      token: key.body.key,
+    });
+    expect(seen.body.map((m: { from: string }) => m.from)).toEqual(['customer']);
   });
 });
 

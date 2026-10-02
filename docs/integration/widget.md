@@ -31,7 +31,7 @@ All are optional.
 | `server`        | Where TMS is served. Defaults to where the script was loaded from.                                                                                                 |
 | `integration`   | Your integration's identifier.                                                                                                                                     |
 | `theme`         | `{ primary, onPrimary, radius, position }`: the launcher and header colour, the text colour on it, the panel's corner radius in pixels, and `'left'` or `'right'`. |
-| `strings`       | `{ launcher, title, intro, placeholder, send, details, start }`: the widget's wording.                                                                             |
+| `strings`       | `{ launcher, title, intro, placeholder, send, details, start, typing }`: the widget's wording.                                                                     |
 | `visitor`       | `{ name, email }` you already know. Unverified: it saves the visitor typing them.                                                                                  |
 | `askForDetails` | `false` skips the name and email form for anonymous visitors.                                                                                                      |
 | `context`       | A small object (at most 2 KB) saying what the visitor is looking at.                                                                                               |
@@ -60,6 +60,8 @@ const chat = TMSChat.init({
 | `setContext(object)` | Replaces the context as the visitor moves around, for example when they open a product. |
 | `identify(token)`    | The visitor signed in: starts a new conversation as them.                               |
 | `destroy()`          | Disconnects and removes the widget.                                                     |
+
+While the assistant writes an answer the widget shows three moving dots. `strings.typing` is what a screen reader says for them ("Support is typing").
 
 ## Context
 

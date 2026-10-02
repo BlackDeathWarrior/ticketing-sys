@@ -112,7 +112,13 @@ export class ChatGateway implements OnGatewayConnection {
     @ConnectedSocket() socket: Socket,
     @MessageBody() body: unknown,
   ): Promise<
-    Ack<{ message: ChatMessageView; ticket?: { reference: string; created: boolean } }> | Nack
+    | Ack<{
+        message: ChatMessageView;
+        ticket?: { reference: string; created: boolean };
+        /** The assistant is writing an answer: the widget shows that until a message arrives. */
+        assistantReplying: boolean;
+      }>
+    | Nack
   > {
     const session = socket.data.session as ChatSession | undefined;
     if (!session) return { ok: false, error: 'No session' };
@@ -152,6 +158,7 @@ export class ChatGateway implements OnGatewayConnection {
           authorType: 'customer',
           createdAt: new Date().toISOString(),
         },
+        assistantReplying: result.answeredByAi === true,
         ...(result.ticketReference
           ? { ticket: { reference: result.ticketReference, created: result.createdTicket } }
           : {}),

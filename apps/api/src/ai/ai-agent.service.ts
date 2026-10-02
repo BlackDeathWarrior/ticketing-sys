@@ -38,6 +38,7 @@ import { LanguageService } from './language.service';
 import { assess, handoverMessage, handoverNote, waitingMessage } from './policy';
 import {
   AGENT_PROMPT_VERSION,
+  APPROVAL_UPDATE_TURN,
   REPLY_TOOL_REMINDER,
   agentSystemPrompt,
   customerTurn,
@@ -88,7 +89,7 @@ interface ThinkInput {
   customerEmail: string | null;
   /** Dry run: read tools only, nothing stored. */
   dryRun: boolean;
-  /** Follow-up after an approval decision. */
+  /** Follow-up after an approval decision. `detail` is the action's result, never a supervisor's note. */
   update: { tool: string; status: 'done' | 'rejected'; detail: string } | null;
   /** The outcome being reported was confirmed by a company system. */
   confirmedByTool: boolean;
@@ -117,7 +118,11 @@ export interface ThinkResult {
 const LOCK_MS = 120_000;
 const HISTORY_TAIL = 8;
 const SUMMARIZE_AFTER = 14;
-const LIVE_CHANNELS = new Set(['webchat', 'whatsapp', 'voice']);
+/**
+ * Channels where the customer reads our answers where they wrote (a chat, or
+ * a request page inside an app): a handover tells them who will answer.
+ */
+const HANDOVER_NOTICE_CHANNELS = new Set(['webchat', 'whatsapp', 'api']);
 /** Live channels where a draft leaves the customer waiting in silence (a call never drafts). */
 const WAITING_CHANNELS = new Set(['webchat', 'whatsapp']);
 
@@ -253,7 +258,13 @@ export class AiAgentService {
           conversationId: conv.id,
           customerEmail: boundEmail(ticket, customer),
           dryRun: false,
-          update: { tool: action, status: outcome.status, detail: outcome.detail },
+          // A supervisor's note on a rejection is internal: it goes into the note for
+          // colleagues (followUpNote), never into the prompt that writes to the customer.
+          update: {
+            tool: action,
+            status: outcome.status,
+            detail: outcome.status === 'done' ? outcome.detail : '',
+          },
           confirmedByTool: outcome.status === 'done',
         });
       } else {
@@ -507,7 +518,9 @@ export class AiAgentService {
             draft: r.reply,
           }),
         );
-        if (LIVE_CHANNELS.has(conv.channel) && mode === 'auto') {
+        // A caller hears it now. On the other channels the customer is told once
+        // routing has chosen who answers, so the message can name them (HandoverHandler).
+        if (conv.channel === 'voice' && mode === 'auto') {
           const m = await this.outbound.aiReply(
             AI_CTX,
             conv.id,
@@ -537,6 +550,7 @@ export class AiAgentService {
           source: r.rules.includes('asked_for_human') ? 'customer' : 'ai',
           reason: reasons.join('; '),
           rules: r.rules,
+          tellCustomer: HANDOVER_NOTICE_CHANNELS.has(conv.channel) && mode === 'auto',
         });
       }
       await this.conversations.updateAiState(tx, conv.id, {
@@ -595,7 +609,8 @@ export class AiAgentService {
       });
     };
 
-    const knowledge = await search(last, 3).catch(() => []);
+    // A follow-up reports a decision; the last question was answered in an earlier turn.
+    const knowledge = i.update ? [] : await search(last, 3).catch(() => []);
     const categories = await this.categoryLabels();
     // What staff taught the AI after reading customer ratings (ADR 0020).
     const lessons = await this.learning
@@ -629,6 +644,7 @@ export class AiAgentService {
           ? { role: 'user', content: customerTurn(l.body) }
           : { role: 'assistant', content: l.body },
       ),
+      ...(i.update ? [{ role: 'user' as const, content: APPROVAL_UPDATE_TURN }] : []),
     ];
 
     let final:

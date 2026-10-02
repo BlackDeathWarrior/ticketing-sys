@@ -4,7 +4,7 @@ import { DEFAULT_BRANDING } from '@tms/shared';
  * Versioned prompts (ADR 0011). The version is recorded on every AI run, so a
  * change here is traceable in the audit trail; bump it with any edit.
  */
-export const AGENT_PROMPT_VERSION = 'agent-v6';
+export const AGENT_PROMPT_VERSION = 'agent-v7';
 export const CLASSIFIER_PROMPT_VERSION = 'classifier-v1';
 export const SUMMARY_PROMPT_VERSION = 'summary-v1';
 export const HANDOVER_PROMPT_VERSION = 'handover-v1';
@@ -56,7 +56,11 @@ export interface AgentPromptInput {
   categories: string[];
   /** Company-system tools are available this turn. */
   companyTools: boolean;
-  /** A supervisor decided on the customer's earlier request; tell them the outcome. */
+  /**
+   * A supervisor decided on the customer's earlier request; tell them the
+   * outcome. `detail` is what the company system answered when the action
+   * ran; a supervisor's note is internal and never arrives here.
+   */
   update: { tool: string; status: 'done' | 'rejected'; detail: string } | null;
   /**
    * Guidance staff wrote after reviewing customer ratings (ADR 0020). Staff
@@ -129,10 +133,14 @@ ${i.ticket.context}
     ...(i.update
       ? [
           '',
-          "A supervisor has decided on the customer's earlier request. Tell the customer the outcome now, in one send_reply:",
+          'A supervisor has decided on the request you submitted for the customer earlier:',
           `<approval_update tool="${escapeAttr(i.update.tool)}" status="${i.update.status}">
 ${i.update.detail}
 </approval_update>`,
+          'Tell the customer the outcome now, in one send_reply. Write only what is new: the customer has already read your earlier messages, so do not repeat or rephrase them, and do not say the request is still with the team.',
+          i.update.status === 'rejected'
+            ? 'It was not approved. Say so plainly and kindly in one or two sentences. You were not given a reason, so do not offer one; say that a colleague can explain if the customer writes back.'
+            : 'It was approved and has been done. Say what happened, using the details in the update.',
         ]
       : []),
   ]
@@ -175,6 +183,14 @@ export function ticketContext(t: {
  */
 export const REPLY_TOOL_REMINDER =
   '<system_note>\nYour last message was plain text, which the customer does not see. Send that answer now by calling send_reply, with your confidence and the sources you used. If you cannot answer, call request_human.\n</system_note>';
+
+/**
+ * What closes the conversation when the AI follows up on a supervisor's
+ * decision. Without it the conversation ends on the AI's own last message,
+ * and a model then writes that message again before adding the news.
+ */
+export const APPROVAL_UPDATE_TURN =
+  '<system_note>\nThe customer has not written again. The supervisor has now decided on the request you submitted (see the approval update in your instructions). Send one short message with the outcome only, by calling send_reply. Do not repeat anything you have already told the customer.\n</system_note>';
 
 /** Wraps a customer message so the model treats it as data. */
 export function customerTurn(text: string): string {

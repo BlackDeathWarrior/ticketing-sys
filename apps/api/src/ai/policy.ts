@@ -116,17 +116,30 @@ export function waitingMessage(language: string | null): string {
   return 'Thanks for your message. I want to be sure you get the right answer, so a member of our team will reply here shortly.';
 }
 
-/** What the AI tells a live customer when it hands over. */
-export function handoverMessage(language: string | null, channel?: string): string {
+/**
+ * What the AI tells the customer when it hands over. `colleague` is the first
+ * name of the person the ticket was routed to, when routing chose one.
+ */
+export function handoverMessage(
+  language: string | null,
+  channel?: string,
+  colleague?: string | null,
+): string {
   if (channel === 'voice') {
     return language === 'hi'
       ? 'कृपया लाइन पर बने रहें। मैं आपको हमारी टीम के एक सदस्य से जोड़ रहा हूँ।'
       : "Please stay on the line. I'm connecting you with a member of our team.";
   }
+  // A name is staff-entered; one line of it is all a customer needs.
+  const name = colleague?.replace(/\s+/g, ' ').trim().slice(0, 60) || null;
   if (language === 'hi') {
-    return 'धन्यवाद। मैं आपकी बातचीत हमारी टीम के एक सदस्य को सौंप रहा हूँ; वे जल्द ही यहीं जवाब देंगे।';
+    return name
+      ? `धन्यवाद। मैं आपकी बातचीत अपने सहयोगी ${name} को सौंप रहा हूँ; वे जल्द ही यहीं जवाब देंगे।`
+      : 'धन्यवाद। मैं आपकी बातचीत हमारी टीम के एक सदस्य को सौंप रहा हूँ; वे जल्द ही यहीं जवाब देंगे।';
   }
-  return "Thanks for your patience. I'm passing this to a member of our team, who will reply here shortly.";
+  return name
+    ? `Thanks for your patience. I'm passing this to my colleague ${name}, who will reply here shortly.`
+    : "Thanks for your patience. I'm passing this to a member of our team, who will reply here shortly.";
 }
 
 /** The internal note left for the humans taking over. */

@@ -80,7 +80,8 @@ test.describe('AI agent', () => {
     const name = `Kofi Mensah ${stamp}`;
     await signInOrbit(page);
     const visitor = await visitorSays(browser, name, 'Can I talk to a real person please?');
-    await expect(visitor.getByText(/member of our team/)).toBeVisible({ timeout: 30_000 });
+    // "…to a member of our team", or to a colleague by name when routing chose one.
+    await expect(visitor.getByText(/I'm passing this to/)).toBeVisible({ timeout: 30_000 });
 
     const drawer = await openTicket(page, await ticketFor(page, name));
     const note = drawer.locator('li[data-kind="note"][data-ai]');

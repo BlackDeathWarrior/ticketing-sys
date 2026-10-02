@@ -120,6 +120,8 @@ Keep `reference`: it is how you address the ticket from now on, and what you sho
 
 **Status and state.** A workspace can rename and add statuses. `status.state` is always one of `open`, `pending`, `resolved`, `closed`: build your logic on it, and show `status.name` to people.
 
+**Who is answering.** `handling` is `ai` while the assistant answers the ticket, `handed_over` when it has passed it to the team and nobody has picked it up yet, `human` once a person answers, and `none` when nobody has started. When it is `ai` and the last message is the customer's, an answer is being written: that is the moment to show a "typing" indicator. Stop showing it after about a minute, in case no answer comes. When the assistant hands over, the customer gets a message saying a person will reply, with the colleague's first name when the ticket went straight to someone.
+
 ### Read the conversation
 
 ```bash

@@ -167,6 +167,8 @@ export class HandoverService {
       reason: string;
       rules: string[];
       teamId?: string | null;
+      /** The AI was answering: once routed, the customer is told who will answer now. */
+      tellCustomer?: boolean;
     },
   ): Promise<string> {
     const [row] = await tx
@@ -187,6 +189,7 @@ export class HandoverService {
       reason: h.reason,
       rules: h.rules,
       teamId: h.teamId ?? null,
+      tellCustomer: h.tellCustomer ?? false,
     };
     await this.audit.record(tx, ctx, {
       action: 'handover.requested',

@@ -24,7 +24,8 @@ test.describe('Handover, take-over and hand-back', () => {
   }) => {
     const name = `Greta Holm ${Date.now().toString(36)}`;
     const visitor = await visitorSays(browser, name, 'Can I talk to a real person please?');
-    await expect(visitor.getByText(/member of our team/)).toBeVisible({ timeout: 30_000 });
+    // "…to a member of our team", or to a colleague by name when routing chose one.
+    await expect(visitor.getByText(/I'm passing this to/)).toBeVisible({ timeout: 30_000 });
 
     const admin = (await login()).accessToken;
     const ticket = await eventually('chat ticket', async () =>
