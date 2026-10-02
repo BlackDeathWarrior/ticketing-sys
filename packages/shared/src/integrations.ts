@@ -167,6 +167,8 @@ export const idempotencyKeySchema = z
 
 export const listIntegrationTicketsQuerySchema = z.object({
   externalRef: externalRefSchema.optional(),
+  /** Your own id for a person (`customer.externalId`): only the tickets of that person. */
+  customer: z.string().trim().min(1).max(200).optional(),
   /** Where the ticket is in its life, whatever the workflow's statuses are called. */
   state: z.enum(STATUS_CATEGORIES).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -189,7 +191,11 @@ export interface IntegrationTicketView {
   tags: string[];
   externalRef: string | null;
   metadata: Record<string, unknown>;
-  customer: { name: string; email: string | null };
+  /**
+   * `externalId` is your own id for the person, when the ticket's customer is
+   * known by one (a ticket you raised with it, or a chat with a signed identity).
+   */
+  customer: { name: string; email: string | null; externalId: string | null };
   /** Whether a person, the AI or nobody yet is answering. */
   handling: string;
   createdAt: string;

@@ -155,7 +155,7 @@ describe('raising a ticket', () => {
       tags: ['wrong-price'],
       externalRef: listing.id,
       metadata: listing,
-      customer: { name: 'Asha Verma', email: `${shopper}@shopper.example` },
+      customer: { name: 'Asha Verma', email: `${shopper}@shopper.example`, externalId: shopper },
       resolvedAt: null,
     });
 
@@ -171,7 +171,7 @@ describe('raising a ticket', () => {
     expect(conversation).toMatchObject({ channel: 'api', controller: 'none' });
     expect(conversation!.messages).toHaveLength(1);
 
-    // The app's id for the person is their identity; the email is attached unverified.
+    // The app's id for the person is their identity; it vouches for their email too.
     const customer = await t.call('GET', `/customers/${ticket.customer.id}`, { token: admin });
     expect(customer.body.identities).toEqual(
       expect.arrayContaining([
@@ -179,7 +179,7 @@ describe('raising a ticket', () => {
         expect.objectContaining({
           type: 'email',
           value: `${shopper}@shopper.example`,
-          verified: false,
+          verified: true,
         }),
       ]),
     );
@@ -207,7 +207,7 @@ describe('raising a ticket', () => {
   it('takes a customer known only by email', async () => {
     const email = `${uniq('anon')}@shopper.example`;
     const made = await raise(shop.key, { customer: { email } });
-    expect(made.customer).toEqual({ name: email, email });
+    expect(made.customer).toEqual({ name: email, email, externalId: null });
   });
 
   it('creates nothing twice for one Idempotency-Key', async () => {
@@ -436,6 +436,46 @@ describe('finding tickets', () => {
 
     // Another integration sees none of them.
     expect((await list(`externalRef=${ref}`, other.key)).body).toEqual({ items: [], total: 0 });
+  });
+
+  it("lists one user's tickets by the app's own id for them, and says whose a ticket is", async () => {
+    const list = (query: string, key = shop.key) =>
+      api<IntegrationTicketList>(key, 'GET', `/integration/tickets?${query}`);
+    const asha = uniq('shopper-');
+    const ravi = uniq('shopper-');
+    const first = await raise(shop.key, { customer: { externalId: asha, name: 'Asha Verma' } });
+    const second = await raise(shop.key, { customer: { externalId: asha } });
+    const ravis = await raise(shop.key, { customer: { externalId: ravi, name: 'Ravi Menon' } });
+    expect(first.customer.externalId).toBe(asha);
+
+    // "Your requests" in the app: only this person's.
+    const mine = await list(`customer=${asha}`);
+    expect(mine.body.total).toBe(2);
+    expect(mine.body.items.map((i) => i.reference).sort()).toEqual(
+      [first.reference, second.reference].sort(),
+    );
+    expect(mine.body.items.every((i) => i.customer.externalId === asha)).toBe(true);
+    expect((await list(`customer=${asha}&state=resolved`)).body.total).toBe(0);
+
+    // Reading one ticket says whose it is, so the app can check before it shows it.
+    const read = await api<IntegrationTicketView>(
+      shop.key,
+      'GET',
+      `/integration/tickets/${ravis.reference}`,
+    );
+    expect(read.body.customer.externalId).toBe(ravi);
+
+    // Someone the app has never named has no tickets.
+    expect((await list(`customer=${uniq('nobody-')}`)).body).toEqual({ items: [], total: 0 });
+    // Another app's user with the same id is another person.
+    await raise(other.key, { customer: { externalId: asha } });
+    expect((await list(`customer=${asha}`, other.key)).body.total).toBe(1);
+    expect((await list(`customer=${asha}`)).body.total).toBe(2);
+    // A customer known only by email has no id of the app's.
+    const byEmail = await raise(shop.key, {
+      customer: { email: `${uniq('walkin')}@shopper.example` },
+    });
+    expect(byEmail.customer.externalId).toBeNull();
   });
 });
 

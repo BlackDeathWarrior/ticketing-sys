@@ -248,6 +248,7 @@ describe('the API docs', () => {
 
     const list = doc.paths['/api/v1/integration/tickets'].get;
     expect(list.parameters.map((p: { name: string }) => p.name).sort()).toEqual([
+      'customer',
       'externalRef',
       'limit',
       'offset',

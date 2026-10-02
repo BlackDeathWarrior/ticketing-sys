@@ -103,7 +103,7 @@ The answer is `201` with the ticket:
   "tags": ["wrong-price"],
   "externalRef": "MYN-48213",
   "metadata": { "source": "Myntra", "price_current": 1499 },
-  "customer": { "name": "Asha Verma", "email": "asha@example.com" },
+  "customer": { "name": "Asha Verma", "email": "asha@example.com", "externalId": "user-42" },
   "handling": "none",
   "createdAt": "2026-10-01T10:00:00.000Z",
   "updatedAt": "2026-10-01T10:00:00.000Z",
@@ -115,6 +115,8 @@ The answer is `201` with the ticket:
 Keep `reference`: it is how you address the ticket from now on, and what you show the user.
 
 **Idempotency.** Send an `Idempotency-Key` header (any unique string of 8 to 200 characters) whenever a call might be retried. A repeat with the same key creates nothing and answers `200` with the original ticket.
+
+**Whose ticket.** `customer.externalId` is the id you gave for the person, or `null` when the customer is known only by email. Before you show a ticket to a signed-in user, check that it is theirs.
 
 **Status and state.** A workspace can rename and add statuses. `status.state` is always one of `open`, `pending`, `resolved`, `closed`: build your logic on it, and show `status.name` to people.
 
@@ -148,6 +150,7 @@ curl "https://support.example.com/api/v1/integration/tickets/TMS-1042/messages?a
 | `POST /integration/tickets/{reference}/messages` `{ "body": "…" }`               | Adds the customer's follow-up. Reopens a solved ticket. A closed ticket answers `409`: create a new one.                                                      |
 | `GET /integration/tickets/{reference}`                                           | The ticket as above.                                                                                                                                          |
 | `GET /integration/tickets?externalRef=…&state=open&limit=25&offset=0`            | Your tickets, newest first: `{ "items": […], "total": 3 }`.                                                                                                   |
+| `GET /integration/tickets?customer=user-42`                                      | One user's tickets, by your own id for them: what a "Your requests" page in your app shows. Chats they had with a signed identity are among them.             |
 | `POST /integration/tickets/{reference}/rating` `{ "rating": 5, "comment": "…" }` | The customer's rating (1 to 5) of a solved ticket. TMS sends no survey for API tickets: ask in your own interface when the ticket's state becomes `resolved`. |
 
 An integration only reaches tickets it raised (through its API or its chat widget). Any other reference answers `404`.

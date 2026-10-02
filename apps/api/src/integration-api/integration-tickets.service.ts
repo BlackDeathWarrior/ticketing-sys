@@ -83,24 +83,35 @@ export class IntegrationTicketsService {
       ai: input.ai,
     });
     const ticket = await this.tickets.get(result.ticketId);
-    return { ticket: await this.view(ticket), created: !result.duplicate };
+    return { ticket: await this.one(ticket), created: !result.duplicate };
   }
 
   async list(key: ApiKeyContext, q: ListIntegrationTicketsQuery): Promise<IntegrationTicketList> {
     const { statuses } = await this.workflow.load();
+    let customerId: string | undefined;
+    if (q.customer) {
+      // The app's own id for a person; someone it has never named has no tickets.
+      const known = await this.customers.lookup(
+        'external_id',
+        integrationExternalId(key.integration.slug, q.customer),
+      );
+      if (!known) return { items: [], total: 0 };
+      customerId = known.id;
+    }
     const { items, total } = await this.tickets.forIntegration(key.integration.id, {
       externalRef: q.externalRef,
+      customerId,
       statuses: q.state
         ? statuses.filter((s) => s.category === q.state).map((s) => s.key)
         : undefined,
       limit: q.limit,
       offset: q.offset,
     });
-    return { items: await Promise.all(items.map((t) => this.view(t))), total };
+    return { items: await this.views(items), total };
   }
 
   async get(key: ApiKeyContext, reference: string): Promise<IntegrationTicketView> {
-    return this.view(await this.owned(key, reference));
+    return this.one(await this.owned(key, reference));
   }
 
   /**
@@ -121,7 +132,7 @@ export class IntegrationTicketsService {
     const message = messageId
       ? ((await this.visibleMessages(ticket.id)).find((m) => m.id === messageId) ?? null)
       : null;
-    return { ticket: await this.view(ticket), integrationId: ticket.integrationId, message };
+    return { ticket: await this.one(ticket), integrationId: ticket.integrationId, message };
   }
 
   /** What the customer wrote and was sent, oldest first. Never drafts or internal notes. */
@@ -221,7 +232,8 @@ export class IntegrationTicketsService {
           value: integrationExternalId(key.integration.slug, c.externalId),
         },
         displayName,
-        extraIdentities: c.email ? [{ type: 'email', value: c.email, verified: false }] : [],
+        // The app names the person by its own id, so it vouches for their address too.
+        extraIdentities: c.email ? [{ type: 'email', value: c.email, verified: true }] : [],
       };
     }
     return { identity: { type: 'email', value: c.email! }, displayName };
@@ -250,8 +262,21 @@ export class IntegrationTicketsService {
     return match.id;
   }
 
-  private async view(t: TicketRow): Promise<IntegrationTicketView> {
+  private async one(t: TicketRow): Promise<IntegrationTicketView> {
+    return (await this.views([t]))[0]!;
+  }
+
+  private async views(rows: TicketRow[]): Promise<IntegrationTicketView[]> {
+    const known = await this.customers.externalIds([...new Set(rows.map((t) => t.customer.id))]);
+    return Promise.all(rows.map((t) => this.view(t, known.get(t.customer.id) ?? [])));
+  }
+
+  /** `externalIds`: every `external_id` identity of the ticket's customer, whichever app named it. */
+  private async view(t: TicketRow, externalIds: string[]): Promise<IntegrationTicketView> {
     const status = await this.workflow.status(t.status);
+    // Only the id this ticket's own integration gave the person: `<slug>:<id>`.
+    const prefix = t.integration ? `${t.integration.slug}:` : null;
+    const own = prefix ? externalIds.find((v) => v.startsWith(prefix)) : undefined;
     return {
       reference: t.reference,
       subject: t.subject,
@@ -261,7 +286,11 @@ export class IntegrationTicketsService {
       tags: t.tags,
       externalRef: t.externalRef,
       metadata: t.metadata,
-      customer: { name: t.customer.displayName, email: t.customer.primaryEmail },
+      customer: {
+        name: t.customer.displayName,
+        email: t.customer.primaryEmail,
+        externalId: own && prefix ? own.slice(prefix.length) : null,
+      },
       handling: t.handling,
       createdAt: t.createdAt.toISOString(),
       updatedAt: t.updatedAt.toISOString(),

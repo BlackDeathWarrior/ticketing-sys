@@ -73,9 +73,18 @@ export class TmsClient {
     get: (reference: string): Promise<Ticket> =>
       this.request('GET', `/integration/tickets/${encodeURIComponent(reference)}`),
 
-    /** Your tickets, newest first. `state` is where a ticket is in its life. */
+    /**
+     * Your tickets, newest first. `state` is where a ticket is in its life;
+     * `customer` is your own id for a person, for "your requests" in your app.
+     */
     list: (
-      filter: { externalRef?: string; state?: TicketState; limit?: number; offset?: number } = {},
+      filter: {
+        externalRef?: string;
+        customer?: string;
+        state?: TicketState;
+        limit?: number;
+        offset?: number;
+      } = {},
     ): Promise<TicketList> => this.request('GET', '/integration/tickets', { query: filter }),
 
     /** What the customer wrote and was sent. `after` (a `createdAt`) returns only newer ones. */

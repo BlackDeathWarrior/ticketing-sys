@@ -111,11 +111,18 @@ export class TicketsService {
   /** Tickets an integration raised, newest first. It never sees any others (ADR 0023). */
   async forIntegration(
     integrationId: string,
-    q: { externalRef?: string; statuses?: string[]; limit: number; offset: number },
+    q: {
+      externalRef?: string;
+      customerId?: string;
+      statuses?: string[];
+      limit: number;
+      offset: number;
+    },
   ) {
     const cond = and(
       eq(tickets.integrationId, integrationId),
       q.externalRef ? eq(tickets.externalRef, q.externalRef) : undefined,
+      q.customerId ? eq(tickets.customerId, q.customerId) : undefined,
       q.statuses ? inArray(tickets.status, q.statuses) : undefined,
     );
     const [items, total] = await Promise.all([

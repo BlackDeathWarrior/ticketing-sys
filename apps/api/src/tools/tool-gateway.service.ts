@@ -84,7 +84,9 @@ export class ToolGatewayService {
 
     // The customer is whoever the ticket belongs to, never what the model says.
     if (i.tool.customerArg) {
-      if (!i.customerEmail) return refuse('The customer has no email address on file');
+      if (!i.customerEmail) {
+        return refuse('The customer is not identified: there is no email address to act for');
+      }
       args[i.tool.customerArg] = i.customerEmail;
     }
     const validate = this.validator(i.tool);
