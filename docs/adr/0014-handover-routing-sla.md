@@ -77,7 +77,7 @@ It also included notifications and every AI-vs-human view: badges, a separate la
 - **Business hours:** weekly windows in a time zone, plus holidays.
   - A pure `business-time` module adds and counts business minutes. It is DST-safe, because each local window is converted to UTC through the zone's own offset.
 - **Timers** (`sla_timers`, one per ticket and kind) are reconciled from the ticket's facts on every relevant event. `SlaService.reconcile` is idempotent:
-  - **first response:** met by the first AI or human reply;
+  - **first response:** met by the first AI or human reply that answers. A message that only says a person will reply (the holding message, and the AI's handover message) does not meet it: after a handover the clock runs until a person answers (changed 2026-10-02; before, the handover message met it, so a handed-over chat could never breach its first-response target);
   - **resolution:** paused in pending statuses, resumed on reopen, met on resolve;
   - **policy change:** a new policy (e.g. a priority change) moves the deadline, keeping the business minutes already used.
 - **Sweep:** a repeating BullMQ job (`SLA_SWEEP_SECONDS`, default 30) marks timers at risk at 80% and breached at 100%, then emits `sla.at_risk` and `sla.breached`.

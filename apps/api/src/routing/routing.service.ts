@@ -258,6 +258,7 @@ export class RoutingService {
               subcategoryId: t.subcategoryId,
               language,
               customerType: customer?.customerType ?? null,
+              tags: t.tags,
             }),
           );
       const teamId = opts.teamId ?? rule?.team.id ?? t.team?.id ?? null;

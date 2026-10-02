@@ -39,6 +39,30 @@ export class AuditService {
     });
   }
 
+  /**
+   * Whether an actor of this kind has ever acted on a target, e.g. whether a
+   * person (not a rule or the AI) has touched a ticket.
+   */
+  async hasActor(
+    tx: DbOrTx,
+    targetType: string,
+    targetId: string,
+    actorType: RequestCtx['actor']['type'],
+  ): Promise<boolean> {
+    const [row] = await tx
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.targetType, targetType),
+          eq(auditLog.targetId, targetId),
+          eq(auditLog.actorType, actorType),
+        ),
+      )
+      .limit(1);
+    return !!row;
+  }
+
   async list(q: AuditQuery) {
     const where: SQL[] = [];
     if (q.targetType) where.push(eq(auditLog.targetType, q.targetType));

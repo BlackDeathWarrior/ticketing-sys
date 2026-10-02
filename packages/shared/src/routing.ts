@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { prioritySchema } from './tickets';
+import { prioritySchema, ticketTagSchema } from './tickets';
 
 /**
  * Routing (ADR 0014): ordered rules pick a team (and optionally a skill) for
@@ -34,6 +34,8 @@ export const routingConditionsSchema = z
     /** ISO 639-1, as detected on the conversation or classified on the ticket. */
     language: z.string().min(2).max(8).optional(),
     customerType: z.string().max(40).optional(),
+    /** A tag the ticket carries, e.g. `incident` for problems an integration reports. */
+    tag: ticketTagSchema.optional(),
   })
   .strict();
 export type RoutingConditions = z.infer<typeof routingConditionsSchema>;
@@ -99,6 +101,7 @@ export function ruleMatches(
     subcategoryId: string | null;
     language: string | null;
     customerType: string | null;
+    tags?: readonly string[];
   },
 ): boolean {
   if (c.channel && c.channel !== t.channel) return false;
@@ -108,5 +111,6 @@ export function ruleMatches(
   }
   if (c.language && c.language !== t.language) return false;
   if (c.customerType && c.customerType !== t.customerType) return false;
+  if (c.tag && !(t.tags ?? []).includes(c.tag)) return false;
   return true;
 }

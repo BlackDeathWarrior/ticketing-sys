@@ -203,6 +203,10 @@ TMS plugs into an existing app through four things, each usable alone. The guide
 - **Clients:** `packages/sdk` for Node and `docs/integration/examples/python/tms_support.py` for Python (standard library only). Both are tested against `docs/integration/signature-vectors.json`.
 - **Branding:** Settings → Customers names the company the help center and the AI speak for.
 
+### A working example: Ethnic Threads
+
+`scripts/demo/garment-demo.ps1` runs TMS as the support desk of a real app, [garment-web-scraper](https://github.com/BlackDeathWarrior/garment-web-scraper) (a storefront over a scraped catalogue), cloned next to this repository on its `feat/support-desk-integration` branch. Shoppers write in and chat from the storefront, the scraper reports its own failures, the AI reads the app's systems and may ask for a scrape that a supervisor approves, and the app hears back by webhook. The stack is its own compose project (`infra/docker-compose.garment.yml`: Orbit Desk on :8091, API on :3200), so it runs beside the default one. The walk-through is [`docs/runbooks/phase-14-garment-demo.md`](docs/runbooks/phase-14-garment-demo.md); the reasons are in ADR 0027.
+
 ## Knowledge base
 
 Orbit Desk → **Knowledge base** (`#/kb`) searches approved documents with citations, the same search the AI agent uses.

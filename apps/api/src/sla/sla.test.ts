@@ -99,5 +99,11 @@ describe('policy and routing rule matching', () => {
     expect(ruleMatches({ categoryId: 'c1a' }, t)).toBe(true);
     expect(ruleMatches({ language: 'en' }, t)).toBe(false);
     expect(ruleMatches({ priority: 'urgent' }, t)).toBe(false);
+    // A tag condition matches a ticket that carries the tag, among others.
+    expect(ruleMatches({ tag: 'incident' }, t)).toBe(false);
+    expect(ruleMatches({ tag: 'incident' }, { ...t, tags: ['scraper', 'incident'] })).toBe(true);
+    expect(ruleMatches({ tag: 'incident', channel: 'email' }, { ...t, tags: ['incident'] })).toBe(
+      false,
+    );
   });
 });

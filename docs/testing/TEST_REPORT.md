@@ -1,6 +1,75 @@
 # Test report
 
-## Latest: Phase 11, hardening
+## Latest: Phase 14, the Ethnic Threads demo
+
+Run on 2 October 2026, branch `feat/phase-14-garment-demo`, against the demo stack (`scripts/demo/garment-demo.ps1 up`, then `load -Llm scripted`) with the garment-web-scraper app (branch `feat/support-desk-integration`) running on the same machine.
+
+| Step                                                     | Result                                                                                     |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `format:check`, `lint`, `build`, `typecheck` (in Docker) | pass                                                                                       |
+| `pnpm test`                                              | 383 passed (api 191, Orbit Desk 110, shared 34, fake providers 27, SDK 11, help center 10) |
+| `pnpm test:int`                                          | 291 passed (25 files)                                                                      |
+| `pnpm e2e:garment`                                       | 11 passed; 2 screenshot-only specs skipped as designed                                     |
+| Five existing specs run against the demo stack           | 5 passed (`incidents`, `webhooks`, `integration-tickets`, `integrations`, `widget-site`)   |
+| The app: `pytest tests/support`                          | 50 passed                                                                                  |
+| The app: `vitest run src/__tests__/support.test.jsx`     | 15 passed                                                                                  |
+
+### What was and wasn't tested
+
+- **Tested, through the real app:** a shopper's contact request from the storefront to an AI draft, an agent's send, the reply appearing on the shopper's page by webhook, a follow-up, a rating, and the app's admin seeing all of it; a listing report carrying the listing from the app's catalogue; the chat with the site's colours answering from the knowledge base, looking up the open listing, and asking the app how fresh the catalogue is; a scrape request waiting for approval and then starting a run in the app's worker; the stale catalogue reported on boot and routed to Site Reliability; a failing run counted on one ticket; a test delivery verified by the app and a forged one refused; key scope, rate limit and revocation; an urgent handover breaching its two-minute first-response target.
+- **Tested by hand on the same stack:** the app's worker stopped while a webhook was due (retried with "Could not connect", delivered on the fourth attempt once the worker was back); the secret rotated in TMS (the app answered 401; after `load -Rekey` and a worker restart the retry was delivered on the fifth attempt).
+- **Not tested: a scrape that succeeds.** The app's scraper needs Playwright's Firefox build 1482, which is not installed on the test machine, so the one real scrape that was started failed at once. That failure was itself reported correctly ("Myntra scrape failed", and a failed run). The recovery path (a successful run resolving the incident and the stale catalogue, and the S3 upload failing for lack of credentials) is covered by the app's unit tests and by the integration tests here, not by a live run.
+- **Not tested:** the demo with a real model (it needs a key: the scripted model was used); the CAPTCHA and full-disk incidents (they cannot be produced on demand; unit tests only); the rest of the end-to-end suite, which needs the default stack with the general sample data. It was last run in full for Phase 11 and was not rerun on this branch; five of its specs that set up their own data were (the table above).
+- **Already failing in the app before this work, and left alone:** 2 of its `tests/scraper/test_normalize.py` tests and 8 of its storefront tests (`ProductCard`, `Pagination`). The two Python tests fail the same way on its untouched `main`; the storefront tests, their components and their set-up file are unchanged from `main`.
+
+### New tests
+
+| Where                                             | Tests | Covers                                                                                                                                                                                                    |
+| ------------------------------------------------- | ----: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/sla/sla.test.ts`                    |     0 | Three assertions added to the rule-matching test: a tag condition matches a ticket that carries the tag, among others, and still needs its other conditions                                               |
+| `apps/api/test/handover.int.test.ts`              |    +1 | An incident is routed by its tag to an operations team and assigned; a recovery still resolves it; once the assignee has written a note it does not. The AI's handover notice leaves first response unset |
+| `apps/fake-providers/src/agent-script.test.ts`    |    +6 | The scripted model's flows for a catalogue site: freshness then scraper status, a fresh catalogue, a refresh that waits for approval and its outcome, a listing lookup from the context, a tool failure   |
+| `e2e/tests/garment/requests.spec.ts`              |     3 | Contact request to rating, with the app's admin view; a listing report; the app's key cannot read a ticket it did not raise                                                                               |
+| `e2e/tests/garment/chat.spec.ts`                  |     3 | The widget's look and a knowledge-base answer; listing lookup and catalogue freshness through the app's tools; the approval-gated scrape                                                                  |
+| `e2e/tests/garment/operations.spec.ts`            |     5 | The stale-catalogue incident and its routing; failing runs on one ticket; a signed test delivery and a forged one; key scope, limit and revocation; the two-minute SLA breach                             |
+| garment `tests/support/` (pytest)                 |    50 | The vendored client against the shared signature vectors; incident reporting, throttling and recovery; the catalogue freshness check; every `/api/support/*` route; a real failing run; a stopped run     |
+| garment `frontend/src/__tests__/support.test.jsx` |    15 | Contact (support desk on, refused, off), the listing report, the request page, the admin panel, the chat widget's start-up and identity                                                                   |
+
+### Bugs found and fixed
+
+1. **A recovery never resolved an incident ticket once routing had assigned it.** "Nobody has taken it" was read from the assignee, which a routing rule sets by itself. It is now read from the audit log: a person assigned it, moved it or wrote a note, or is handling it.
+2. **A handed-over chat could never breach its first-response target.** The AI's "I'm passing this to a member of our team" counted as the first response. It is now sent as a notice, like the holding message, and the clock runs until a person answers.
+3. **Incidents could not be routed apart from the same app's shopper tickets.** Routing rules had no condition that tells them apart. A rule can now match a tag.
+4. **The app's chat stayed anonymous after a shopper registered**, until the next page load, so it asked for the name it already had. It now starts again when the person using the browser changes.
+5. **The app's admin could reply and rate as a shopper**, because the admin overview handed out each request's tracking token. The overview no longer includes tokens, and the worker lets the admin read but not write.
+6. **The app's worker sometimes dropped the answer to an oversized request** on Windows (the connection reset while the caller was still sending). It now drains the body before refusing.
+7. **`e2e/tests/webhooks.spec.ts` could pass or fail by timing.** It waited for any delivered row and found the earlier test delivery; with a longer retry delay the real delivery had not been retried yet. It now waits for the row it means.
+8. **The loader could not be given a Windows path as an argument** through pnpm (the backslashes were doubled twice). Its options now come from the environment.
+
+### Known limits
+
+- The recovery scenario needs the scraper's browser installed (`python -m playwright install firefox`) and the store to answer.
+- Shoppers are named but not verified: the app has no server-side shopper accounts. A request is protected by its tracking token instead.
+- The demo needs two processes outside Docker (the app's worker and its Vite server).
+- One installation still serves one company (Phase 15).
+
+### Screenshots
+
+Captured by `e2e/tests/garment/screenshots.spec.ts` (`SCREENSHOTS=1`).
+
+| Screen                                                        | Image                                                                   |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Storefront: a listing, the report form and the chat           | ![chat](screenshots/garment-storefront-chat.png)                        |
+| Storefront: a shopper's request, answered and solved          | ![request](screenshots/garment-storefront-request.png)                  |
+| Storefront on a phone                                         | ![request on a phone](screenshots/garment-storefront-request-phone.png) |
+| Storefront, admin: incidents, tickets and the desk's webhooks | ![admin panel](screenshots/garment-storefront-admin-panel.png)          |
+| Orbit Desk: the queue                                         | ![queue](screenshots/garment-orbit-queue.png)                           |
+| Orbit Desk: a listing report with the listing                 | ![listing report](screenshots/garment-orbit-listing-report.png)         |
+| Orbit Desk: the scraper's failed runs on one ticket           | ![incident](screenshots/garment-orbit-incident.png)                     |
+| Orbit Desk: a chat answered from the app's systems            | ![tools](screenshots/garment-orbit-chat-tools.png)                      |
+| Orbit Desk: the integration's webhook and its deliveries      | ![integration](screenshots/garment-orbit-integration.png)               |
+
+## Phase 11: hardening
 
 Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-11-hardening`.
 
