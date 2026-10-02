@@ -156,6 +156,161 @@ describe('lessons from staff', () => {
   });
 });
 
+describe("a shop's order tools", () => {
+  const shopTools = [
+    ...tools,
+    ...['order_status', 'list_orders', 'cancel_order', 'issue_refund'].map((name) => ({
+      type: 'function',
+      function: { name: `custom__${name}` },
+    })),
+  ];
+  const turn = (
+    question: string,
+    done: Array<[tool: string, result: unknown]> = [],
+  ): ChatRequest => ({
+    model: 'scripted-cheap',
+    tools: shopTools,
+    messages: [
+      { role: 'system', content: 'rules' },
+      { role: 'user', content: `<customer_message>\n${question}\n</customer_message>` },
+      ...done.flatMap(([tool, result], i) => [
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [{ id: `call-${i}`, function: { name: `custom__${tool}` } }],
+        },
+        { role: 'tool', tool_call_id: `call-${i}`, content: JSON.stringify(result) },
+      ]),
+    ],
+  });
+
+  it("looks an order up by the shop's own numbers, and says when it is late", () => {
+    const asked = agentReply(turn('Where is my order ET-100123?'));
+    expect(asked.toolCalls![0]).toEqual({
+      name: 'custom__order_status',
+      arguments: { order_id: 'ET-100123' },
+    });
+    const r = agentReply(
+      turn('Where is my order ET-100123?', [
+        [
+          'order_status',
+          {
+            ok: true,
+            result: {
+              order_id: 'ET-100123',
+              status: 'shipped',
+              carrier: 'SwiftShip',
+              tracking_number: 'SW000123456',
+              estimated_delivery: '2026-10-06',
+              delayed: true,
+            },
+          },
+        ],
+      ]),
+    );
+    expect(String(args(r).message)).toBe(
+      "Order ET-100123 is shipped with SwiftShip; the tracking number is SW000123456; the carrier's estimate is 2026-10-06; it is delayed with the carrier at the moment.",
+    );
+  });
+
+  it('finds the latest order when no number is given', () => {
+    const asked = agentReply(turn('Where is my order?'));
+    expect(asked.toolCalls![0]).toEqual({ name: 'custom__list_orders', arguments: {} });
+    const r = agentReply(
+      turn('Where is my order?', [
+        [
+          'list_orders',
+          {
+            ok: true,
+            result: {
+              orders: [
+                { order_id: 'ET-100200', status: 'out for delivery', carrier: 'SwiftShip' },
+                { order_id: 'ET-100100', status: 'delivered' },
+              ],
+            },
+          },
+        ],
+      ]),
+    );
+    expect(String(args(r).message)).toBe('Order ET-100200 is out for delivery with SwiftShip.');
+    const none = agentReply(
+      turn('Where is my order?', [['list_orders', { ok: true, result: { orders: [] } }]]),
+    );
+    expect(String(args(none).message)).toContain("can't find any orders");
+  });
+
+  it('means the order the request is about when no number is written', () => {
+    const about = (context: string): ChatRequest => {
+      const req = turn('Where is my order? I need it by the weekend.');
+      req.messages[0] = {
+        role: 'system',
+        content: `rules\n<ticket_context>\n${context}\n</ticket_context>`,
+      };
+      return req;
+    };
+    expect(agentReply(about('order_id: ET-100150\nstatus: shipped')).toolCalls![0]).toEqual({
+      name: 'custom__order_status',
+      arguments: { order_id: 'ET-100150' },
+    });
+    // Something that is not an order number is not used as one.
+    expect(agentReply(about('order_id: latest')).toolCalls![0]).toEqual({
+      name: 'custom__list_orders',
+      arguments: {},
+    });
+  });
+
+  it('cancels when asked to, and says what happens to the money', () => {
+    const asked = agentReply(turn('Please cancel my order ET-100123, I ordered twice'));
+    expect(asked.toolCalls![0]!.name).toBe('custom__cancel_order');
+    expect(asked.toolCalls![0]!.arguments).toMatchObject({ order_id: 'ET-100123' });
+    const paid = agentReply(
+      turn('Please cancel my order ET-100123', [
+        [
+          'cancel_order',
+          {
+            ok: true,
+            result: {
+              order_id: 'ET-100123',
+              cancelled: true,
+              refund_id: 'RF-000123',
+              amount: 1798,
+              currency: 'INR',
+            },
+          },
+        ],
+      ]),
+    );
+    expect(String(args(paid).message)).toBe(
+      'Order ET-100123 is cancelled. Your refund of 1798.00 INR (reference RF-000123) is on its way.',
+    );
+    const unpaid = agentReply(
+      turn('Please cancel my order ET-100124', [
+        ['cancel_order', { ok: true, result: { order_id: 'ET-100124', cancelled: true } }],
+      ]),
+    );
+    expect(String(args(unpaid).message)).toBe(
+      'Order ET-100124 is cancelled. Nothing was charged for it.',
+    );
+  });
+
+  it('hands over when the shop refuses, for example an order that is not the customer’s', () => {
+    const r = agentReply(
+      turn('Where is my order ET-100999?', [
+        [
+          'order_status',
+          { ok: false, error: 'The system answered 404: no order with that number' },
+        ],
+      ]),
+    );
+    expect(r.toolCalls![0]!.name).toBe('request_human');
+  });
+
+  it('asks for a refund through the approval step', () => {
+    const asked = agentReply(turn('I want a refund for order ET-100123, it arrived torn'));
+    expect(asked.toolCalls![0]!.name).toBe('custom__issue_refund');
+  });
+});
+
 describe('a catalogue site (the Ethnic Threads tools)', () => {
   const siteTools = [
     ...tools,
