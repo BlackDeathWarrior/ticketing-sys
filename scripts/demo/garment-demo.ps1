@@ -1,43 +1,39 @@
 <#
 .SYNOPSIS
-  The Ethnic Threads demo: TMS in Docker as the support desk of the
-  garment-web-scraper app, which runs on this machine (ADR 0027).
+  The Ethnic Threads demo: TMS in Docker as the support desk of a shop that
+  runs on this machine (the garment-web-scraper repository; ADR 0027, 0028).
 
 .DESCRIPTION
   up          Builds and starts the demo stack (its own project, ports and database).
-  load        Sets TMS up for Ethnic Threads and writes the app's .env.
+  load        Sets TMS up for Ethnic Threads and writes the shop's .env.
               -Llm scripted uses the scripted model (no key); the default leaves
-              the model to you: add one under Settings > Providers and Models, then run load again
-              to load the knowledge base.
+              the model to you: add one under Settings > Providers and Models,
+              then run load again to load the knowledge base.
               -Rekey makes new API keys and secrets for an existing setup.
-  worker      Runs the app's worker (port 8765). By default it scrapes only when
-              asked: -Sources myntra -MaxProducts 5 keeps a scrape short.
-              -Sources notasource makes every run fail, to show an incident.
-              -Autostart starts the continuous scrape on boot, as in production.
-  storefront  Runs the app's site (http://localhost:5173).
+  shop        Runs the shop's server (port 8765). -StepSeconds is how long an
+              order stays at each step (default 20).
+  storefront  Runs the shop's site (http://localhost:5173).
   status      Shows what is running and where.
-  reset       Stops the stack and deletes its database, and the app's record of
-              webhook events. The default TMS stack is not touched.
+  reset       Stops the stack and deletes its database, the shop's database and
+              the shop's record of webhook events. The default TMS stack is not touched.
   down        Stops the stack, keeping its data.
 
-  The walk-through is docs/runbooks/phase-14-garment-demo.md.
+  The walk-through is docs/runbooks/phase-14b-shop-demo.md.
 
 .EXAMPLE
   ./scripts/demo/garment-demo.ps1 up
   ./scripts/demo/garment-demo.ps1 load -Llm scripted
-  ./scripts/demo/garment-demo.ps1 worker
+  ./scripts/demo/garment-demo.ps1 shop
   ./scripts/demo/garment-demo.ps1 storefront
 #>
 param(
   [Parameter(Position = 0)]
-  [ValidateSet('up', 'load', 'worker', 'storefront', 'status', 'reset', 'down')]
+  [ValidateSet('up', 'load', 'shop', 'storefront', 'status', 'reset', 'down')]
   [string]$Command = 'status',
   [ValidateSet('none', 'scripted')]
   [string]$Llm = 'none',
   [switch]$Rekey,
-  [string]$Sources = 'myntra',
-  [int]$MaxProducts = 5,
-  [switch]$Autostart,
+  [int]$StepSeconds = 20,
   # The garment-web-scraper clone; by default the folder next to this repository.
   [string]$GarmentDir = $env:GARMENT_DIR
 )
@@ -71,8 +67,8 @@ function Invoke-Tool {
 }
 
 function Assert-Garment {
-  if (-not (Test-Path (Join-Path $GarmentDir 'scraper\worker.py'))) {
-    throw "The garment-web-scraper clone was not found at $GarmentDir. Pass -GarmentDir or set GARMENT_DIR."
+  if (-not (Test-Path (Join-Path $GarmentDir 'shop\server.py'))) {
+    throw "The shop was not found at $GarmentDir (branch feat/shop of garment-web-scraper). Pass -GarmentDir or set GARMENT_DIR."
   }
 }
 
@@ -90,7 +86,7 @@ function Show-Status {
     @{ Name = 'TMS API'; Url = "$ApiUrl/api/v1/health/live"; Open = "$ApiUrl/docs" },
     @{ Name = 'Orbit Desk'; Url = 'http://localhost:8091/'; Open = 'http://localhost:8091' },
     @{ Name = 'Chat widget'; Url = "$WidgetUrl/widget/tms-chat.js"; Open = "$WidgetUrl/widget/tms-chat.js" },
-    @{ Name = 'App worker'; Url = 'http://localhost:8765/api/health'; Open = 'http://localhost:8765/api/health' },
+    @{ Name = 'Shop server'; Url = 'http://localhost:8765/api/health'; Open = 'http://localhost:8765/api/health' },
     @{ Name = 'Storefront'; Url = 'http://localhost:5173/'; Open = 'http://localhost:5173' }
   )
   foreach ($row in $rows) {
@@ -128,24 +124,14 @@ switch ($Command) {
       Pop-Location
     }
     Write-Host ''
-    Write-Host 'Restart the app worker so it reads the new settings.'
+    Write-Host 'Restart the shop server so it reads the new settings.'
   }
 
-  'worker' {
+  'shop' {
     Assert-Garment
-    # A scrape adds to outputs\products.json. A fresh clone has only the published copy:
-    # without this, the first scrape would replace the whole catalogue with what it found.
-    $working = Join-Path $GarmentDir 'outputs\products.json'
-    $published = Join-Path $GarmentDir 'frontend\public\products.json'
-    if (-not (Test-Path $working) -and (Test-Path $published)) {
-      New-Item -ItemType Directory -Force (Split-Path $working -Parent) | Out-Null
-      Copy-Item $published $working
-    }
-    $workerArgs = @('-m', 'scraper.worker', '--sources', $Sources, '--max-products', $MaxProducts)
-    if (-not $Autostart) { $workerArgs += '--no-autostart' }
     Push-Location $GarmentDir
     try {
-      & python @workerArgs
+      & python -m shop.server --step-seconds $StepSeconds
     } finally {
       Pop-Location
     }
@@ -166,14 +152,12 @@ switch ($Command) {
 
   'reset' {
     Invoke-Tool docker @Compose down -v
-    $events = Join-Path $GarmentDir 'outputs\support\events.jsonl'
-    if (Test-Path $events) { Remove-Item $events -Confirm:$false }
-    # Back to the catalogue as committed (last scraped in April 2026), so the
-    # stale-catalogue incident can be shown again.
-    $working = Join-Path $GarmentDir 'outputs\products.json'
-    if (Test-Path $working) { Remove-Item $working -Confirm:$false }
-    Invoke-Tool git -C $GarmentDir checkout -- frontend/public/products.json
-    Write-Host 'The demo stack and its data are gone. Run "up", then "load".'
+    # The shop starts again too: its accounts and orders belong to the tickets that are gone.
+    foreach ($leftover in @('outputs\support\events.jsonl', 'outputs\shop\shop.db', 'outputs\shop\shop.db-wal', 'outputs\shop\shop.db-shm')) {
+      $path = Join-Path $GarmentDir $leftover
+      if (Test-Path $path) { Remove-Item $path -Confirm:$false }
+    }
+    Write-Host 'The demo stack and its data are gone. Stop the shop server if it is running, then run "up" and "load".'
   }
 
   'down' { Invoke-Tool docker @Compose down }

@@ -1,12 +1,12 @@
 /**
- * Sets up a running TMS as the support desk of Ethnic Threads (the
- * garment-web-scraper app), and writes the app's side of the connection to
- * its .env (ADR 0027).
+ * Sets up a running TMS as the support desk of Ethnic Threads (the shop in
+ * the garment-web-scraper repository), and writes the shop's side of the
+ * connection to its .env (ADR 0027, ADR 0028).
  *
  * Everything goes through the API, as an administrator would do it in Orbit
  * Desk: branding, teams, staff, categories, SLA, routing, AI modes, the
  * knowledge base, the integration with its keys, webhook and chat identity
- * secret, and the tools the AI may call on the app's worker.
+ * secret, and the tools the AI may call on the shop's server.
  *
  *   pnpm garment:load
  *   GARMENT_LLM=scripted pnpm garment:load   # the scripted model, for tests
@@ -27,7 +27,7 @@
  *
  * Env: API_URL (http://localhost:3200), WIDGET_URL (http://localhost:8090,
  * where the browser loads the chat widget), GARMENT_WORKER_URL
- * (http://host.docker.internal:8765, the app's worker as the TMS containers
+ * (http://host.docker.internal:8765, the shop's server as the TMS containers
  * reach it), ADMIN_EMAIL / ADMIN_PASSWORD, FAKE_LLM_URL.
  */
 import { randomBytes } from 'node:crypto';
@@ -240,7 +240,7 @@ async function loadRouting(
       },
     });
   }
-  log(`${routing.length} routing rules (incidents go to Site Reliability)`);
+  log(`${routing.length} routing rules (incidents go to Operations)`);
 }
 
 async function loadAi(admin: string) {
@@ -400,8 +400,8 @@ async function loadIntegration(admin: string): Promise<Connection | null> {
         ...(rateLimitPerMinute ? { rateLimitPerMinute } : {}),
       })
     ).key;
-  const webKey = await key('Storefront: shopper requests', ['integration:ticket']);
-  const eventsKey = await key('Scraper worker: incidents', ['integration:event']);
+  const webKey = await key('Shop server: shopper requests', ['integration:ticket']);
+  const eventsKey = await key('Shop server: incidents', ['integration:event']);
   // For showing the per-key limit: five calls a minute, then 429.
   const limitedKey = await key('Demo: five calls a minute', ['integration:ticket'], 5);
 
@@ -422,7 +422,7 @@ async function loadIntegration(admin: string): Promise<Connection | null> {
           url,
           events: webhookEvents,
           scope: 'own',
-          description: "The Ethnic Threads worker's /api/support/webhook",
+          description: "The Ethnic Threads shop's /api/support/webhook",
         })
       ).secret;
 
@@ -441,7 +441,7 @@ async function loadIntegration(admin: string): Promise<Connection | null> {
   };
 }
 
-/** The AI's tools on the app's worker. `token` is set on first load and on `--rekey`. */
+/** The AI's tools on the shop's server. `token` is set on first load and on `--rekey`. */
 async function loadTools(admin: string, token: string | null) {
   const existing = await call<Array<{ name: string }>>(admin, 'GET', '/tools/custom');
   for (const { path, ...definition } of tools) {
@@ -460,7 +460,7 @@ async function loadTools(admin: string, token: string | null) {
     }
   }
   const gated = tools.filter((t) => t.tier === 'transactional').map((t) => t.name);
-  log(`${tools.length} tools for the AI on the app's worker (${gated.join(', ')} needs approval)`);
+  log(`${tools.length} tools for the AI on the shop's server (${gated.join(', ')} needs approval)`);
 }
 
 /**
@@ -480,8 +480,8 @@ function writeEnv(c: Connection) {
   const lines = [...kept];
   if (!has('ADMIN_PASSWORD')) {
     if (lines.length) lines.push('');
-    lines.push('# Storefront admin sign-in (generated for the local demo)');
-    if (!has('ADMIN_USERNAME')) lines.push('ADMIN_USERNAME=scraper_admin');
+    lines.push('# Shop admin sign-in (generated for the local demo)');
+    if (!has('ADMIN_USERNAME')) lines.push('ADMIN_USERNAME=shop_admin');
     lines.push(`ADMIN_PASSWORD=${randomBytes(12).toString('base64url')}`);
   }
   if (lines.length) lines.push('');
@@ -496,7 +496,6 @@ function writeEnv(c: Connection) {
     `SUPPORT_CHAT_IDENTITY_SECRET=${c.chatIdentitySecret}`,
     `SUPPORT_TOOL_TOKEN=${c.toolToken}`,
     `SUPPORT_DEMO_KEY_LIMITED=${c.limitedKey}`,
-    'SUPPORT_STALE_HOURS=48',
     '',
   );
   writeFileSync(ENV_OUT, lines.join('\n'), { mode: 0o600 });

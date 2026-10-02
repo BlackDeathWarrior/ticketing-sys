@@ -1,6 +1,6 @@
 # ADR 0027: The Ethnic Threads demo
 
-Status: accepted (2026-10-02)
+Status: accepted (2026-10-02). The demo app has since been remade into a shop: [ADR 0028](0028-shop-demo.md) replaces what this record says about the app, its scenarios and "Showing failures without faking them". The three product fixes and "How the app is connected" stand.
 
 ## Context
 
