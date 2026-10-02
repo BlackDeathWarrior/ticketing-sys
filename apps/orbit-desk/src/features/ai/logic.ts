@@ -6,6 +6,7 @@ export const DECISION_LABELS: Record<AiDecision, string> = {
   handover: 'Handed over',
   skipped: 'Skipped',
   error: 'Failed',
+  closed: 'Closed the conversation',
 };
 
 export const percent = (c: number | null) => (c === null ? '–' : `${Math.round(c * 100)}%`);

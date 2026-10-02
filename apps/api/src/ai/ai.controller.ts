@@ -14,6 +14,7 @@ import { AiAgentService } from './ai-agent.service';
 import { AiAutoResolveService } from './ai-auto-resolve';
 import { AiCopilotService } from './ai-copilot.service';
 import { AiRunsService } from './ai-runs.service';
+import { AiFastPathsService } from './fast-paths.service';
 
 @ApiTags('ai')
 @ApiBearerAuth()
@@ -26,6 +27,7 @@ export class AiController {
     private readonly tickets: TicketsService,
     private readonly copilot: AiCopilotService,
     private readonly autoResolve: AiAutoResolveService,
+    private readonly fast: AiFastPathsService,
   ) {}
 
   /** A suggested reply for the agent to edit and send; nothing is stored. */
@@ -66,6 +68,13 @@ export class AiController {
   @RequirePermission('settings:ai')
   simulate(@Body(new ZodPipe(simulateAiSchema)) body: SimulateAiInput) {
     return this.agent.simulate(body);
+  }
+
+  /** Turns answered without a chat model in the last 30 days, by kind (greetings, FAQ, repeats, closings, guard). */
+  @Get('ai/savings')
+  @RequirePermission('settings:ai')
+  savings() {
+    return this.fast.saved(30);
   }
 
   /** What the AI did on a ticket: each turn and classification, newest first. */

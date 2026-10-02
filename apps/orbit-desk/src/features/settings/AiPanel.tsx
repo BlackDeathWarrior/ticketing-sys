@@ -22,6 +22,11 @@ const CHANNEL_LABELS: Record<AiChannel, string> = {
   api: 'Integrations (tickets raised through the API)',
 };
 
+const YES_NO = [
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
+];
+
 const MODE_LABELS: Record<AiChannelMode, string> = {
   auto: 'Answers on its own when confident',
   draft: 'Drafts replies for a person to approve',
@@ -29,8 +34,19 @@ const MODE_LABELS: Record<AiChannelMode, string> = {
 };
 
 /** Settings → AI behaviour: autonomy per channel, thresholds, and a dry run. */
+/** What each kind of turn answered without a model is called on the savings line. */
+const SAVED_LABELS: Record<string, string> = {
+  smalltalk: 'greetings and thanks',
+  faq: 'FAQ answers',
+  cache: 'repeated questions',
+  closing: '“nothing else” goodbyes',
+  guard: 'conversations closed for misuse',
+};
+
 export function AiPanel() {
   const current = useGet<AiBehaviour>('/settings/ai');
+  const saved = useGet<Record<string, number>>('/ai/savings');
+  const savedTotal = Object.values(saved.data ?? {}).reduce((a, b) => a + b, 0);
   const [form, setForm] = useState<AiBehaviour | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -219,6 +235,182 @@ export function AiPanel() {
               onChange={(e) => setForm({ ...form, autoResolveHours: Number(e.target.value) })}
               required
             />
+            <h3 className={styles.sectionTitle}>Answers without a model</h3>
+            <p className={styles.note}>
+              Some messages need no model at all. Each of these saves the whole cost of a turn.
+            </p>
+            {savedTotal > 0 && (
+              <p className={styles.note} role="status">
+                In the last 30 days, {savedTotal} {savedTotal === 1 ? 'turn was' : 'turns were'}{' '}
+                answered without a model:{' '}
+                {Object.entries(saved.data ?? {})
+                  .map(([route, n]) => `${n} ${SAVED_LABELS[route] ?? route}`)
+                  .join(', ')}
+                .
+              </p>
+            )}
+            <div className={styles.formRow}>
+              <Select
+                id="ai-fast-smalltalk"
+                label="Greetings and thanks get a fixed reply"
+                value={form.fastPaths.smallTalk ? 'yes' : 'no'}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    fastPaths: { ...form.fastPaths, smallTalk: e.target.value === 'yes' },
+                  })
+                }
+                options={YES_NO}
+              />
+              <Select
+                id="ai-fast-cache"
+                label="A question asked before, in the same words, gets the same answer"
+                value={form.fastPaths.answerCache ? 'yes' : 'no'}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    fastPaths: { ...form.fastPaths, answerCache: e.target.value === 'yes' },
+                  })
+                }
+                options={YES_NO}
+              />
+            </div>
+            <div className={styles.formRow}>
+              <Select
+                id="ai-fast-faq"
+                label="A question an FAQ entry answers gets that entry's answer"
+                value={form.fastPaths.faq ? 'yes' : 'no'}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    fastPaths: { ...form.fastPaths, faq: e.target.value === 'yes' },
+                  })
+                }
+                options={YES_NO}
+              />
+              <Input
+                id="ai-fast-faq-similarity"
+                type="number"
+                min={50}
+                max={100}
+                step={1}
+                label="How close the question must be to the FAQ entry (%)"
+                value={Math.round(form.fastPaths.faqMinSimilarity * 100)}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    fastPaths: {
+                      ...form.fastPaths,
+                      faqMinSimilarity: Number(e.target.value) / 100,
+                    },
+                  })
+                }
+                hint="Higher: fewer, surer matches. Add FAQ entries in the Knowledge base."
+              />
+            </div>
+
+            <h3 className={styles.sectionTitle}>Guardrails</h3>
+            <p className={styles.note}>
+              Checked before any model is asked, where the AI answers by itself. On email, and where
+              it only drafts, a person gets the conversation instead.
+            </p>
+            <div className={styles.formRow}>
+              <Select
+                id="ai-guard-enabled"
+                label="Guardrails"
+                value={form.guardrails.enabled ? 'yes' : 'no'}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    guardrails: { ...form.guardrails, enabled: e.target.value === 'yes' },
+                  })
+                }
+                options={[
+                  { value: 'yes', label: 'On' },
+                  { value: 'no', label: 'Off' },
+                ]}
+              />
+              <Select
+                id="ai-guard-jailbreak"
+                label="An attempt to override the AI's instructions"
+                value={form.guardrails.closeOnJailbreak ? 'yes' : 'no'}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    guardrails: { ...form.guardrails, closeOnJailbreak: e.target.value === 'yes' },
+                  })
+                }
+                options={[
+                  { value: 'yes', label: 'Close the ticket at once and flag the customer' },
+                  { value: 'no', label: 'Let the AI answer it as an ordinary message' },
+                ]}
+              />
+            </div>
+            <div className={styles.formRow}>
+              <Input
+                id="ai-guard-offtopic"
+                type="number"
+                min={2}
+                max={10}
+                label="Off-topic messages before the conversation is closed"
+                value={form.guardrails.offTopicLimit}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    guardrails: { ...form.guardrails, offTopicLimit: Number(e.target.value) },
+                  })
+                }
+                hint="A redirect first, a warning on the one before last."
+              />
+              <Input
+                id="ai-guard-abuse"
+                type="number"
+                min={1}
+                max={10}
+                label="Abusive or spam messages before the conversation is closed"
+                value={form.guardrails.abuseLimit}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    guardrails: { ...form.guardrails, abuseLimit: Number(e.target.value) },
+                  })
+                }
+                hint="A warning each time before that."
+              />
+            </div>
+            <div className={styles.formRow}>
+              <Input
+                id="ai-guard-flag-hours"
+                type="number"
+                min={1}
+                max={720}
+                label="Hours a flagged customer gets no second warning"
+                value={form.guardrails.flagHours}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    guardrails: { ...form.guardrails, flagHours: Number(e.target.value) },
+                  })
+                }
+                hint="A flag is cleared from the customer's ticket, with a note."
+              />
+              <Input
+                id="ai-person-requests"
+                type="number"
+                min={1}
+                max={5}
+                label="Requests for a person before one is brought in"
+                value={form.handover.personRequestsBeforeHandover}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    handover: { personRequestsBeforeHandover: Number(e.target.value) },
+                  })
+                }
+                hint="At 2, the first request gets an offer to sort it out now. 1 hands over at once. A phone call always does."
+              />
+            </div>
+
             <Select
               id="ai-learn"
               label="Learn from customer ratings"

@@ -23,6 +23,8 @@ export interface AssessInput {
   reply: string;
   citedSources: number;
   confirmedByTool: boolean;
+  /** A company system answered a lookup this turn: a date it gave may be passed on. */
+  readByTool?: boolean;
   unconfidentTurnsBefore: number;
   mode: AiChannelMode;
   behaviour: Pick<AiBehaviour, 'sendAt' | 'handoverBelow' | 'maxFailedTurns'>;
@@ -38,8 +40,11 @@ export interface Assessment {
   rules: AiRule[];
 }
 
-const PROMISE =
-  /\b(i|we)(?:'ve| have| will| shall|'ll)? (?:issued|processed|refunded|credited|cancelled|canceled|approved|waived)\b|\brefund (?:has been|is|was) (?:issued|processed|approved)\b|\byou will (?:get|receive) (?:a |your )?(?:full )?(?:refund|credit|compensation)\b|\b(?:guarantee|guaranteed)\b|\b(?:arrive|be delivered|reach you) (?:by|on|tomorrow|today)\b/i;
+/** Money or an action promised: only true once a company system has done it. */
+const ACTION_PROMISE =
+  /\b(i|we)(?:'ve| have| will| shall|'ll)? (?:issued|processed|refunded|credited|cancelled|canceled|approved|waived)\b|\brefund (?:has been|is|was) (?:issued|processed|approved)\b|\byou will (?:get|receive) (?:a |your )?(?:full )?(?:refund|credit|compensation)\b|\b(?:guarantee|guaranteed)\b/i;
+/** A delivery date: true when a company system said so, which a lookup is enough for. */
+const DATE_PROMISE = /\b(?:arrive|be delivered|reach you) (?:by|on|tomorrow|today)\b/i;
 
 /**
  * Text that only exists in the agent's instructions or tool plumbing, and the
@@ -62,7 +67,8 @@ export const leaksInternals = (reply: string) => INTERNAL.some((re) => re.test(r
 /** Statements that need a source: numbers, prices, durations. */
 const FACTUAL = /\d/;
 
-export const makesPromise = (reply: string) => PROMISE.test(reply);
+export const makesPromise = (reply: string) =>
+  ACTION_PROMISE.test(reply) || DATE_PROMISE.test(reply);
 
 export function assess(i: AssessInput): Assessment {
   const { sendAt, handoverBelow, maxFailedTurns } = i.behaviour;
@@ -81,7 +87,12 @@ export function assess(i: AssessInput): Assessment {
     c = Math.max(0, sendAt - 0.01);
     rules.push('poor_feedback');
   }
-  if (makesPromise(i.reply) && !i.confirmedByTool) {
+  // A date read from the order system is the system's word, not the AI's promise. It used to
+  // hand the conversation over when the answer said "will arrive by Friday".
+  const unsupported =
+    !i.confirmedByTool &&
+    (ACTION_PROMISE.test(i.reply) || (DATE_PROMISE.test(i.reply) && !i.readByTool));
+  if (unsupported) {
     c = Math.min(c, Math.max(0, handoverBelow - 0.01));
     rules.push('unsupported_promise');
   }
@@ -183,6 +194,78 @@ export function approvalOutcomeMessage(
   return o.status === 'done'
     ? `Good news: your request (${o.action}) was approved and has been carried out.${reason ? ` From our team: ${reason}` : ''}`
     : `I am sorry, your request (${o.action}) was not approved.${reason ? ` From our team: ${reason}` : ''}`;
+}
+
+/** A greeting, a thank-you, or "I need help" with nothing to look up: the fixed reply. */
+export function smallTalkReply(
+  kind: 'greeting' | 'thanks' | 'help',
+  language: string | null,
+): string {
+  const hi = language === 'hi';
+  if (kind === 'greeting') {
+    return hi ? 'नमस्ते! मैं आपकी कैसे मदद कर सकता हूँ?' : 'Hello! How can I help you today?';
+  }
+  if (kind === 'thanks') return hi ? 'आपका स्वागत है।' : 'You are welcome.';
+  return hi
+    ? 'मैं यहाँ हूँ और मदद के लिए तैयार हूँ। कृपया थोड़ा और बताएँ कि आपको क्या चाहिए: जैसे आपका ऑर्डर नंबर, या बात किस बारे में है।'
+    : 'I am here and happy to help. Could you tell me a little more about what you need? For example your order number, or what it is about.';
+}
+
+/** The first answer to "I want a person": the AI is the first line and offers to sort it out. */
+export function personOffer(language: string | null): string {
+  return language === 'hi'
+    ? 'मैं ज़्यादातर चीज़ें यहीं तुरंत सुलझा सकता हूँ। कृपया बताएँ कि आपको क्या चाहिए। अगर उसके बाद भी आप हमारे किसी सहयोगी से बात करना चाहें, तो बस कह दें और मैं उन्हें जोड़ दूँगा।'
+    : 'I can sort most things out right here, right now. Tell me what you need and I will take care of it. If you would still like one of my colleagues after that, just say so and I will bring one in.';
+}
+
+/** Instead of guessing or giving up: ask for what is missing. */
+export function clarifyMessage(language: string | null): string {
+  return language === 'hi'
+    ? 'मैं आपको सही जवाब देना चाहता हूँ। क्या आप थोड़ा और बता सकते हैं: आपका ऑर्डर नंबर, या ठीक-ठीक क्या हुआ और आप क्या चाहते हैं?'
+    : 'I want to get this right for you. Could you tell me a little more: your order number if there is one, or exactly what happened and what you would like done?';
+}
+
+/** One warning for abuse or spam; the next one closes the conversation. */
+export function conductWarning(
+  language: string | null,
+  kind: 'abuse' | 'spam' | 'jailbreak',
+): string {
+  if (kind === 'spam') {
+    return language === 'hi'
+      ? 'मुझे वही संदेश बार-बार मिल रहा है। कृपया बताएँ कि आपको किस चीज़ में मदद चाहिए; ऐसा जारी रहा तो मुझे यह बातचीत बंद करनी होगी।'
+      : 'I keep getting messages I cannot act on. Please tell me what you need help with; if this continues I will have to close this conversation.';
+  }
+  return language === 'hi'
+    ? 'मैं आपकी मदद करना चाहता हूँ, पर कृपया शालीन भाषा रखें। ऐसा जारी रहा तो मुझे यह बातचीत बंद करनी होगी। आपको किस चीज़ में मदद चाहिए?'
+    : 'I would like to help you, but please keep it civil. If this continues I will have to close this conversation. What do you need help with?';
+}
+
+/** Added to the second off-topic redirect: the next one closes the conversation. */
+export function offTopicWarning(language: string | null): string {
+  return language === 'hi'
+    ? 'कृपया ध्यान दें: मैं यहाँ केवल हमारी सेवाओं से जुड़े सवालों में मदद कर सकता हूँ। ऐसा जारी रहा तो यह बातचीत बंद कर दी जाएगी।'
+    : 'Please note: I can only help with questions about our products and services here. If this continues, this conversation will be closed.';
+}
+
+/** What the customer is told when the AI ends a conversation for conduct. */
+export function conductClosed(
+  language: string | null,
+  kind: 'jailbreak' | 'abuse' | 'spam' | 'off_topic',
+): string {
+  const hi = language === 'hi';
+  if (kind === 'jailbreak') {
+    return hi
+      ? 'मैं इसमें मदद नहीं कर सकता। यह बातचीत बंद कर दी गई है।'
+      : 'I cannot help with that. This conversation has been closed.';
+  }
+  if (kind === 'off_topic') {
+    return hi
+      ? 'मैं यहाँ केवल हमारी सेवाओं से जुड़े सवालों में मदद कर सकता हूँ, इसलिए यह बातचीत बंद कर रहा हूँ। जब हमारी सेवाओं से जुड़ा कोई सवाल हो, तो नई बातचीत शुरू करें।'
+      : 'I can only help with questions about our products and services, so I am closing this conversation. You are welcome to start a new one when you have such a question.';
+  }
+  return hi
+    ? 'यह बातचीत बंद कर दी गई है। जब आपको हमारी सेवाओं में मदद चाहिए, तो नई बातचीत शुरू करें।'
+    : 'This conversation has been closed. You are welcome to start a new one when you need help with our products or services.';
 }
 
 /**

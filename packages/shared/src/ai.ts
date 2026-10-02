@@ -63,6 +63,52 @@ export const aiBehaviourSchema = z
         closeResolvedAfterDays: z.number().int().min(0).max(365).default(7),
       })
       .default({}),
+    /**
+     * Answers that need no model: a greeting, a question an FAQ entry answers
+     * word for word, a question answered a moment ago. Each can be switched off.
+     */
+    fastPaths: z
+      .object({
+        /** Greetings, thanks and "are you there?" get a fixed reply. */
+        smallTalk: z.boolean().default(true),
+        /** A question that matches an approved FAQ entry closely gets that entry's answer. */
+        faq: z.boolean().default(true),
+        /** How close (0.5 to 1) the question must be to the FAQ entry's own question. */
+        faqMinSimilarity: z.number().min(0.5).max(1).default(0.85),
+        /** A first question asked in the same words again gets the answer the AI gave before. */
+        answerCache: z.boolean().default(true),
+        answerCacheHours: z.number().int().min(1).max(720).default(24),
+      })
+      .default({}),
+    /**
+     * What the AI does about misuse, before any model is asked: attempts to
+     * override its instructions, abuse, spam, and questions that have nothing
+     * to do with the company.
+     */
+    guardrails: z
+      .object({
+        enabled: z.boolean().default(true),
+        /** An attempt to override the AI's instructions closes the ticket at once and flags the customer. */
+        closeOnJailbreak: z.boolean().default(true),
+        /** Off-topic messages in one conversation before it is closed: a redirect, a warning, then closed. */
+        offTopicLimit: z.number().int().min(2).max(10).default(3),
+        /** Abusive or spam messages in one conversation before it is closed: a warning, then closed. */
+        abuseLimit: z.number().int().min(1).max(10).default(2),
+        /** Hours a customer's flag keeps the AI strict: any further offence closes with no warning. */
+        flagHours: z.number().int().min(1).max(720).default(24),
+      })
+      .default({}),
+    /** When a person is brought in. The AI is the first line: it tries to solve things itself. */
+    handover: z
+      .object({
+        /**
+         * Times a customer must ask for a person before one is brought in. At
+         * 2, the first request gets an offer to sort it out now; the second
+         * is handed over. 1 hands over at once. A phone call always does.
+         */
+        personRequestsBeforeHandover: z.number().int().min(1).max(5).default(2),
+      })
+      .default({}),
     /** At or above: send on `auto` channels. */
     sendAt: confidence.default(0.8),
     /** Below: hand over to a human. Between the two: draft. */
@@ -96,7 +142,8 @@ export const aiBehaviourSchema = z
 export type AiBehaviour = z.infer<typeof aiBehaviourSchema>;
 export const DEFAULT_AI_BEHAVIOUR: AiBehaviour = aiBehaviourSchema.parse({});
 
-export const AI_DECISIONS = ['sent', 'drafted', 'handover', 'skipped', 'error'] as const;
+/** `closed`: the AI ended the conversation for misuse (a jailbreak attempt, abuse, spam, off-topic). */
+export const AI_DECISIONS = ['sent', 'drafted', 'handover', 'skipped', 'error', 'closed'] as const;
 export type AiDecision = (typeof AI_DECISIONS)[number];
 
 /** Why a turn was capped or handed over (recorded on the run, shown to agents). */
@@ -116,6 +163,13 @@ export const AI_RULES = [
   'action_failed',
   'poor_feedback',
   'unsafe_output',
+  'jailbreak_attempt',
+  'abusive_language',
+  'spam',
+  'off_topic',
+  'repeat_offender',
+  'person_offered',
+  'clarifying',
 ] as const;
 export type AiRule = (typeof AI_RULES)[number];
 
@@ -135,6 +189,13 @@ export const AI_RULE_LABELS: Record<AiRule, string> = {
   action_failed: 'An approved action failed',
   poor_feedback: 'Customers rated answers like this one badly',
   unsafe_output: 'The reply contained internal instructions or a secret',
+  jailbreak_attempt: "The customer tried to override the AI's instructions",
+  abusive_language: 'Abusive language',
+  spam: 'Spam or repeated messages',
+  off_topic: 'Nothing to do with the company',
+  repeat_offender: 'The customer was flagged for misuse recently',
+  person_offered: 'Offered to solve it before bringing in a person',
+  clarifying: 'Asked the customer to say more instead of guessing',
 };
 
 export const SENTIMENTS = ['positive', 'neutral', 'negative'] as const;
@@ -335,11 +396,59 @@ export function declinesMoreHelp(text: string): boolean {
   return true;
 }
 
-/** Plain requests for a person, in English and Hindi. */
+/**
+ * A request for a person, in English and Hindi. It has to be a request:
+ * "the delivery agent was rude" or "is the manager's special still on" only
+ * mention one, and used to hand the conversation over all the same.
+ */
 export function asksForHuman(text: string): boolean {
-  return /\b(human|real person|a person|someone real|live agent|an agent|speak to (a |an |someone|somebody)|talk to (a |an |someone|somebody)|representative|manager)\b|इंसान|किसी व्यक्ति|एजेंट से बात/i.test(
-    text,
+  const who =
+    '(?:a |an |the |some |any |your |one of your )?(?:real |live |actual |human )?(?:human|person|people|agent|representative|rep|operator|manager|supervisor|someone|somebody|colleague|staff|team member)';
+  const en = new RegExp(
+    [
+      // "talk to a person", "speak with an agent", "connect me to someone"
+      `\\b(?:talk|speak|chat|connect(?: me)?|put me through|transfer(?: me)?|escalate(?: this| me)?|get me|give me)\\b[^.?!]{0,20}\\b(?:to|with)?\\s*${who}\\b`,
+      // "I want a human", "need a real person", "can I get an agent"
+      `\\b(?:want|need|get|have|like|prefer|require|request)\\b[^.?!]{0,6}${who}\\b`,
+      // "real person please", "human please", "live agent"
+      '\\b(?:real person|real human|live agent|live person|human being|human agent)\\b',
+      '^\\s*(?:human|agent|person|representative|operator)\\s*(?:please|pls|now)?\\s*[.!]*\\s*$',
+      // "not a bot", "no more bots"
+      '\\b(?:not|no)\\b[^.?!]{0,10}\\b(?:bots?|robots?|chatbots?)\\b',
+    ].join('|'),
+    'i',
   );
+  return en.test(text) || /इंसान से|किसी व्यक्ति से|एजेंट से बात|किसी से बात|असली इंसान/.test(text);
+}
+
+const GREETING_WORDS =
+  /\b(hi+|hello+|hey+|hiya|howdy|namaste|good (?:morning|afternoon|evening|day)|greetings|there)\b|नमस्ते|नमस्कार/giu;
+const THANKS_WORDS =
+  /\b(thanks?|thank you|thx|ty|cheers|much appreciated|appreciate it|great|perfect|awesome|ok(?:ay)?|cool|nice|so much|very much|a lot)\b|धन्यवाद|शुक्रिया/giu;
+const PRESENCE =
+  /^(?:can|could) (?:you|anyone|anybody) hear me\b|^(?:is|are) (?:you|anyone|anybody|someone) (?:there|here)\b|^anyone there\b|^anybody there\b/i;
+const HELP_WORDS =
+  /\b(i|we|me|please|pls|can|could|you|some|need|want|help|assist|assistance|support|answer|reply|respond|question|query|a|have|got|with|something)\b/giu;
+
+/**
+ * A message with nothing in it to look up: a greeting, a thank-you, "are you
+ * there?", "I need help". Whole message only: "Hi, where is my order?" is a
+ * question. Such a message gets a fixed reply and no model is asked.
+ */
+export function smallTalk(text: string): 'greeting' | 'thanks' | 'help' | null {
+  const q = text.trim();
+  if (!q || q.length > 80) return null;
+  /** The message has such words in it and, without them, no letter or digit is left. */
+  const madeOf = (words: RegExp) => {
+    const left = q.replace(words, ' ');
+    return left !== q && left.replace(/[^\p{L}\p{M}\p{N}]+/gu, '') === '';
+  };
+  if (q.length < 40 && PRESENCE.test(q)) return 'greeting';
+  if (madeOf(GREETING_WORDS)) return 'greeting';
+  if (!/[?？]/.test(q) && madeOf(THANKS_WORDS)) return 'thanks';
+  if (/\b(help|assist|assistance|support|question|query)\b/i.test(q) && madeOf(HELP_WORDS))
+    return 'help';
+  return null;
 }
 
 /** A golden conversation from apps/api/test/evals/*.yaml. */

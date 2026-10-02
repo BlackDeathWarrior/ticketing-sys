@@ -232,6 +232,34 @@ export class TicketsService {
     return false;
   }
 
+  /**
+   * The AI ends a conversation for misuse (ADR 0029). The ticket is closed,
+   * not resolved: nothing was solved, no rating is asked, and a new message
+   * opens a new ticket. Falls back to a resolved status where the workflow
+   * has no way to close from here. False when the AI no longer has the ticket.
+   */
+  async closeForConductInTx(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    ticketId: string,
+    resolution: string,
+    closure: AiClosure,
+  ): Promise<boolean> {
+    const current = await this.lock(tx, ticketId);
+    if (current.handling !== 'ai') return false;
+    const { statuses } = await this.workflow.load();
+    for (const category of ['closed', 'resolved'] as const) {
+      for (const s of statuses.filter((x) => x.category === category && x.isActive)) {
+        if ((await this.workflow.check(current.status, s.key)).ok) {
+          await this.applyTransition(tx, ctx, current, s.key, resolution);
+          await tx.update(tickets).set({ aiClosure: closure }).where(eq(tickets.id, ticketId));
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   /** Tickets the AI resolved by itself before `before` that nobody reopened since. */
   async aiResolvedBefore(before: Date, limit: number): Promise<string[]> {
     const { statuses } = await this.workflow.load();
@@ -690,6 +718,15 @@ export class TicketsService {
     s: { slaPolicyId: string | null; slaState: string | null; slaDueAt: Date | null },
   ) {
     await tx.update(tickets).set(s).where(eq(tickets.id, id));
+  }
+
+  /** A ticket's priority alone, for ordering work on it. */
+  async priorityOf(ticketId: string): Promise<string | undefined> {
+    const [row] = await this.db
+      .select({ priority: tickets.priority })
+      .from(tickets)
+      .where(eq(tickets.id, ticketId));
+    return row?.priority;
   }
 
   /** Locks and returns the ticket row, for callers composing their own transaction. */

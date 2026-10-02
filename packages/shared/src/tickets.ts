@@ -63,6 +63,8 @@ export const DEFAULT_TRANSITIONS: Array<[from: string, to: string]> = [
   ['resolved', 'in_progress'],
   // A customer who writes again after the AI closed their request gets the AI again.
   ['resolved', 'ai_handling'],
+  // The AI ends a conversation for misuse without calling it solved.
+  ['ai_handling', 'closed'],
   ['resolved', 'closed'],
 ];
 
@@ -70,13 +72,28 @@ export const DEFAULT_TRANSITIONS: Array<[from: string, to: string]> = [
  * Why the AI resolved a ticket by itself (`tickets.ai_closure`); null when a
  * person did, or it is not resolved.
  */
-export const AI_CLOSURES = ['customer_confirmed', 'no_reply'] as const;
+export const AI_CLOSURES = [
+  'customer_confirmed',
+  'no_reply',
+  // Closed for conduct (ADR 0029): closed for good at once, and never asked for a rating.
+  'jailbreak',
+  'abuse',
+  'spam',
+  'off_topic',
+] as const;
 export type AiClosure = (typeof AI_CLOSURES)[number];
 
 export const AI_CLOSURE_LABELS: Record<AiClosure, string> = {
   customer_confirmed: 'Closed by the AI: the customer needed nothing else',
   no_reply: 'Closed by the AI: no reply from the customer',
+  jailbreak: 'Closed by the AI: an attempt to override its instructions',
+  abuse: 'Closed by the AI: abusive language',
+  spam: 'Closed by the AI: spam',
+  off_topic: 'Closed by the AI: nothing to do with the company, after a warning',
 };
+
+/** The closures that are for conduct: the conversation was ended, not finished. */
+export const CONDUCT_CLOSURES: AiClosure[] = ['jailbreak', 'abuse', 'spam', 'off_topic'];
 
 /** Statuses that assignment moves a ticket out of, into `human_assigned`. */
 export const UNASSIGNED_STATUSES = ['new', 'ai_handling'] as const;

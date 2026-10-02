@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import {
   conversations,
+  customerFlags,
   customerIdentities,
   customers,
   type Database,
@@ -15,13 +16,15 @@ import {
 } from '@tms/db';
 import {
   type CreateCustomerInput,
+  type CustomerFlagKind,
+  type CustomerFlagView,
   type IdentityInput,
   type IdentityType,
   normalizeIdentity,
   type ResolveCustomerInput,
   type UpdateCustomerInput,
 } from '@tms/shared';
-import { and, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, gt, ilike, inArray, isNull, or } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import { isUniqueViolation } from '../common/exception.filter';
@@ -87,7 +90,101 @@ export class CustomersService {
         .orderBy(desc(tickets.createdAt))
         .limit(20),
     ]);
-    return { ...c, identities, recentTickets };
+    return { ...c, identities, recentTickets, flags: await this.flags(c.id) };
+  }
+
+  /** Every flag on the customer, newest first; cleared ones stay as history. */
+  async flags(customerId: string): Promise<CustomerFlagView[]> {
+    const rows = await this.db
+      .select()
+      .from(customerFlags)
+      .where(eq(customerFlags.customerId, customerId))
+      .orderBy(desc(customerFlags.createdAt))
+      .limit(50);
+    return rows.map((f) => ({
+      id: f.id,
+      kind: f.kind as CustomerFlagKind,
+      ticketId: f.ticketId,
+      createdAt: f.createdAt.toISOString(),
+      clearedAt: f.clearedAt?.toISOString() ?? null,
+      clearNote: f.clearNote,
+    }));
+  }
+
+  /** Whether the customer was flagged since `since` and nobody has cleared it. */
+  async flaggedSince(customerId: string, since: Date): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: customerFlags.id })
+      .from(customerFlags)
+      .where(
+        and(
+          eq(customerFlags.customerId, customerId),
+          isNull(customerFlags.clearedAt),
+          gt(customerFlags.createdAt, since),
+        ),
+      )
+      .limit(1);
+    return !!row;
+  }
+
+  /** Flags a customer in the caller's transaction (the AI closing a conversation for misuse). */
+  async flagInTx(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    customerId: string,
+    flag: {
+      kind: CustomerFlagKind;
+      pattern: string | null;
+      ticketId: string;
+      conversationId: string;
+    },
+  ): Promise<void> {
+    await tx.insert(customerFlags).values({ customerId, ...flag });
+    const data = { kind: flag.kind, pattern: flag.pattern, ticketId: flag.ticketId };
+    await this.audit.record(tx, ctx, {
+      action: 'customer.flagged',
+      targetType: 'customer',
+      targetId: customerId,
+      data,
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'customer.updated',
+      aggregateType: 'customer',
+      aggregateId: customerId,
+      payload: { fields: ['flags'], ...data },
+    });
+  }
+
+  /** A person decides the flag no longer applies. The AI gives the customer warnings again. */
+  async clearFlag(ctx: RequestCtx, customerId: string, flagId: string, note: string) {
+    const c = await this.findActive(this.db, customerId);
+    await this.db.transaction(async (tx) => {
+      const [flag] = await tx
+        .update(customerFlags)
+        .set({ clearedAt: new Date(), clearedBy: ctx.user?.id ?? null, clearNote: note })
+        .where(
+          and(
+            eq(customerFlags.id, flagId),
+            eq(customerFlags.customerId, c.id),
+            isNull(customerFlags.clearedAt),
+          ),
+        )
+        .returning({ id: customerFlags.id, kind: customerFlags.kind });
+      if (!flag) throw new NotFoundException('Flag not found, or already cleared');
+      await this.audit.record(tx, ctx, {
+        action: 'customer.flag_cleared',
+        targetType: 'customer',
+        targetId: c.id,
+        data: { flagId, kind: flag.kind, note },
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'customer.updated',
+        aggregateType: 'customer',
+        aggregateId: c.id,
+        payload: { fields: ['flags'] },
+      });
+    });
+    return this.get(c.id);
   }
 
   async create(ctx: RequestCtx, input: CreateCustomerInput) {

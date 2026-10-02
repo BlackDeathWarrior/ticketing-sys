@@ -11,6 +11,7 @@ import Redis from 'ioredis';
 import type { Env } from '../config/env';
 import { ConversationsService } from '../conversations/conversations.service';
 import { ENV } from '../infra/tokens';
+import { TicketsService } from '../tickets/tickets.service';
 import { currentTrace, SpanKind, withSpan } from '../telemetry/tracing';
 import type { DomainEventHandler } from '../worker/domain-events';
 import { AiAgentService, ConversationBusyError } from './ai-agent.service';
@@ -18,8 +19,23 @@ import { AiClassifierService } from './ai-classifier.service';
 
 export const AI_QUEUE = 'ai-turns';
 
+const TURN_PRIORITY: Record<string, number> = { urgent: 1, high: 2, normal: 3, low: 4 };
+const CLASSIFY_PRIORITY = 5;
+/** How long a typed message waits before its turn starts. */
+const SETTLE_MS = 1_200;
+const TYPED_CHANNELS = new Set(['webchat', 'whatsapp', 'api']);
+
 type AiJob = (
-  | { kind: 'turn'; conversationId: string; messageId: string; handBack?: string }
+  | {
+      kind: 'turn';
+      conversationId: string;
+      messageId: string;
+      handBack?: string;
+      /** The ticket's priority, so urgent customers are answered first when the queue is long. */
+      priority?: string;
+      /** A typed channel: wait a moment, so a burst of short messages gets one answer. */
+      settle?: boolean;
+    }
   | { kind: 'classify'; ticketId: string }
   | { kind: 'followup'; approvalId: string }
 ) & {
@@ -78,7 +94,17 @@ export class AiWorker implements OnApplicationBootstrap, BeforeApplicationShutdo
       { ...job, trace: currentTrace() },
       {
         jobId,
-        attempts: 8,
+        // BullMQ runs lower numbers first, and jobs with no priority before all of them:
+        // every job gets one, so a ticket's priority decides and not the job's kind.
+        priority:
+          job.kind === 'turn'
+            ? (TURN_PRIORITY[job.priority ?? 'normal'] ?? TURN_PRIORITY.normal)
+            : job.kind === 'followup'
+              ? TURN_PRIORITY.high
+              : CLASSIFY_PRIORITY,
+        ...(job.kind === 'turn' && job.settle ? { delay: SETTLE_MS } : {}),
+        // A busy conversation is retried until the turn in front of it has finished.
+        attempts: 30,
         backoff: { type: 'fixed', delay: 1_500 },
         removeOnComplete: { count: 2_000 },
         removeOnFail: { count: 2_000 },
@@ -107,6 +133,7 @@ export class AiDispatchHandler implements DomainEventHandler {
   constructor(
     private readonly ai: AiWorker,
     private readonly conversations: ConversationsService,
+    private readonly tickets: TicketsService,
   ) {}
 
   handles(type: DomainEventType): boolean {
@@ -151,7 +178,13 @@ export class AiDispatchHandler implements DomainEventHandler {
     const conv = await this.conversations.get(p.conversationId).catch(() => null);
     // A voice call answers while the caller is on the line (VoiceService), not from this queue.
     if (conv?.controller === 'ai' && conv.channel !== 'voice') {
-      await this.ai.enqueue({ kind: 'turn', conversationId: conv.id, messageId: p.messageId });
+      await this.ai.enqueue({
+        kind: 'turn',
+        conversationId: conv.id,
+        messageId: p.messageId,
+        priority: await this.tickets.priorityOf(conv.ticketId).catch(() => undefined),
+        settle: TYPED_CHANNELS.has(conv.channel),
+      });
     }
   }
 }

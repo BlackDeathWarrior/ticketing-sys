@@ -75,6 +75,44 @@ export class KbService {
     return rows.map(toView);
   }
 
+  /**
+   * The approved FAQ entries a customer may be told: the question (the title)
+   * and the stored answer. With `revision`, which changes whenever any
+   * approved document does, so a cached answer is never served from an older
+   * knowledge base.
+   */
+  async publicFaqs(): Promise<{
+    revision: string;
+    faqs: Array<{ id: string; question: string; answer: string }>;
+  }> {
+    const [rows, [state]] = await Promise.all([
+      this.db
+        .select({ id: kbDocuments.id, title: kbDocuments.title, content: kbDocuments.content })
+        .from(kbDocuments)
+        .where(
+          and(
+            eq(kbDocuments.source, 'faq'),
+            eq(kbDocuments.status, 'approved'),
+            eq(kbDocuments.visibility, 'public'),
+          ),
+        )
+        .limit(500),
+      this.db
+        .select({
+          latest: sql<string | null>`max(${kbDocuments.updatedAt})::text`,
+          total: sql<number>`count(*)::int`,
+        })
+        .from(kbDocuments)
+        .where(eq(kbDocuments.status, 'approved')),
+    ]);
+    return {
+      revision: `${state?.total ?? 0}:${state?.latest ?? ''}`,
+      faqs: rows
+        .filter((r) => r.content?.trim())
+        .map((r) => ({ id: r.id, question: r.title, answer: r.content!.trim() })),
+    };
+  }
+
   async get(user: CurrentUser | undefined, id: string): Promise<KbDocumentDetail> {
     const access = await this.accessCondition(user);
     const [row] = await this.baseSelect().where(and(eq(kbDocuments.id, id), access));

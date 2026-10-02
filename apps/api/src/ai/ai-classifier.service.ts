@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Database } from '@tms/db';
-import { type AiClassification, INCIDENT_TICKET_KIND, SENTIMENTS } from '@tms/shared';
+import { type AiClassification, INCIDENT_TICKET_KIND, SENTIMENTS, smallTalk } from '@tms/shared';
 import { z } from 'zod';
 import { AI_CTX } from '../common/request-context';
 import { CustomersService } from '../customers/customers.service';
@@ -59,6 +59,8 @@ export class AiClassifierService {
     const labels = tree.flatMap((c) =>
       c.children.length ? c.children.map((s) => `${c.name} > ${s.name}`) : [c.name],
     );
+    // "Hello" has no category, priority or intent to find: do not spend a call on it.
+    if (smallTalk(`${ticket.description ?? ticket.subject}`)) return null;
     const started = Date.now();
     let raw: string;
     let model: string | null = null;

@@ -33,6 +33,33 @@ export const customers = pgTable(
   ],
 );
 
+/**
+ * A customer the AI closed a conversation with for misuse (ADR 0029): an
+ * attempt to override its instructions, abuse, spam. Staff see it on the
+ * customer; while it is recent the AI gives no second warning. A person
+ * clears it (with a note), nothing deletes it.
+ */
+export const customerFlags = pgTable(
+  'customer_flags',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    customerId: uuid('customer_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    /** jailbreak | abuse | spam | off_topic */
+    kind: text('kind').notNull(),
+    /** Which guard pattern matched; never the customer's words. */
+    pattern: text('pattern'),
+    ticketId: uuid('ticket_id'),
+    conversationId: uuid('conversation_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    clearedAt: timestamp('cleared_at', { withTimezone: true }),
+    clearedBy: uuid('cleared_by'),
+    clearNote: text('clear_note'),
+  },
+  (t) => [index('customer_flags_customer_idx').on(t.customerId, t.createdAt)],
+);
+
 export const customerIdentities = pgTable(
   'customer_identities',
   {
