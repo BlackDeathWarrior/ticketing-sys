@@ -209,10 +209,67 @@ export class CustomersService {
       .select()
       .from(customerIdentities)
       .where(and(eq(customerIdentities.type, input.type), eq(customerIdentities.value, value)));
-    if (owner) return owner.customerId === customerId;
+    if (owner) {
+      if (owner.customerId === customerId) {
+        if (input.verified && !owner.verified) {
+          await tx
+            .update(customerIdentities)
+            .set({ verified: true })
+            .where(eq(customerIdentities.id, owner.id));
+        }
+        return true;
+      }
+      // A proven address beats one that someone else only typed (into a chat, say):
+      // otherwise typing a stranger's address would keep it from its owner.
+      if (input.type === 'email' && input.verified && !owner.verified) {
+        await this.moveEmail(tx, ctx, owner, customerId, value);
+        return true;
+      }
+      return false;
+    }
     await this.insertIdentity(tx, ctx, customerId, input.type, value, input.verified);
     if (input.type === 'email') await this.fillPrimaryEmail(tx, ctx, customerId, value);
     return true;
+  }
+
+  /** Gives an unproven email identity to the customer who proved it is theirs. */
+  private async moveEmail(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    owner: { id: string; customerId: string },
+    customerId: string,
+    email: string,
+  ) {
+    await tx
+      .update(customerIdentities)
+      .set({ customerId, verified: true })
+      .where(eq(customerIdentities.id, owner.id));
+    const [cleared] = await tx
+      .update(customers)
+      .set({ primaryEmail: null })
+      .where(and(eq(customers.id, owner.customerId), eq(customers.primaryEmail, email)))
+      .returning({ id: customers.id });
+    for (const [id, data] of [
+      [
+        owner.customerId,
+        { identityMovedTo: customerId, type: 'email', ...(cleared ? { primaryEmail: null } : {}) },
+      ],
+      [customerId, { identityMovedFrom: owner.customerId, type: 'email' }],
+    ] as const) {
+      await this.audit.record(tx, ctx, {
+        action: 'customer.updated',
+        targetType: 'customer',
+        targetId: id,
+        data,
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'customer.updated',
+        aggregateType: 'customer',
+        aggregateId: id,
+        payload: { fields: ['identities'] },
+      });
+    }
+    await this.fillPrimaryEmail(tx, ctx, customerId, email);
   }
 
   /**
@@ -306,6 +363,23 @@ export class CustomersService {
       current = c.mergedIntoId;
     }
     throw new NotFoundException('Customer not found');
+  }
+
+  /** What outside apps call these customers: their `external_id` identities, by customer id. */
+  async externalIds(ids: string[], db: DbOrTx = this.db): Promise<Map<string, string[]>> {
+    const found = new Map<string, string[]>();
+    if (!ids.length) return found;
+    const rows = await db
+      .select({ customerId: customerIdentities.customerId, value: customerIdentities.value })
+      .from(customerIdentities)
+      .where(
+        and(
+          inArray(customerIdentities.customerId, ids),
+          eq(customerIdentities.type, 'external_id'),
+        ),
+      );
+    for (const r of rows) found.set(r.customerId, [...(found.get(r.customerId) ?? []), r.value]);
+    return found;
   }
 
   /** The customer who owns a channel identity, if any. */

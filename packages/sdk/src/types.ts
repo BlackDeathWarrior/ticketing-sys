@@ -40,7 +40,8 @@ export interface Ticket {
   tags: string[];
   externalRef: string | null;
   metadata: Record<string, unknown>;
-  customer: { name: string; email: string | null };
+  /** `externalId` is your own id for the person, when the customer is known by one. */
+  customer: { name: string; email: string | null; externalId: string | null };
   handling: string;
   createdAt: string;
   updatedAt: string;

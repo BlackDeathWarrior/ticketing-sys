@@ -120,9 +120,19 @@ class TmsClient:
         state: Optional[str] = None,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
+        customer: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Your tickets, newest first. `state`: open, pending, resolved or closed."""
-        query = {"externalRef": external_ref, "state": state, "limit": limit, "offset": offset}
+        """Your tickets, newest first. `state`: open, pending, resolved or closed.
+
+        `customer` is your own id for a person (their `externalId`): only their tickets.
+        """
+        query = {
+            "externalRef": external_ref,
+            "customer": customer,
+            "state": state,
+            "limit": limit,
+            "offset": offset,
+        }
         return self._request("GET", "/integration/tickets", query=query)
 
     def messages(self, reference: str, after: Optional[str] = None) -> List[Dict[str, Any]]:

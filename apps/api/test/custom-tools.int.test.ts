@@ -531,6 +531,57 @@ describe('the AI using custom tools', () => {
     });
   });
 
+  it("on an integration's site, acts only for a person the app has named", async () => {
+    const app = await t.call<{ id: string; slug: string }>('POST', '/integrations', {
+      token: admin,
+      body: { slug: uniq('shop-'), name: 'A shop' },
+    });
+    const victim = `${uniq('victim')}@example.com`;
+    const onSite = (text: string, from: Parameters<InboundService['handle']>[0]['from']) => {
+      const session = uniq('site-chat');
+      return t.app.get(InboundService).handle({
+        channel: 'webchat',
+        threadKey: session,
+        channelMessageId: `${session}:1`,
+        from,
+        text,
+        receivedAt: new Date().toISOString(),
+        ticket: { integrationId: app.body.id },
+      });
+    };
+
+    // A visitor types someone else's address into the shop's chat and asks about "their" order.
+    const stranger = await onSite('Where is my order DS-90414?', {
+      identity: { type: 'webchat_session', value: uniq('anon-') },
+      displayName: 'Somebody',
+      extraIdentities: [{ type: 'email', value: victim, verified: false }],
+    });
+    await waitFor(async () => {
+      const tk = (await t.call('GET', `/tickets/${stranger.ticketId}`, { token: admin })).body;
+      return tk.handling === 'handed_over' ? tk : undefined;
+    }, 'the AI to hand the unidentified visitor over');
+    // The order system was never asked.
+    expect(seen.some((s) => s.path === '/orders/DS-90414')).toBe(false);
+    const [refused] = (
+      await t.call('GET', `/tickets/${stranger.ticketId}/tool-calls`, { token: admin })
+    ).body;
+    expect(refused.status).not.toBe('ok');
+
+    // The address's owner signs in: the shop vouches for them by its own id.
+    const owner = await onSite('Where is my order DS-90415?', {
+      identity: { type: 'external_id', value: `${app.body.slug}:user-1` },
+      displayName: 'The Owner',
+      extraIdentities: [{ type: 'email', value: victim, verified: true }],
+    });
+    await aiSaid(owner.ticketId, 'DS-90415 is shipped');
+    // The proven claim took the address from the visitor who had only typed it.
+    expect(seen.find((s) => s.path === '/orders/DS-90415')!.query).toEqual({ email: victim });
+    const strangerNow = (await t.call('GET', `/customers/${stranger.customerId}`, { token: admin }))
+      .body;
+    expect(strangerNow.primaryEmail).toBeNull();
+    expect(strangerNow.identities.some((i: { type: string }) => i.type === 'email')).toBe(false);
+  });
+
   it('waits for approval before a transactional custom tool runs', async () => {
     const r = await chat('I was charged twice for order DS-90413, please refund me');
     await aiSaid(r.ticketId, 'to our team for approval');

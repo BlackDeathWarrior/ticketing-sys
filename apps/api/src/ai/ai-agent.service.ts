@@ -250,7 +250,7 @@ export class AiAgentService {
           language,
           unconfidentTurnsBefore: 0,
           conversationId: conv.id,
-          customerEmail: emailOf(customer),
+          customerEmail: boundEmail(ticket, customer),
           dryRun: false,
           update: { tool: action, status: outcome.status, detail: outcome.detail },
           confirmedByTool: outcome.status === 'done',
@@ -387,7 +387,7 @@ export class AiAgentService {
         lastHandover,
       ),
       conversationId: conv.id,
-      customerEmail: emailOf(customer),
+      customerEmail: boundEmail(ticket, customer),
       dryRun: false,
       update: null,
       confirmedByTool: false,
@@ -859,6 +859,27 @@ export class AiAgentService {
     const sub = subName ? cat.children.find((s) => s.name.toLowerCase() === subName) : undefined;
     return { categoryId: cat.id, subcategoryId: sub?.id ?? null };
   }
+}
+
+/**
+ * The email customer-bound tools act for (ADR 0028). On a ticket of an
+ * integration, only a person the app itself has named (its own id for them:
+ * a ticket it raised for them, or a chat with a signed identity) is acted
+ * for. An address a visitor typed into the app's chat proves nothing, and
+ * must not open someone else's orders.
+ */
+function boundEmail(
+  ticket: { integration: { slug: string } | null },
+  customer: Parameters<typeof emailOf>[0],
+): string | null {
+  if (ticket.integration) {
+    const prefix = `${ticket.integration.slug}:`;
+    const named = customer.identities.some(
+      (x) => x.type === 'external_id' && x.value.startsWith(prefix),
+    );
+    if (!named) return null;
+  }
+  return emailOf(customer);
 }
 
 function emailOf(customer: {
