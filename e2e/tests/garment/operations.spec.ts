@@ -291,7 +291,7 @@ test.describe('Ethnic Threads: when something in the shop goes wrong', () => {
       return mine?.handling === 'handed_over' ? mine : undefined;
     });
     // The shopper is told a person will answer; that is a notice, not the answer.
-    await expect(panel.locator('.msg.ai').first()).toContainText('member of our team', {
+    await expect(panel.locator('.msg.ai').first()).toContainText("I'm passing this to", {
       timeout: 20_000,
     });
 

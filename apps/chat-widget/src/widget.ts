@@ -30,6 +30,8 @@ export interface ChatStrings {
   /** Above the name and email fields. */
   details?: string;
   start?: string;
+  /** Read out by screen readers while the assistant writes its answer. */
+  typing?: string;
 }
 
 /** What a page can react to. Callbacks never receive the visitor's session token. */
@@ -103,7 +105,11 @@ const DEFAULT_STRINGS: Required<ChatStrings> = {
   send: 'Send',
   details: 'Tell us who you are so we can follow up. Both are optional.',
   start: 'Start chat',
+  typing: 'Support is typing',
 };
+
+/** How long the typing dots may show without an answer arriving. */
+const TYPING_MAX_MS = 45_000;
 
 const CSS = `
 :host { all: initial; --tms-primary: #1f4e89; --tms-on-primary: #fff; --tms-radius: 12px; }
@@ -128,6 +134,12 @@ header button { background: none; border: 0; color: var(--tms-on-primary); font-
 .msg.agent, .msg.ai, .msg.system { align-self: flex-start; background: #f3f4f6; }
 .msg small { display: block; font-size: 11px; opacity: .75; margin-bottom: 2px; }
 .msg.failed { background: #b91c1c; }
+.msg.typing { display: flex; gap: 4px; align-items: center; padding: 12px 12px; }
+.msg.typing i { width: 6px; height: 6px; border-radius: 50%; background: #6b7280; animation: tms-typing 1.2s infinite ease-in-out; }
+.msg.typing i:nth-child(2) { animation-delay: .15s; }
+.msg.typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes tms-typing { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .msg.typing i { animation: none; opacity: .6; } }
 .empty { color: #6b7280; text-align: center; margin: auto; }
 form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #e5e7eb; }
 textarea { flex: 1; resize: none; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px; font-size: 14px; }
@@ -198,6 +210,8 @@ export function init(options: ChatOptions = {}): ChatHandle {
   };
   const seen = new Set<string>();
   const asked = new Set<string>();
+  let typing: HTMLElement | null = null;
+  let typingTimer: ReturnType<typeof setTimeout> | undefined;
 
   /** A page's callback must never break the chat. */
   function notify<K extends keyof ChatCallbacks>(
@@ -259,7 +273,10 @@ export function init(options: ChatOptions = {}): ChatHandle {
         }),
     });
     socket.on('connect', () => setStatus('Connected'));
-    socket.on('disconnect', () => setStatus('Reconnecting…'));
+    socket.on('disconnect', () => {
+      setTyping(false);
+      setStatus('Reconnecting…');
+    });
     socket.on('connect_error', () => setStatus('Cannot reach support right now. Retrying…'));
     // The server refused the handshake (an unknown integration, too many chats).
     socket.on('error', (e: { message?: string }) => {
@@ -278,6 +295,7 @@ export function init(options: ChatOptions = {}): ChatHandle {
       if (res.rate) askForRating(res.rate);
     });
     socket.on('message', (m: ChatMessage) => {
+      if (m.authorType !== 'customer') setTyping(false);
       if (render(m) && m.authorType !== 'customer') {
         notify('message', { id: m.id, body: m.body, from: m.authorType });
       }
@@ -333,6 +351,31 @@ export function init(options: ChatOptions = {}): ChatHandle {
     sendBtn.disabled = !socket?.connected;
   }
 
+  /**
+   * Three moving dots while the assistant writes its answer. The server says
+   * when (the ack of a message the assistant will answer); they go when a
+   * message arrives, and after a while by themselves so they never promise
+   * an answer that is not coming.
+   */
+  function setTyping(on: boolean) {
+    clearTimeout(typingTimer);
+    typing?.remove();
+    typing = null;
+    if (!on) return;
+    typing = document.createElement('div');
+    typing.className = 'msg ai typing';
+    typing.setAttribute('role', 'status');
+    typing.setAttribute('aria-label', text.typing);
+    typing.append(
+      document.createElement('i'),
+      document.createElement('i'),
+      document.createElement('i'),
+    );
+    log.appendChild(typing);
+    log.scrollTop = log.scrollHeight;
+    typingTimer = setTimeout(() => setTyping(false), TYPING_MAX_MS);
+  }
+
   function render(m: ChatMessage, pending = false): HTMLElement | null {
     if (seen.has(m.id)) return null;
     seen.add(m.id);
@@ -346,7 +389,8 @@ export function init(options: ChatOptions = {}): ChatHandle {
     }
     el.appendChild(document.createTextNode(m.body));
     if (pending) el.style.opacity = '0.6';
-    log.appendChild(el);
+    // The dots stay the last thing in the conversation.
+    log.insertBefore(el, typing);
     log.scrollTop = log.scrollHeight;
     return el;
   }
@@ -368,10 +412,12 @@ export function init(options: ChatOptions = {}): ChatHandle {
         .emitWithAck('message', { text: body, clientMessageId })) as Ack<{
         message: ChatMessage;
         ticket?: { reference: string; created: boolean };
+        assistantReplying?: boolean;
       }>;
       if (!res.ok) throw new Error(res.error);
       seen.add(res.message.id);
       if (bubble) bubble.style.opacity = '1';
+      if (res.assistantReplying) setTyping(true);
       if (res.ticket?.created) notify('ticket', { reference: res.ticket.reference });
     } catch (err) {
       if (bubble) {
@@ -435,6 +481,7 @@ export function init(options: ChatOptions = {}): ChatHandle {
       writeStore(storageKey, {});
       seen.clear();
       asked.clear();
+      setTyping(false);
       log.replaceChildren();
       const reconnect = !!socket;
       disconnect();

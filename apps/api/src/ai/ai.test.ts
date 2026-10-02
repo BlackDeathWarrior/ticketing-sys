@@ -2,7 +2,7 @@ import { asksForHuman, DEFAULT_AI_BEHAVIOUR, guessLanguage } from '@tms/shared';
 import { describe, expect, it } from 'vitest';
 import { extractJson } from './ai-classifier.service';
 import { assess, handoverMessage, handoverNote, leaksInternals, makesPromise } from './policy';
-import { agentSystemPrompt, customerTurn, ticketContext } from './prompts';
+import { agentSystemPrompt, APPROVAL_UPDATE_TURN, customerTurn, ticketContext } from './prompts';
 import { parseArgs, sendReplyArgs } from './tools';
 
 const base = {
@@ -119,6 +119,17 @@ describe('handover texts', () => {
   it('speaks the customer’s language', () => {
     expect(handoverMessage('hi')).toMatch(/टीम/);
     expect(handoverMessage('en')).toMatch(/member of our team/);
+  });
+
+  it('names the colleague the ticket was routed to, when there is one', () => {
+    expect(handoverMessage('en', 'api', 'Meera')).toBe(
+      "Thanks for your patience. I'm passing this to my colleague Meera, who will reply here shortly.",
+    );
+    expect(handoverMessage('hi', 'webchat', 'Meera')).toMatch(/सहयोगी Meera/);
+    expect(handoverMessage('en', 'webchat', '  ')).toMatch(/member of our team/);
+    expect(handoverMessage('en', 'webchat', null)).toMatch(/member of our team/);
+    // A caller is put through; nobody is named on the line.
+    expect(handoverMessage('en', 'voice', 'Meera')).not.toContain('Meera');
   });
 
   it('leaves a note with the reasons, the last message and the unsent answer', () => {
@@ -280,6 +291,19 @@ describe('prompts and parsing', () => {
     });
     expect(update).toContain('<approval_update tool="issue_refund" status="done">');
     expect(update).toContain('RF-1');
+    // The outcome is the news: the earlier "it is with the team" is not said again.
+    expect(update).toContain('Write only what is new');
+    expect(update).toContain('It was approved and has been done');
+    const rejected = agentSystemPrompt({
+      ...base,
+      companyTools: true,
+      update: { tool: 'issue_refund', status: 'rejected', detail: '' },
+    });
+    expect(rejected).toContain('<approval_update tool="issue_refund" status="rejected">');
+    expect(rejected).toContain('It was not approved');
+    expect(rejected).toContain('You were not given a reason');
+    expect(APPROVAL_UPDATE_TURN).toContain('<system_note>');
+    expect(APPROVAL_UPDATE_TURN).toContain('outcome only');
   });
 
   it('validates tool arguments and tolerates a bad confidence', () => {

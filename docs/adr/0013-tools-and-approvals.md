@@ -67,7 +67,8 @@ The agreed defaults: tools and MCP servers only with sample servers for the demo
   - An approved call is claimed (`running`) and run once. A crash mid-call leaves it `running` for a person to check; it is never re-run automatically.
   - If the AI still owns the conversation, it tells the customer:
     - after an approval, a reply marked as confirmed by a tool (so the promise rule allows "has been issued");
-    - after a rejection, a polite no that never quotes the supervisor's internal note;
+    - after a rejection, a polite no. The supervisor's note is internal: it is not put in the prompt at all (since 2026-10-03; before, the prompt carried it and relied on the model not to repeat it), so the customer who asks why is handed to a person;
+    - either way, only the outcome. The follow-up turn ends with a `<system_note>` (`APPROVAL_UPDATE_TURN`, prompt `agent-v7`) instead of the AI's own last message, and searches no knowledge: a live model had written its "this is with the team" message a second time and added the rejection to it;
     - after an expiry or a failure, a handover (`approval_expired`, `action_failed`).
   - If a person owns the conversation, the AI leaves an internal note asking them to tell the customer.
   - Follow-ups are idempotent per approval (an `ai_runs` row of kind `followup`).

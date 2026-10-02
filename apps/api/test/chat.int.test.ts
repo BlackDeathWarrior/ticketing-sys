@@ -81,6 +81,8 @@ describe('web chat', () => {
       clientMessageId: 'client-msg-0001',
     });
     expect(first.ok).toBe(true);
+    // No AI answers this chat, so the widget is not told that an answer is being written.
+    expect(first.assistantReplying).toBe(false);
 
     // A resend with the same client id (lost ack) is not stored twice.
     const resend = await chat.emitWithAck('message', {
