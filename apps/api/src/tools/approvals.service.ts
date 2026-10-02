@@ -7,7 +7,7 @@ import {
   qualifiedToolName,
   type ToolTier,
 } from '@tms/shared';
-import { and, desc, eq, lte } from 'drizzle-orm';
+import { and, desc, eq, inArray, lte } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import { type RequestCtx, SYSTEM_CTX } from '../common/request-context';
@@ -56,6 +56,16 @@ export class ApprovalsService {
     return Promise.all(rows.map((r) => this.view(r)));
   }
 
+  /** Of these tickets, the ones with a request still waiting for a decision. */
+  async pendingTicketIds(ticketIds: string[]): Promise<Set<string>> {
+    if (!ticketIds.length) return new Set();
+    const rows = await this.db
+      .select({ ticketId: approvals.ticketId })
+      .from(approvals)
+      .where(and(eq(approvals.status, 'pending'), inArray(approvals.ticketId, ticketIds)));
+    return new Set(rows.map((r) => r.ticketId));
+  }
+
   async pendingCount(): Promise<number> {
     const rows = await this.db
       .select({ id: approvals.id })
@@ -82,6 +92,7 @@ export class ApprovalsService {
           status,
           decidedBy: ctx.user?.id ?? null,
           decidedAt: new Date(),
+          reason: input.reason,
           note: input.note ?? null,
         })
         .where(eq(approvals.id, id));
@@ -96,6 +107,7 @@ export class ApprovalsService {
         approvalId: id,
         toolCallId: a.toolCallId,
         decision: status,
+        reason: input.reason,
         note: input.note ?? null,
       };
       await this.audit.record(tx, ctx, {
@@ -205,6 +217,7 @@ export class ApprovalsService {
       expiresAt: r.approval.expiresAt.toISOString(),
       decidedBy: decider ? { id: decider.id, name: decider.name } : null,
       decidedAt: r.approval.decidedAt?.toISOString() ?? null,
+      reason: r.approval.reason,
       note: r.approval.note,
       result: r.call.result,
       error: r.call.error,

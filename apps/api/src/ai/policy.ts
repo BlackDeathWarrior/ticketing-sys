@@ -49,7 +49,7 @@ const INTERNAL = [
   /you are the first-line support assistant/i,
   /finish every turn by calling/i,
   /lessons from reviewed customer feedback/i,
-  /<\/?(customer_message|knowledge|approval_update|summary|system_note)\b/i,
+  /<\/?(customer_message|knowledge|approval_update|team_reason|summary|system_note)\b/i,
   /\b(send_reply|request_human|search_knowledge|update_ticket)\b/,
   /\bsk-[A-Za-z0-9_-]{16,}\b/,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./,
@@ -114,6 +114,75 @@ export function waitingMessage(language: string | null): string {
     return 'आपके संदेश के लिए धन्यवाद। आपको सही जवाब मिले, इसलिए हमारी टीम का एक सदस्य जल्द ही यहीं जवाब देगा।';
   }
   return 'Thanks for your message. I want to be sure you get the right answer, so a member of our team will reply here shortly.';
+}
+
+const byEmail = (channel: string) => channel === 'email' || channel === 'web_form';
+
+/**
+ * "Is there anything else?", added to an answer that settles the request.
+ * Fixed wording rather than the model's: it costs nothing, it is the same on
+ * every channel, and the reply to it can be recognised without a model.
+ */
+export function closingQuestion(language: string | null, channel: string): string {
+  if (byEmail(channel)) {
+    return language === 'hi'
+      ? 'अगर आपको किसी और चीज़ में मदद चाहिए, तो बस इस ईमेल का जवाब दें।'
+      : 'If there is anything else you need, just reply to this email.';
+  }
+  return language === 'hi'
+    ? 'क्या मैं आपकी किसी और चीज़ में मदद कर सकता हूँ?'
+    : 'Is there anything else I can help you with?';
+}
+
+/** The reply with the closing question added: before an email's sign-off, otherwise at the end. */
+export function withClosingQuestion(reply: string, question: string): string {
+  const parts = reply.trimEnd().split(/\n{2,}/);
+  const last = parts.at(-1) ?? '';
+  if (
+    parts.length > 1 &&
+    /^(kind regards|best regards|regards|sincerely|thanks,|thank you,)/i.test(last)
+  ) {
+    return [...parts.slice(0, -1), question, last].join('\n\n');
+  }
+  return `${reply.trimEnd()}\n\n${question}`;
+}
+
+/** What the customer is told when they answer that nothing else is needed. */
+export function closingThanks(language: string | null, channel: string): string {
+  if (language === 'hi') {
+    return byEmail(channel)
+      ? 'मदद कर पाने की खुशी है। मैं यह अनुरोध अब बंद कर रहा हूँ। बाद में कुछ चाहिए, तो इस ईमेल का जवाब दें।'
+      : 'मदद कर पाने की खुशी है। मैं यह अनुरोध अब बंद कर रहा हूँ। बाद में कुछ चाहिए, तो यहीं लिखें।';
+  }
+  return byEmail(channel)
+    ? 'Glad I could help. I am closing this request now. If you need anything later, just reply to this email.'
+    : 'Glad I could help. I am closing this request now. If you need anything later, just write here again.';
+}
+
+/** What the customer is told when their request is closed because they did not come back. */
+export function closedForSilence(language: string | null): string {
+  return language === 'hi'
+    ? 'आपकी ओर से कोई जवाब नहीं आया, इसलिए मैं यह अनुरोध अभी बंद कर रहा हूँ। अगर अब भी मदद चाहिए, तो यहीं लिखें और यह फिर खुल जाएगा।'
+    : 'I have not heard back from you, so I am closing this request for now. If you still need help, just write here again and it will reopen.';
+}
+
+/**
+ * The outcome of a request a colleague decided, with their reason, when no
+ * model writes it: the AI no longer has the conversation, or the model failed.
+ */
+export function approvalOutcomeMessage(
+  language: string | null,
+  o: { action: string; status: 'done' | 'rejected'; reason: string },
+): string {
+  const reason = o.reason.replace(/\s+/g, ' ').trim();
+  if (language === 'hi') {
+    return o.status === 'done'
+      ? `अच्छी खबर: आपका अनुरोध (${o.action}) स्वीकृत हो गया है और पूरा कर दिया गया है।${reason ? ` हमारी टीम की ओर से: ${reason}` : ''}`
+      : `क्षमा करें, आपका अनुरोध (${o.action}) स्वीकृत नहीं हुआ।${reason ? ` हमारी टीम की ओर से: ${reason}` : ''}`;
+  }
+  return o.status === 'done'
+    ? `Good news: your request (${o.action}) was approved and has been carried out.${reason ? ` From our team: ${reason}` : ''}`
+    : `I am sorry, your request (${o.action}) was not approved.${reason ? ` From our team: ${reason}` : ''}`;
 }
 
 /**

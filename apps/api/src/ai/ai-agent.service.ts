@@ -8,6 +8,7 @@ import {
   cautionText,
   AI_RULE_LABELS,
   asksForHuman,
+  declinesMoreHelp,
   type SimulateAiInput,
   type SimulateAiResult,
   describeArgs,
@@ -33,9 +34,18 @@ import { TicketsService } from '../tickets/tickets.service';
 import { ApprovalsService } from '../tools/approvals.service';
 import { forModel, type InvokeResult, ToolGatewayService } from '../tools/tool-gateway.service';
 import { type AgentTool, ToolsService } from '../tools/tools.service';
+import { AiAutoResolveService } from './ai-auto-resolve';
 import { AiRunsService } from './ai-runs.service';
 import { LanguageService } from './language.service';
-import { assess, handoverMessage, handoverNote, waitingMessage } from './policy';
+import {
+  approvalOutcomeMessage,
+  assess,
+  closingQuestion,
+  handoverMessage,
+  handoverNote,
+  waitingMessage,
+  withClosingQuestion,
+} from './policy';
 import {
   AGENT_PROMPT_VERSION,
   APPROVAL_UPDATE_TURN,
@@ -89,8 +99,8 @@ interface ThinkInput {
   customerEmail: string | null;
   /** Dry run: read tools only, nothing stored. */
   dryRun: boolean;
-  /** Follow-up after an approval decision. `detail` is the action's result, never a supervisor's note. */
-  update: { tool: string; status: 'done' | 'rejected'; detail: string } | null;
+  /** Follow-up after an approval decision: the action's result and the reason the customer is told. */
+  update: { tool: string; status: 'done' | 'rejected'; detail: string; reason: string } | null;
   /** The outcome being reported was confirmed by a company system. */
   confirmedByTool: boolean;
 }
@@ -163,6 +173,7 @@ export class AiAgentService {
     private readonly approvals: ApprovalsService,
     private readonly handover: HandoverService,
     private readonly learning: LearningService,
+    private readonly autoResolve: AiAutoResolveService,
   ) {}
 
   /** Answers the conversation's unanswered customer message(s), if the AI still owns it. */
@@ -171,9 +182,16 @@ export class AiAgentService {
   }
 
   /**
-   * After a supervisor decides on a transactional tool call (or it expires):
-   * runs the approved action, then tells the customer the outcome if the AI
-   * still owns the conversation, or leaves a note for the humans who do.
+   * After a colleague decides on a transactional tool call (or it expires):
+   * runs the approved action, then tells the customer the outcome and the
+   * reason given with the decision, in the channel they wrote on, and asks
+   * whether anything else is needed. No person is called in for that:
+   * - the AI owns the conversation: it writes the message (a fixed one if the
+   *   model fails);
+   * - nobody has picked the conversation up: a fixed message with the outcome
+   *   and the reason;
+   * - a person has taken it over: a note for them, since they are talking to
+   *   the customer.
    * Idempotent per approval.
    */
   async followUp(approvalId: string): Promise<AiDecision> {
@@ -190,10 +208,13 @@ export class AiAgentService {
             ? { status: 'running', detail: '' }
             : { status: 'failed', detail: ex.error ?? 'The action failed' };
     } else if (approval.status === 'rejected') {
-      outcome = { status: 'rejected', detail: approval.note ?? '' };
+      outcome = { status: 'rejected', detail: '' };
     } else {
       outcome = { status: 'expired', detail: '' };
     }
+    /** What the colleague wrote for the customer. Their internal note is for the ticket's notes only. */
+    const reason = approval.reason?.trim() ?? '';
+    const decided = outcome.status === 'done' || outcome.status === 'rejected';
 
     const action = tool.title ?? tool.name;
     const conv = approval.conversationId
@@ -204,13 +225,44 @@ export class AiAgentService {
       ? ((behaviour.channels as Record<string, AiChannelMode>)[conv.channel] ?? 'off')
       : 'off';
     const summaryLine = { name: tool.name, summary: `${approval.summary} → ${outcome.status}` };
+    // Handed over and still waiting for someone: the outcome needs no judgement, so the
+    // customer is told it as it is, without taking the conversation back from the queue.
+    if (conv && conv.controller === 'none' && mode === 'auto' && decided) {
+      return this.db.transaction(async (tx) => {
+        if (await this.runs.followedUp(approvalId)) return 'skipped';
+        const message = await this.outbound.aiReply(
+          AI_CTX,
+          conv.id,
+          approvalOutcomeMessage(conv.language ?? null, {
+            action,
+            status: outcome.status as 'done' | 'rejected',
+            reason,
+          }),
+          { draft: false, notice: true },
+          tx,
+        );
+        await this.runs.record(tx, {
+          kind: 'followup',
+          ticketId: approval.ticketId,
+          conversationId: conv.id,
+          triggerMessageId: approvalId,
+          decision: 'sent',
+          confidence: 1,
+          promptVersion: AGENT_PROMPT_VERSION,
+          tools: [summaryLine],
+          replyMessageId: message.id,
+          language: conv.language ?? null,
+        });
+        return 'sent';
+      });
+    }
     if (!conv || conv.controller !== 'ai' || mode === 'off' || outcome.status === 'running') {
       await this.db.transaction(async (tx) => {
         await this.tickets.addNoteInTx(
           tx,
           AI_CTX,
           approval.ticketId,
-          followUpNote(approval.summary, outcome),
+          followUpNote(approval.summary, outcome, reason, approval.note),
         );
         await this.runs.record(tx, {
           kind: 'followup',
@@ -258,15 +310,30 @@ export class AiAgentService {
           conversationId: conv.id,
           customerEmail: boundEmail(ticket, customer, conv),
           dryRun: false,
-          // A supervisor's note on a rejection is internal: it goes into the note for
-          // colleagues (followUpNote), never into the prompt that writes to the customer.
+          // The reason was written for the customer. The colleague's internal note is not
+          // passed on: it stays in the approval and the ticket's notes.
           update: {
             tool: action,
             status: outcome.status,
             detail: outcome.status === 'done' ? outcome.detail : '',
+            reason,
           },
           confirmedByTool: outcome.status === 'done',
         });
+        // The decision is made and the reason given: there is nothing for a person to add.
+        // If the model did not produce a message, the fixed one says the same.
+        if (r.decision !== 'sent' && r.decision !== 'drafted') {
+          r = {
+            ...r,
+            decision: mode === 'auto' ? 'sent' : 'drafted',
+            reply: approvalOutcomeMessage(language, { action, status: outcome.status, reason }),
+            confidence: 1,
+            rules: mode === 'auto' ? [] : ['draft_channel'],
+            handoverReason: null,
+          };
+        }
+        // The request is settled either way: ask whether anything else is needed.
+        r.resolves = true;
       } else {
         r = {
           ...blankResult(language),
@@ -362,6 +429,30 @@ export class AiAgentService {
     const lastRow = rows.at(-1);
     // Already answered (a burst of messages is answered once), or nothing to answer.
     if (!lastRow || lastRow.authorType !== 'customer') return 'skipped';
+
+    // "Is there anything else?" answered with a no: nothing for a model to do. The same
+    // goes for a "thanks" after the goodbye, which should not start the conversation again.
+    const previous = rows.at(-2);
+    const said = previous?.metadata as {
+      closing?: boolean;
+      ai?: { closingQuestion?: boolean };
+    } | null;
+    if (
+      mode === 'auto' &&
+      previous?.direction === 'outbound' &&
+      (said?.ai?.closingQuestion || said?.closing) &&
+      declinesMoreHelp(lastRow.body)
+    ) {
+      const done = await this.autoResolve.customerConfirmed({
+        ticketId: conv.ticketId,
+        conversationId: conv.id,
+        channel: conv.channel,
+        language: conv.language ?? null,
+        triggerMessageId,
+        silent: !said?.ai?.closingQuestion,
+      });
+      if (done !== 'skipped') return done;
+    }
 
     const ticket = await this.tickets.get(conv.ticketId);
     const customer = await this.customers.get(ticket.customerId);
@@ -482,13 +573,28 @@ export class AiAgentService {
         ) {
           await this.outbound.holdingReply(tx, conv.id, waitingMessage(replyLanguage));
         }
+        // An answer that settles the request ends by asking whether anything else is needed.
+        const asks =
+          r.decision === 'sent' &&
+          r.resolves &&
+          behaviour.closing.askAnythingElse &&
+          mode === 'auto';
         const message = await this.outbound.aiReply(
           AI_CTX,
           conv.id,
-          r.reply,
+          asks
+            ? withClosingQuestion(r.reply, closingQuestion(replyLanguage, conv.channel))
+            : r.reply,
           {
             draft: r.decision === 'drafted',
-            metadata: { ai: { confidence: r.confidence, rules: r.rules, sources: r.sources } },
+            metadata: {
+              ai: {
+                confidence: r.confidence,
+                rules: r.rules,
+                sources: r.sources,
+                ...(asks ? { closingQuestion: true } : {}),
+              },
+            },
           },
           tx,
         );
@@ -953,7 +1059,12 @@ type FollowUpOutcome = {
   detail: string;
 };
 
-function followUpNote(summary: string, o: FollowUpOutcome): string {
+function followUpNote(
+  summary: string,
+  o: FollowUpOutcome,
+  reason = '',
+  internalNote: string | null = null,
+): string {
   const what = {
     done: 'was approved and done',
     rejected: 'was not approved',
@@ -963,6 +1074,8 @@ function followUpNote(summary: string, o: FollowUpOutcome): string {
   }[o.status];
   return [
     `The request "${summary}" ${what}.`,
+    reason ? `Reason given for the customer: ${reason}` : '',
+    internalNote ? `Internal note: ${internalNote}` : '',
     o.detail ? `Details: ${o.detail}` : '',
     'The AI is not handling this conversation, so please let the customer know.',
   ]

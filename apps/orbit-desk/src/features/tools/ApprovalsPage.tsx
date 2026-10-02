@@ -1,4 +1,4 @@
-import type { ApprovalView } from '@tms/shared';
+import { APPROVAL_REASON_MIN, type ApprovalView } from '@tms/shared';
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { Button, Card, Icon, Tabs, Textarea } from '../../components/ui';
@@ -12,9 +12,10 @@ import styles from './Tools.module.css';
 type Tab = 'pending' | 'decided';
 
 /**
- * #/approvals: actions the AI asked for that need a supervisor, such as a
- * refund. Approving runs the action in the company system, then the AI tells
- * the customer; rejecting tells them it wasn't approved.
+ * #/approvals: actions the AI asked for that need a person's decision, such
+ * as a refund. Every decision needs a reason, because the customer is told
+ * it: approving runs the action in the company system, then the AI tells the
+ * customer what happened and why; rejecting tells them why not.
  */
 export function ApprovalsPage({
   liveTick,
@@ -83,10 +84,13 @@ export function ApprovalCard({
   onOpenTicket?: (ticketId: string) => void;
   onDecided: () => void;
 }) {
+  const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hide = a.tool.customerArg ? [a.tool.customerArg] : [];
+  // No decision without a reason: the customer is told why.
+  const reasoned = reason.trim().length >= APPROVAL_REASON_MIN;
 
   const decide = async (decision: 'approve' | 'reject') => {
     setBusy(true);
@@ -94,6 +98,7 @@ export function ApprovalCard({
     try {
       await api('POST', `/approvals/${a.id}/decide`, {
         decision,
+        reason: reason.trim(),
         ...(note.trim() ? { note: note.trim() } : {}),
       });
       onDecided();
@@ -174,17 +179,36 @@ export function ApprovalCard({
         {a.status === 'pending' ? (
           <div className={styles.decide}>
             <Textarea
-              id={`${titleId}-note`}
-              label="Note (internal, optional)"
+              id={`${titleId}-reason`}
+              label="Reason (required: the customer will be told this)"
               rows={2}
+              required
+              maxLength={1000}
+              placeholder="For example: the photo shows the tear, so the full amount is refunded."
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+            <Textarea
+              id={`${titleId}-note`}
+              label="Note for colleagues (optional, never shown to the customer)"
+              rows={2}
+              maxLength={1000}
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
             <div className={styles.decideButtons}>
-              <Button variant="ghost" onClick={() => void decide('reject')} disabled={busy}>
+              <Button
+                variant="ghost"
+                onClick={() => void decide('reject')}
+                disabled={busy || !reasoned}
+              >
                 Reject
               </Button>
-              <Button icon="check" onClick={() => void decide('approve')} disabled={busy}>
+              <Button
+                icon="check"
+                onClick={() => void decide('approve')}
+                disabled={busy || !reasoned}
+              >
                 Approve
               </Button>
             </div>
@@ -193,7 +217,8 @@ export function ApprovalCard({
           <p className={styles.meta}>
             {a.decidedBy && <span>By {a.decidedBy.name}</span>}
             {a.decidedAt && <span>{relativeTime(minutesSince(new Date(a.decidedAt)))}</span>}
-            {a.note && <span>Note: {a.note}</span>}
+            {a.reason && <span>Reason told to the customer: {a.reason}</span>}
+            {a.note && <span>Note for colleagues: {a.note}</span>}
             {a.error && <span className={styles.attention}>Failed: {a.error}</span>}
             {a.result !== null && a.result !== undefined && (
               <span className={page.mono}>{resultPreview(a.result, 160)}</span>

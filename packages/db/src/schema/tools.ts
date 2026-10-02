@@ -116,6 +116,9 @@ export const approvals = pgTable(
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'set null' }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
+    /** Why it was decided so. The customer is told this (in the AI's words). */
+    reason: text('reason'),
+    /** For colleagues only. */
     note: text('note'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

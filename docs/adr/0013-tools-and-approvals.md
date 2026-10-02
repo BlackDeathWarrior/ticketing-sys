@@ -71,6 +71,7 @@ The agreed defaults: tools and MCP servers only with sample servers for the demo
     - either way, only the outcome. The follow-up turn ends with a `<system_note>` (`APPROVAL_UPDATE_TURN`, prompt `agent-v7`) instead of the AI's own last message, and searches no knowledge: a live model had written its "this is with the team" message a second time and added the rejection to it;
     - after an expiry or a failure, a handover (`approval_expired`, `action_failed`).
   - If a person owns the conversation, the AI leaves an internal note asking them to tell the customer.
+  - **Changed 2026-10-03: a decision needs a reason, and the customer is told it.** A decision without a reason left the AI unable to answer "why?", so the customer was handed to a person for one sentence. `POST /approvals/:id/decide` now requires `reason` for approve and reject; it is written for the customer and passed to the model as data (`<team_reason>`, prompt `agent-v8`). The optional `note` stays internal. The AI tells the outcome and the reason and asks whether anything else is needed. If the model produces no message, a fixed one says the same; if the conversation was handed over and nobody has picked it up, the fixed message is sent without taking the conversation back. This replaces the two bullets above that kept the reason from the customer.
   - Follow-ups are idempotent per approval (an `ai_runs` row of kind `followup`).
 
 **Sample server**

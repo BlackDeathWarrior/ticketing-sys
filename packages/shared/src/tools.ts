@@ -97,8 +97,21 @@ export const testToolSchema = z.object({
 });
 export type TestToolInput = z.input<typeof testToolSchema>;
 
+/** Shortest reason accepted with a decision: enough to say something, not a full sentence. */
+export const APPROVAL_REASON_MIN = 5;
+
 export const decideApprovalSchema = z.object({
   decision: z.enum(['approve', 'reject']),
+  /**
+   * Why. Required for both decisions, because the customer is told: the AI
+   * passes it on in its own words in the channel they wrote on.
+   */
+  reason: z
+    .string()
+    .trim()
+    .min(APPROVAL_REASON_MIN, 'Give a reason: the customer will be told why')
+    .max(1000),
+  /** For colleagues only. Never reaches the customer or the AI. */
   note: z.string().trim().max(1000).optional(),
 });
 export type DecideApprovalInput = z.infer<typeof decideApprovalSchema>;
@@ -169,6 +182,9 @@ export interface ApprovalView {
   expiresAt: string;
   decidedBy: { id: string; name: string } | null;
   decidedAt: string | null;
+  /** Why it was approved or rejected; the customer is told this. */
+  reason: string | null;
+  /** For colleagues only. */
   note: string | null;
   /** The action's result once it ran. */
   result: unknown;

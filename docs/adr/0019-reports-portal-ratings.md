@@ -61,3 +61,12 @@ One definition, used by reports, the ticket list, the CSV and ratings:
 - An agent who resolves a ticket the AI was still answering leaves it counted as resolved by the AI.
 - Sign-in links are limited per address, not per network address; the general rate limiting comes in Phase 11.
 - The retention settings page from the plan moves to Phase 11, with the retention jobs it controls.
+
+## Addendum, 2026-10-03: how the AI ends a conversation
+
+- An answer that settles the request (`resolves_issue`) ends with a fixed question, "Is there anything else I can help you with?" (`closingQuestion`; before the sign-off of an email). The model is told not to ask it: fixed wording costs nothing and its answer can be recognised without a model.
+- A "no, thanks" (`declinesMoreHelp`: the whole message must be made of such phrases) resolves the ticket at once, with a short goodbye and no model call.
+- Silence resolves it after the channel's quiet time (`closing.quietMinutes`, in minutes, set by admins in Settings → AI behaviour; a channel left empty uses `autoResolveHours`). This now also covers a ticket still in AI Handling whose last word was the AI's (it asked something and nobody came back), and never a ticket with an approval waiting. On web chat and in-app requests the customer is told the request was closed and that writing again reopens it.
+- A ticket the AI resolved is closed for good after `closing.closeResolvedAfterDays` (7 by default, 0 = never). Until then a reply reopens it, back to AI Handling (the default workflow gained `resolved → ai_handling`).
+- `tickets.ai_closure` records why the AI resolved a ticket (`customer_confirmed`, `no_reply`); it is cleared when the ticket is opened again.
+- The check runs every minute (`AI_AUTO_RESOLVE_SWEEP_SECONDS`, was ten).

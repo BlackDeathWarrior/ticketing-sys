@@ -88,6 +88,8 @@ export const tickets = pgTable(
     slaDueAt: timestamp('sla_due_at', { withTimezone: true }),
     /** none | ai | human | handed_over: who is answering right now. */
     handling: text('handling').notNull().default('none'),
+    /** Why the AI resolved it by itself (customer_confirmed | no_reply); null otherwise. */
+    aiClosure: text('ai_closure'),
     teamId: uuid('team_id').references(() => teams.id, { onDelete: 'set null' }),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     resolution: text('resolution'),

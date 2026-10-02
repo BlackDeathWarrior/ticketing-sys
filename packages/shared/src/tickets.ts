@@ -61,8 +61,22 @@ export const DEFAULT_TRANSITIONS: Array<[from: string, to: string]> = [
   ['pending_customer', 'resolved'],
   ['pending_customer', 'closed'],
   ['resolved', 'in_progress'],
+  // A customer who writes again after the AI closed their request gets the AI again.
+  ['resolved', 'ai_handling'],
   ['resolved', 'closed'],
 ];
+
+/**
+ * Why the AI resolved a ticket by itself (`tickets.ai_closure`); null when a
+ * person did, or it is not resolved.
+ */
+export const AI_CLOSURES = ['customer_confirmed', 'no_reply'] as const;
+export type AiClosure = (typeof AI_CLOSURES)[number];
+
+export const AI_CLOSURE_LABELS: Record<AiClosure, string> = {
+  customer_confirmed: 'Closed by the AI: the customer needed nothing else',
+  no_reply: 'Closed by the AI: no reply from the customer',
+};
 
 /** Statuses that assignment moves a ticket out of, into `human_assigned`. */
 export const UNASSIGNED_STATUSES = ['new', 'ai_handling'] as const;
