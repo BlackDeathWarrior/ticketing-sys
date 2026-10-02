@@ -55,6 +55,21 @@ $Compose = @(
   '--profile', 'app'
 )
 
+# Runs a program whose progress goes to stderr (docker, git). Windows PowerShell turns
+# redirected stderr into errors, which must not stop the script: the exit code decides.
+function Invoke-Tool {
+  $exe = $args[0]
+  $rest = @($args | Select-Object -Skip 1)
+  $previous = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    & $exe @rest
+  } finally {
+    $ErrorActionPreference = $previous
+  }
+  if ($LASTEXITCODE -ne 0) { throw "$exe $($rest -join ' ') failed with exit code $LASTEXITCODE" }
+}
+
 function Assert-Garment {
   if (-not (Test-Path (Join-Path $GarmentDir 'scraper\worker.py'))) {
     throw "The garment-web-scraper clone was not found at $GarmentDir. Pass -GarmentDir or set GARMENT_DIR."
@@ -87,8 +102,7 @@ function Show-Status {
 
 switch ($Command) {
   'up' {
-    & docker @Compose up -d --build
-    if ($LASTEXITCODE -ne 0) { throw 'docker compose up failed' }
+    Invoke-Tool docker @Compose up -d --build
     Write-Host 'Waiting for the API...'
     $deadline = (Get-Date).AddMinutes(5)
     while (-not (Test-Url "$ApiUrl/api/v1/health/live")) {
@@ -109,8 +123,7 @@ switch ($Command) {
     if ($Rekey) { $env:GARMENT_REKEY = '1' }
     Push-Location $Repo
     try {
-      & pnpm garment:load
-      if ($LASTEXITCODE -ne 0) { throw 'The loader failed' }
+      Invoke-Tool pnpm garment:load
     } finally {
       Pop-Location
     }
@@ -152,16 +165,16 @@ switch ($Command) {
   'status' { Show-Status }
 
   'reset' {
-    & docker @Compose down -v
+    Invoke-Tool docker @Compose down -v
     $events = Join-Path $GarmentDir 'outputs\support\events.jsonl'
     if (Test-Path $events) { Remove-Item $events -Confirm:$false }
     # Back to the catalogue as committed (last scraped in April 2026), so the
     # stale-catalogue incident can be shown again.
     $working = Join-Path $GarmentDir 'outputs\products.json'
     if (Test-Path $working) { Remove-Item $working -Confirm:$false }
-    & git -C $GarmentDir checkout -- frontend/public/products.json
+    Invoke-Tool git -C $GarmentDir checkout -- frontend/public/products.json
     Write-Host 'The demo stack and its data are gone. Run "up", then "load".'
   }
 
-  'down' { & docker @Compose down }
+  'down' { Invoke-Tool docker @Compose down }
 }
