@@ -18,6 +18,7 @@ import {
   users,
 } from '@tms/db';
 import {
+  type AiClosure,
   type AssignTicketInput,
   type CreateTicketInput,
   formatTicketNumber,
@@ -37,7 +38,9 @@ import {
   eq,
   ilike,
   inArray,
+  isNotNull,
   isNull,
+  lt,
   or,
   type SQL,
   sql,
@@ -48,6 +51,9 @@ import type { RequestCtx } from '../common/request-context';
 import { CustomersService } from '../customers/customers.service';
 import { DB } from '../infra/tokens';
 import { WorkflowService } from '../workflow/workflow.service';
+
+/** The status a ticket has while the AI is answering it (and returns to when the customer writes again). */
+const AI_HANDLING_STATUS = 'ai_handling';
 import { lifecycleTimestamps } from '../workflow/workflow.rules';
 
 export type Ticket = typeof tickets.$inferSelect;
@@ -177,6 +183,92 @@ export class TicketsService {
       .orderBy(asc(tickets.updatedAt))
       .limit(limit);
     return rows.map((r) => r.id);
+  }
+
+  /**
+   * Tickets the AI is answering where the next word is the customer's: waiting
+   * on them, or still open with the AI (it asked something and nobody came
+   * back). Oldest update first.
+   */
+  async quietWithAi(limit: number): Promise<Array<{ id: string; channel: string }>> {
+    const { statuses } = await this.workflow.load();
+    const waiting = [
+      ...statuses.filter((s) => s.category === 'pending').map((s) => s.key),
+      AI_HANDLING_STATUS,
+    ];
+    return this.db
+      .select({ id: tickets.id, channel: tickets.channel })
+      .from(tickets)
+      .where(and(eq(tickets.handling, 'ai'), inArray(tickets.status, waiting)))
+      .orderBy(asc(tickets.updatedAt))
+      .limit(limit);
+  }
+
+  /**
+   * The AI resolves a ticket it still owns: the customer said nothing else is
+   * needed, or never came back. Moves it to a resolved status the workflow
+   * allows and records why. False when the AI no longer has it, it is not
+   * waiting on the customer, or the workflow has no such move.
+   */
+  async resolveByAiInTx(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    ticketId: string,
+    resolution: string,
+    closure: AiClosure,
+  ): Promise<boolean> {
+    const current = await this.lock(tx, ticketId);
+    if (current.handling !== 'ai') return false;
+    const { category } = await this.workflow.status(current.status);
+    if (category !== 'pending' && current.status !== AI_HANDLING_STATUS) return false;
+    const { statuses } = await this.workflow.load();
+    for (const s of statuses.filter((x) => x.category === 'resolved' && x.isActive)) {
+      if ((await this.workflow.check(current.status, s.key)).ok) {
+        await this.applyTransition(tx, ctx, current, s.key, resolution);
+        await tx.update(tickets).set({ aiClosure: closure }).where(eq(tickets.id, ticketId));
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Tickets the AI resolved by itself before `before` that nobody reopened since. */
+  async aiResolvedBefore(before: Date, limit: number): Promise<string[]> {
+    const { statuses } = await this.workflow.load();
+    const resolved = statuses.filter((s) => s.category === 'resolved').map((s) => s.key);
+    if (!resolved.length) return [];
+    const rows = await this.db
+      .select({ id: tickets.id })
+      .from(tickets)
+      .where(
+        and(
+          isNotNull(tickets.aiClosure),
+          inArray(tickets.status, resolved),
+          lt(tickets.resolvedAt, before),
+        ),
+      )
+      .orderBy(asc(tickets.resolvedAt))
+      .limit(limit);
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Closes for good a ticket the AI resolved and nobody reopened. From then
+   * on a message from the customer opens a new ticket. False when it was
+   * reopened meanwhile or the workflow has no closed status to move to.
+   */
+  async closeAiResolvedInTx(tx: DbOrTx, ctx: RequestCtx, ticketId: string): Promise<boolean> {
+    const current = await this.lock(tx, ticketId);
+    if (!current.aiClosure) return false;
+    if ((await this.workflow.status(current.status)).category !== 'resolved') return false;
+    const { statuses } = await this.workflow.load();
+    for (const s of statuses.filter((x) => x.category === 'closed' && x.isActive)) {
+      if ((await this.workflow.check(current.status, s.key)).ok) {
+        await this.applyTransition(tx, ctx, current, s.key);
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -489,8 +581,8 @@ export class TicketsService {
     const { category } = await this.workflow.status(ticket.status);
     if (category !== 'resolved' && category !== 'pending') return;
     // The AI still owns the conversation: hand the reply back to it when the workflow allows.
-    if (opts.aiControlled && (await this.workflow.check(ticket.status, 'ai_handling')).ok) {
-      await this.applyTransition(tx, ctx, ticket, 'ai_handling');
+    if (opts.aiControlled && (await this.workflow.check(ticket.status, AI_HANDLING_STATUS)).ok) {
+      await this.applyTransition(tx, ctx, ticket, AI_HANDLING_STATUS);
       return;
     }
     if ((await this.workflow.check(ticket.status, 'in_progress')).ok) {
@@ -626,6 +718,8 @@ export class TicketsService {
       status: to,
       ...lifecycleTimestamps(target.category, new Date()),
       ...(resolution !== undefined ? { resolution } : {}),
+      // Open again: whatever the AI closed it for no longer holds.
+      ...(target.category === 'open' || target.category === 'pending' ? { aiClosure: null } : {}),
     };
     await tx.update(tickets).set(patch).where(eq(tickets.id, current.id));
     const data = { from: current.status, to, category: target.category };

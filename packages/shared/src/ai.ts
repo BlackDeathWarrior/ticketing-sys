@@ -17,6 +17,9 @@ export const AI_BEHAVIOUR_KEY = 'ai.behaviour';
 
 const confidence = z.number().min(0).max(1);
 
+/** 0 = never resolve this channel's tickets for silence; up to 30 days. */
+const quietMinutes = z.number().int().min(0).max(43_200);
+
 export const aiBehaviourSchema = z
   .object({
     channels: z
@@ -29,6 +32,35 @@ export const aiBehaviourSchema = z
         web_form: aiChannelModeSchema.default('draft'),
         /** Tickets an integration creates through the API; the app shows the replies. */
         api: aiChannelModeSchema.default('draft'),
+      })
+      .default({}),
+    /**
+     * How a conversation the AI answered is brought to an end (company policy):
+     * it asks whether anything else is needed, takes "no" for an answer, and
+     * closes a ticket nobody came back to.
+     */
+    closing: z
+      .object({
+        /** Add "is there anything else?" to an answer that settles the request. */
+        askAnythingElse: z.boolean().default(true),
+        /**
+         * Minutes of silence after the AI's last answer before the ticket is
+         * resolved, per channel. A channel left out uses `autoResolveHours`.
+         */
+        quietMinutes: z
+          .object({
+            webchat: quietMinutes.optional(),
+            whatsapp: quietMinutes.optional(),
+            voice: quietMinutes.optional(),
+            email: quietMinutes.optional(),
+            web_form: quietMinutes.optional(),
+            api: quietMinutes.optional(),
+          })
+          .default({}),
+        /** Tell the customer, where they will see it, that the request was closed for silence. */
+        tellCustomer: z.boolean().default(true),
+        /** Days a ticket the AI resolved can still be reopened by a reply; then it is closed. 0 = never closed. */
+        closeResolvedAfterDays: z.number().int().min(0).max(365).default(7),
       })
       .default({}),
     /** At or above: send on `auto` channels. */
@@ -196,6 +228,111 @@ export function guessLanguage(text: string): string | null {
   ];
   for (const [re, code] of scripts) if (re.test(text)) return code;
   return /[a-z]/i.test(text) ? 'en' : null;
+}
+
+/**
+ * How long a ticket on `channel` may stay silent after the AI's last answer
+ * before it is resolved, in milliseconds. 0 = never.
+ */
+export function quietTimeMs(behaviour: AiBehaviour, channel: string): number {
+  const minutes = (behaviour.closing.quietMinutes as Record<string, number | undefined>)[channel];
+  return (minutes ?? behaviour.autoResolveHours * 60) * 60_000;
+}
+
+/** Whole phrases a customer answers "is there anything else?" with when there is nothing. */
+const DECLINE_PHRASES = [
+  'no',
+  'nope',
+  'nah',
+  'no thanks',
+  'no thank you',
+  'not now',
+  'not right now',
+  'nothing',
+  'nothing else',
+  'nothing more',
+  'no more questions',
+  'thats all',
+  'that is all',
+  'that will be all',
+  'thats it',
+  'that is it',
+  'thats everything',
+  'all good',
+  'all set',
+  'im good',
+  'i am good',
+  'im all set',
+  'i dont need anything else',
+  'i do not need anything else',
+  'dont need anything else',
+  'thanks',
+  'thank you',
+  'thank you so much',
+  'thank you very much',
+  'thanks a lot',
+  'many thanks',
+  'thx',
+  'ty',
+  'cheers',
+  'thanks for your help',
+  'thanks for the help',
+  'thank you for your help',
+  'that helps',
+  'that helped',
+  'ok',
+  'okay',
+  'great',
+  'perfect',
+  'awesome',
+  'cool',
+  'alright',
+  'got it',
+  'sorted',
+  'done',
+  'for now',
+  'bye',
+  'goodbye',
+  'have a nice day',
+  'have a good day',
+  // Hindi
+  'नहीं',
+  'नही',
+  'जी नहीं',
+  'बस',
+  'बस इतना ही',
+  'और कुछ नहीं',
+  'कुछ नहीं',
+  'धन्यवाद',
+  'शुक्रिया',
+  'ठीक है',
+]
+  // Longest first, so "no thanks" is taken before "no".
+  .sort((a, b) => b.length - a.length);
+
+/**
+ * Whether a customer's answer to "is there anything else?" says there is
+ * nothing. Deliberately narrow: the whole message must be made of such
+ * phrases ("no thanks, that's all"). "No, I still need help" is not one, and
+ * neither is anything with a question in it. A wrong yes costs little (the
+ * ticket is resolved, and a reply reopens it); a wrong no costs a model call.
+ */
+export function declinesMoreHelp(text: string): boolean {
+  if (text.length > 80 || /[?？]/.test(text)) return false;
+  let rest = text
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/['’]/g, '')
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!rest) return false;
+  while (rest) {
+    const phrase = DECLINE_PHRASES.find((p) => rest === p || rest.startsWith(`${p} `));
+    if (!phrase) return false;
+    rest = rest.slice(phrase.length).trim();
+  }
+  return true;
 }
 
 /** Plain requests for a person, in English and Hindi. */

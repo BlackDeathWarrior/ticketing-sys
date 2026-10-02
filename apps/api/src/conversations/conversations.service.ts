@@ -279,11 +279,14 @@ export class ConversationsService {
   /** For each ticket, the last message the customer could see, across its conversations. */
   async lastVisibleMessages(
     ticketIds: string[],
-  ): Promise<Map<string, { direction: string; authorType: string; createdAt: Date }>> {
+  ): Promise<
+    Map<string, { conversationId: string; direction: string; authorType: string; createdAt: Date }>
+  > {
     if (!ticketIds.length) return new Map();
     const rows = await this.db
       .selectDistinctOn([conversations.ticketId], {
         ticketId: conversations.ticketId,
+        conversationId: conversations.id,
         direction: messages.direction,
         authorType: messages.authorType,
         createdAt: messages.createdAt,

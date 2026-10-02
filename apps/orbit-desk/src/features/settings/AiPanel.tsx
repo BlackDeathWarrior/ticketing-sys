@@ -135,9 +135,83 @@ export function AiPanel() {
                 { value: 'no', label: 'Leave the status as it is' },
               ]}
             />
+            <h3 className={styles.sectionTitle}>Ending a conversation</h3>
+            <p className={styles.note}>
+              When an answer settles the request, the AI asks whether anything else is needed. A
+              “no, thanks” resolves the ticket at once, without asking a model. Silence resolves it
+              after the quiet time below.
+            </p>
+            <Select
+              id="ai-ask-anything-else"
+              label="Ask “is there anything else?” after an answer that settles the request"
+              value={form.closing.askAnythingElse ? 'yes' : 'no'}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  closing: { ...form.closing, askAnythingElse: e.target.value === 'yes' },
+                })
+              }
+              options={[
+                { value: 'yes', label: 'Yes' },
+                { value: 'no', label: 'No' },
+              ]}
+            />
+            <div className={styles.formRow}>
+              {AI_CHANNELS.map((ch) => (
+                <Input
+                  key={ch}
+                  id={`ai-quiet-${ch}`}
+                  type="number"
+                  min={0}
+                  max={43200}
+                  label={`Quiet time: ${CHANNEL_LABELS[ch]} (minutes)`}
+                  placeholder={`${form.autoResolveHours * 60} (the general setting)`}
+                  value={form.closing.quietMinutes[ch] ?? ''}
+                  onChange={(e) => {
+                    const quietMinutes = { ...form.closing.quietMinutes };
+                    if (e.target.value === '') delete quietMinutes[ch];
+                    else quietMinutes[ch] = Number(e.target.value);
+                    setForm({ ...form, closing: { ...form.closing, quietMinutes } });
+                  }}
+                  hint="Empty: the general setting below. 0: never."
+                />
+              ))}
+            </div>
+            <div className={styles.formRow}>
+              <Select
+                id="ai-tell-closed"
+                label="Tell the customer when a request is closed for silence"
+                value={form.closing.tellCustomer ? 'yes' : 'no'}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    closing: { ...form.closing, tellCustomer: e.target.value === 'yes' },
+                  })
+                }
+                options={[
+                  { value: 'yes', label: 'Yes, in web chat and in-app requests' },
+                  { value: 'no', label: 'No' },
+                ]}
+              />
+              <Input
+                id="ai-close-days"
+                type="number"
+                min={0}
+                max={365}
+                label="Close a resolved ticket for good after (days; 0 = never)"
+                value={String(form.closing.closeResolvedAfterDays)}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    closing: { ...form.closing, closeResolvedAfterDays: Number(e.target.value) },
+                  })
+                }
+                hint="Until then a reply from the customer reopens it. After, a reply opens a new ticket."
+              />
+            </div>
             <Input
               id="ai-auto-resolve"
-              label="Resolve the ticket when the customer has not replied for (hours; 0 = never)"
+              label="General quiet time: resolve the ticket when the customer has not replied for (hours; 0 = never)"
               type="number"
               min={0}
               max={720}

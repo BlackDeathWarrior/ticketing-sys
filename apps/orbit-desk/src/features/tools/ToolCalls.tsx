@@ -1,7 +1,7 @@
-import type { ToolCallView } from '@tms/shared';
+import { APPROVAL_REASON_MIN, type ToolCallView } from '@tms/shared';
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import { Button, Icon, type IconName } from '../../components/ui';
+import { Button, Icon, type IconName, Textarea } from '../../components/ui';
 import { AiMark } from '../ai/AiParts';
 import { cx } from '../../lib/format';
 import { useSession } from '../../lib/session';
@@ -30,14 +30,26 @@ export function ToolCalls({ ticketId, liveTick }: { ticketId: string; liveTick: 
   }, [liveTick, reload]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The decision being made: it needs a reason before it can be sent.
+  const [deciding, setDeciding] = useState<{
+    approvalId: string;
+    decision: 'approve' | 'reject';
+  } | null>(null);
+  const [reason, setReason] = useState('');
 
   if (!calls.data?.length) return null;
 
-  const decide = async (approvalId: string, decision: 'approve' | 'reject') => {
-    setBusy(approvalId);
+  const decide = async () => {
+    if (!deciding) return;
+    setBusy(deciding.approvalId);
     setError(null);
     try {
-      await api('POST', `/approvals/${approvalId}/decide`, { decision });
+      await api('POST', `/approvals/${deciding.approvalId}/decide`, {
+        decision: deciding.decision,
+        reason: reason.trim(),
+      });
+      setDeciding(null);
+      setReason('');
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -73,26 +85,59 @@ export function ToolCalls({ ticketId, liveTick }: { ticketId: string; liveTick: 
                   {resultPreview(c.result, 180)}
                 </p>
               )}
-              {pending && can('approval:approve') && (
-                <div className={styles.decideButtons}>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={busy === c.approval!.id}
-                    onClick={() => void decide(c.approval!.id, 'reject')}
-                  >
-                    Reject
-                  </Button>
-                  <Button
-                    size="sm"
-                    icon="check"
-                    disabled={busy === c.approval!.id}
-                    onClick={() => void decide(c.approval!.id, 'approve')}
-                  >
-                    Approve
-                  </Button>
-                </div>
-              )}
+              {pending &&
+                can('approval:approve') &&
+                (deciding?.approvalId === c.approval!.id ? (
+                  <div className={styles.decide}>
+                    <Textarea
+                      id={`reason-${c.approval!.id}`}
+                      label={`Reason for ${deciding.decision === 'approve' ? 'approving' : 'rejecting'} (the customer will be told this)`}
+                      rows={2}
+                      required
+                      maxLength={1000}
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                    />
+                    <div className={styles.decideButtons}>
+                      <Button size="sm" variant="ghost" onClick={() => setDeciding(null)}>
+                        Back
+                      </Button>
+                      <Button
+                        size="sm"
+                        icon={deciding.decision === 'approve' ? 'check' : undefined}
+                        disabled={
+                          busy === c.approval!.id || reason.trim().length < APPROVAL_REASON_MIN
+                        }
+                        onClick={() => void decide()}
+                      >
+                        {deciding.decision === 'approve' ? 'Approve' : 'Reject'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={styles.decideButtons}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setReason('');
+                        setDeciding({ approvalId: c.approval!.id, decision: 'reject' });
+                      }}
+                    >
+                      Reject…
+                    </Button>
+                    <Button
+                      size="sm"
+                      icon="check"
+                      onClick={() => {
+                        setReason('');
+                        setDeciding({ approvalId: c.approval!.id, decision: 'approve' });
+                      }}
+                    >
+                      Approve…
+                    </Button>
+                  </div>
+                ))}
             </li>
           );
         })}

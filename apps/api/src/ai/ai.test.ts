@@ -287,7 +287,12 @@ describe('prompts and parsing', () => {
     const update = agentSystemPrompt({
       ...base,
       companyTools: true,
-      update: { tool: 'issue_refund', status: 'done', detail: '{"refund_id":"RF-1"}' },
+      update: {
+        tool: 'issue_refund',
+        status: 'done',
+        detail: '{"refund_id":"RF-1"}',
+        reason: 'The photo shows the tear.',
+      },
     });
     expect(update).toContain('<approval_update tool="issue_refund" status="done">');
     expect(update).toContain('RF-1');
@@ -297,7 +302,7 @@ describe('prompts and parsing', () => {
     const rejected = agentSystemPrompt({
       ...base,
       companyTools: true,
-      update: { tool: 'issue_refund', status: 'rejected', detail: '' },
+      update: { tool: 'issue_refund', status: 'rejected', detail: '', reason: 'Not received yet.' },
     });
     expect(rejected).toContain('<approval_update tool="issue_refund" status="rejected">');
     expect(rejected).toContain('It was not approved');

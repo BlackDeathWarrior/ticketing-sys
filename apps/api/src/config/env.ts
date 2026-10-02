@@ -105,7 +105,8 @@ const envSchema = z
     /** Deliveries in a row that must fail for good before a subscription is switched off. */
     WEBHOOK_DISABLE_AFTER: z.coerce.number().int().min(1).max(1000).default(15),
     /** How often the worker resolves tickets the AI answered and the customer left alone. 0 = off. */
-    AI_AUTO_RESOLVE_SWEEP_SECONDS: z.coerce.number().int().min(0).max(86_400).default(600),
+    // Quiet times are set per channel and can be minutes, so the check runs every minute.
+    AI_AUTO_RESOLVE_SWEEP_SECONDS: z.coerce.number().int().min(0).max(86_400).default(60),
     /** How often the worker deletes operational data past its retention period. 0 = off. */
     RETENTION_SWEEP_HOURS: z.coerce.number().int().min(0).max(168).default(24),
     /** How long a transactional tool call waits for a supervisor before it expires. */

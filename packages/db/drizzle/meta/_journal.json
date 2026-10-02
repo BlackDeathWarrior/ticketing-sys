@@ -162,6 +162,13 @@
       "when": 1790979751270,
       "tag": "0022_user_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790980401365,
+      "tag": "0023_closing_and_reasons",
+      "breakpoints": true
     }
   ]
 }
