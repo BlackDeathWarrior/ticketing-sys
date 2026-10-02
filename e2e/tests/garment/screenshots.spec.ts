@@ -2,161 +2,202 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { call, login } from '../api';
-import { env } from '../env';
 import { expect, openTicket, signInOrbit, test } from '../fixtures';
 import {
-  appEnv,
+  advanceTo,
   garment,
   newShopper,
   openChat,
-  openFirstListing,
-  registerShopper,
+  openIncident,
+  placeOrder,
+  say,
+  setSwitches,
+  shopApi,
+  signedIn,
   signInAdmin,
+  someProductId,
   STORE_IMAGE_ERRORS,
+  waitFor,
 } from './garment';
 
 /**
- * Captures the Ethnic Threads screens used in docs/testing/TEST_REPORT.md and
- * the runbook. Needs the other garment specs to have run (it shows their
- * tickets). Skipped unless SCREENSHOTS=1 and GARMENT_URL are set.
+ * Captures the shop demo's screens for docs/testing/TEST_REPORT.md and the
+ * runbook. It makes its own shopper, orders and tickets. Skipped unless
+ * SCREENSHOTS=1 and GARMENT_URL are set.
  */
 const dir = fileURLToPath(new URL('../../../docs/testing/screenshots', import.meta.url));
-const shot = (name: string) => path.join(dir, `garment-${name}.png`);
+const shot = (name: string) => path.join(dir, `shop-${name}.png`);
+const desktop = { viewport: { width: 1440, height: 1000 } };
 
-test.use({ allowedConsoleErrors: STORE_IMAGE_ERRORS });
+test.use({ allowedConsoleErrors: [...STORE_IMAGE_ERRORS, /402/] });
 
-interface Row {
-  id: string;
-  reference: string;
-  tags: string[];
-  status: string;
-}
-
-test.describe('Ethnic Threads screenshots', () => {
+test.describe('Ethnic Threads shop screenshots', () => {
   test.skip(
     !process.env.SCREENSHOTS || !garment.site,
     'set SCREENSHOTS=1 and GARMENT_URL to capture the demo images',
   );
   test.beforeAll(() => mkdirSync(dir, { recursive: true }));
-
-  test('the storefront', async ({ browser }) => {
-    // A shopper: the listing they have open, the report form and the chat.
-    const site = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    await registerShopper(site, newShopper());
-    await openFirstListing(site);
-    await site.getByRole('button', { name: 'Report a problem with this listing' }).click();
-    const panel = await openChat(site);
-    await panel.getByLabel('Message').fill('Is this one in stock, and what is the price?');
-    await panel.getByRole('button', { name: 'Send' }).click();
-    await expect(panel.locator('.msg.ai').first()).toBeVisible({ timeout: 40_000 });
-    await panel.getByLabel('Message').fill('Why are the prices on the site so old?');
-    await panel.getByRole('button', { name: 'Send' }).click();
-    await expect(panel.locator('.msg.ai').nth(1)).toBeVisible({ timeout: 40_000 });
-    await site.waitForTimeout(500);
-    await site.screenshot({ path: shot('storefront-chat') });
-
-    // The same shopper writes in, is answered, and is asked how it went.
-    const admin = (await login()).accessToken;
-    await site.goto(`${garment.site}/contact`);
-    await site.locator('select[name="subject"]').selectOption('General Feedback');
-    await site.getByPlaceholder('How can we help?').fill('Do you deliver the clothes yourselves?');
-    await site.getByRole('button', { name: /Send Message/ }).click();
-    const reference = (await site.getByTestId('request-reference').textContent())!;
-    await site.getByRole('link', { name: 'Follow this request' }).click();
-    const ticket = await call<{ id: string }>(admin, 'GET', `/tickets/${reference}`);
-    const [conversation] = await call<Array<{ id: string }>>(
-      admin,
-      'GET',
-      `/tickets/${ticket.id}/conversations`,
-    );
-    await call(admin, 'POST', `/conversations/${conversation!.id}/messages`, {
-      body: 'No: Ethnic Threads only shows the listings. The store you buy from delivers your order.',
-    });
-    await call(admin, 'POST', `/tickets/${ticket.id}/transition`, {
-      status: 'resolved',
-      resolution: 'Explained who delivers.',
-    });
-    await expect(site.getByTestId('request-status')).toHaveText('Resolved', { timeout: 30_000 });
-    await expect(site.getByText('How did we do?')).toBeVisible();
-    await site.waitForTimeout(300);
-    await site.screenshot({ path: shot('storefront-request') });
-    await site.setViewportSize({ width: 390, height: 844 });
-    await site.waitForTimeout(300);
-    await site.screenshot({ path: shot('storefront-request-phone') });
-    await site.close();
-
-    // The admin: open incidents, latest requests and what the desk reported back.
-    const adminSite = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    await signInAdmin(adminSite);
-    const support = adminSite.getByRole('region', { name: 'Support desk', exact: true });
-    await expect(support.getByLabel('Open incidents')).toContainText('Catalogue is', {
-      timeout: 20_000,
-    });
-    await support.scrollIntoViewIfNeeded();
-    await adminSite.waitForTimeout(500);
-    await support.screenshot({ path: shot('storefront-admin-panel') });
-
-    await adminSite.close();
+  test.afterAll(async () => {
+    if (garment.site) await setSwitches({ payments_down: false, carrier_delay: false });
   });
 
-  test('Orbit Desk', async ({ page }) => {
+  test('the shop and the desk', async ({ browser, page }) => {
+    test.setTimeout(240_000);
     const admin = (await login()).accessToken;
-    await signInOrbit(page);
-    await expect(page.locator('tr[data-ticket]').first()).toBeVisible();
-    await page.locator('#queue').scrollIntoViewIfNeeded();
-    await page.waitForTimeout(500);
-    await page.screenshot({ path: shot('orbit-queue') });
+    const shopper = await newShopper('Asha Verma');
 
-    // A listing report: the listing came with the ticket.
-    const listings = await call<{ items: Row[] }>(
+    // ---- The shop ----
+    const site = await signedIn(browser, shopper);
+    await site.setViewportSize(desktop.viewport);
+    await site.goto(garment.site);
+    await expect(site.locator('article').first()).toBeVisible({ timeout: 30_000 });
+    await site.waitForTimeout(1500);
+    await site.screenshot({ path: shot('storefront') });
+
+    await site.locator('article').nth(1).click();
+    const product = site.getByRole('dialog').first();
+    await product.getByRole('button', { name: 'Add to cart' }).click();
+    await site.waitForTimeout(400);
+    await site.screenshot({ path: shot('product') });
+    await product.getByRole('button', { name: /Buy now/ }).click();
+    await site.getByLabel('Phone number').fill('98300 55555');
+    await site.getByLabel('Address line 1').fill('12 MG Road');
+    await site.getByLabel('City').fill('Bengaluru');
+    await site.getByLabel('State').fill('Karnataka');
+    await site.getByLabel('PIN code').fill('560001');
+    await site.getByLabel('UPI').check();
+    await expect(site.getByRole('button', { name: 'Place order' })).toBeEnabled();
+    await site.waitForTimeout(300);
+    await site.screenshot({ path: shot('checkout'), fullPage: true });
+
+    // An order on its way, asked about in the chat.
+    const shipped = await placeOrder(shopper, 'upi');
+    await advanceTo(shipped.id, 'shipped');
+    await site.goto(`${garment.site}/orders/${shipped.id}`);
+    await expect(site.getByTestId('order-status')).toBeVisible();
+    const panel = await openChat(site);
+    await say(panel, `Where is my order ${shipped.id}?`);
+    await expect(panel.locator('.msg.ai').first()).toBeVisible({ timeout: 40_000 });
+    await site.waitForTimeout(500);
+    await site.screenshot({ path: shot('order-and-chat') });
+
+    // Help with the order: the request, and the AI's draft in Orbit Desk.
+    const help = await shopApi<{ reference: string }>(
+      'POST',
+      '/support/tickets',
+      {
+        kind: 'order',
+        orderId: shipped.id,
+        issue: 'where',
+        message: 'Where is my order? I need it by the weekend.',
+        requestId: `shot-${Date.now()}`,
+      },
+      shopper.token,
+    );
+    await signInOrbit(page);
+    const drawer = await openTicket(page, help.body.reference);
+    await expect(drawer.getByRole('group', { name: 'AI draft awaiting review' })).toBeVisible({
+      timeout: 40_000,
+    });
+    await drawer.getByRole('group', { name: 'AI draft awaiting review' }).scrollIntoViewIfNeeded();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: shot('orbit-order-help') });
+    await drawer
+      .getByRole('group', { name: 'AI draft awaiting review' })
+      .getByRole('button', { name: 'Send draft' })
+      .click();
+    await page.keyboard.press('Escape');
+    await site.goto(`${garment.site}/requests/${help.body.reference}`);
+    await expect(site.getByRole('list', { name: 'Conversation' })).toContainText('SwiftShip', {
+      timeout: 30_000,
+    });
+    await site.waitForTimeout(300);
+    await site.screenshot({ path: shot('request') });
+    await site.setViewportSize({ width: 390, height: 844 });
+    await site.goto(`${garment.site}/orders/${shipped.id}`);
+    await expect(site.getByTestId('order-status')).toBeVisible();
+    await site.waitForTimeout(400);
+    await site.screenshot({ path: shot('order-phone') });
+    await site.setViewportSize(desktop.viewport);
+
+    // A refund waiting for a supervisor.
+    const delivered = await placeOrder(shopper, 'upi');
+    await advanceTo(delivered.id, 'delivered');
+    await site.goto(`${garment.site}/orders/${delivered.id}`);
+    const chat = await openChat(site);
+    await say(chat, `I want a refund for order ${delivered.id}, it arrived torn.`);
+    await expect(chat.getByText(/for approval/)).toBeVisible({ timeout: 40_000 });
+    await page.getByRole('link', { name: /Approvals/ }).click();
+    await expect(page.locator('[data-approval]', { hasText: delivered.id })).toBeVisible({
+      timeout: 20_000,
+    });
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: shot('orbit-approval') });
+
+    // Payments fail: the checkout, the back room, the incident ticket.
+    await setSwitches({ payments_down: true });
+    const productId = await someProductId();
+    for (let i = 0; i < 2; i++) {
+      const tried = await shopApi<{ reason?: string }>(
+        'POST',
+        '/orders',
+        {
+          items: [{ productId, quantity: 1 }],
+          address: {
+            name: 'Asha Verma',
+            phone: '9830055555',
+            line1: '12 MG Road',
+            city: 'Bengaluru',
+            state: 'Karnataka',
+            pincode: '560001',
+          },
+          payment: 'upi',
+        },
+        shopper.token,
+      );
+      expect(tried.status).toBe(402);
+    }
+    const incident = await waitFor('the payments incident', async () => {
+      const found = await openIncident('shop.payments_failing');
+      return found && found.occurrences >= 2 ? found : undefined;
+    });
+    const backRoom = await browser.newPage(desktop);
+    await signInAdmin(backRoom);
+    await expect(backRoom.getByLabel('Open incidents')).toContainText('Payments are failing', {
+      timeout: 20_000,
+    });
+    await backRoom.waitForTimeout(500);
+    await backRoom.screenshot({ path: shot('operations'), fullPage: true });
+    await backRoom.close();
+
+    await page.goto(`${process.env.ORBIT_URL ?? 'http://localhost:8081'}/`);
+    const incidentDrawer = await openTicket(page, incident.ticket!);
+    await expect(incidentDrawer).toContainText('Payments are failing at checkout');
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: shot('orbit-incident') });
+    await page.keyboard.press('Escape');
+    await setSwitches({ payments_down: false });
+
+    // The chat ticket with the calls the AI made, and the queue.
+    const chats = await call<{ items: Array<{ id: string; reference: string }> }>(
       admin,
       'GET',
-      '/tickets?channel=api&tag=listing&limit=5',
+      '/tickets?channel=webchat&limit=30',
     );
-    if (listings.items[0]) {
-      await openTicket(page, listings.items[0].reference);
-      await page.waitForTimeout(400);
-      await page.screenshot({ path: shot('orbit-listing-report') });
-      await page.keyboard.press('Escape');
-    }
-
-    // The scraper's failed runs: one ticket, counted.
-    const res = await fetch(`${env.api}/api/v1/integration/incidents?limit=50`, {
-      headers: { authorization: `Bearer ${appEnv().SUPPORT_API_KEY_EVENTS}` },
-    });
-    const incidents = (await res.json()) as Array<{ fingerprint: string; ticket: string | null }>;
-    const failed = incidents.find((i) => i.fingerprint === 'scraper.run_failed');
-    if (failed?.ticket) {
-      await openTicket(page, failed.ticket);
-      await page.waitForTimeout(400);
-      await page.screenshot({ path: shot('orbit-incident') });
-      await page.keyboard.press('Escape');
-    }
-
-    // A chat the AI answered from the app's own systems.
-    const chats = await call<{ items: Row[] }>(admin, 'GET', '/tickets?channel=webchat&limit=30');
-    for (const chat of chats.items) {
-      const calls = await call<unknown[]>(admin, 'GET', `/tickets/${chat.id}/tool-calls`);
-      if (calls.length < 2) continue;
-      const drawer = await openTicket(page, chat.reference);
-      await drawer.getByRole('region', { name: 'Company actions' }).scrollIntoViewIfNeeded();
+    for (const ticket of chats.items) {
+      const calls = await call<unknown[]>(admin, 'GET', `/tickets/${ticket.id}/tool-calls`);
+      if (!calls.length) continue;
+      const chatDrawer = await openTicket(page, ticket.reference);
+      await chatDrawer.getByRole('region', { name: 'Company actions' }).scrollIntoViewIfNeeded();
       await page.waitForTimeout(400);
       await page.screenshot({ path: shot('orbit-chat-tools') });
       await page.keyboard.press('Escape');
       break;
     }
-
-    // Keys, the webhook and its deliveries.
-    await page.goto(`${env.orbit}/#/settings/integrations`);
-    await page
-      .getByRole('row', { name: /ethnic-threads/ })
-      .getByRole('button', { name: 'Keys and webhooks' })
-      .click();
-    const hooks = page.getByRole('region', { name: 'Webhooks of Ethnic Threads' });
-    await hooks.getByRole('button', { name: 'Deliveries' }).click();
-    await expect(hooks.getByRole('region', { name: 'Deliveries' })).toBeVisible();
-    await hooks.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: shot('orbit-integration') });
+    await page.getByLabel('Search tickets').fill('');
+    await page.locator('#queue').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: shot('orbit-queue') });
+    await site.close();
   });
 });

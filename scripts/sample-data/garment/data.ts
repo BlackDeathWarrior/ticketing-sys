@@ -1,11 +1,11 @@
 /**
- * The support desk of Ethnic Threads: what `load-garment.ts` sets up in a
- * running TMS so the garment-web-scraper app can use it (ADR 0027).
+ * The support desk of Ethnic Threads, the demonstration shop in the
+ * garment-web-scraper repository: what `load-garment.ts` sets up in a running
+ * TMS so the shop can use it (ADR 0027, ADR 0028).
  *
- * Ethnic Threads is a real app (a catalogue of Indian ethnic wear scraped
- * from Amazon, Flipkart and Myntra). The staff here are invented and use the
- * reserved `.example` domain; the knowledge base in ./kb says only what the
- * app really does.
+ * The staff are invented and use the reserved `.example` domain. The
+ * knowledge base in ./kb says what the shop really does: its delivery
+ * charges, its cancellation and return rules, how refunds work.
  */
 
 /** The integration's identifier: the widget, the keys and the webhook hang off it. */
@@ -15,14 +15,15 @@ export const branding = {
   companyName: 'Ethnic Threads',
   supportName: 'Ethnic Threads Support',
   helpCenterNote:
-    'Ethnic Threads shows Indian ethnic wear from Amazon, Flipkart and Myntra in one place. You buy from the store, not from us.',
-  referenceLabel: 'Listing',
+    'Ethnic Threads is a demonstration shop for Indian ethnic wear. No money is taken and nothing is shipped.',
+  referenceLabel: 'Order number',
 };
 
 export const teams = [
-  { name: 'Customer Care', description: 'Shopper questions, feedback and chat' },
-  { name: 'Catalogue', description: 'Wrong prices, stock and broken listings' },
-  { name: 'Site Reliability', description: 'The scraper, the catalogue and the site itself' },
+  { name: 'Customer Care', description: 'Product questions, feedback and chat' },
+  { name: 'Orders and Delivery', description: 'Where orders are, cancellations and returns' },
+  { name: 'Payments', description: 'Failed payments, charges and refunds' },
+  { name: 'Operations', description: 'The shop itself: checkout, the carrier, the site' },
 ];
 
 export interface GarmentUser {
@@ -57,7 +58,15 @@ export const users: GarmentUser[] = [
     name: 'Kavya Nair',
     email: 'kavya.nair@ethnicthreads.example',
     roles: ['agent'],
-    teams: ['Catalogue'],
+    teams: ['Orders and Delivery'],
+    online: true,
+  },
+  {
+    key: 'nikhil',
+    name: 'Nikhil Shah',
+    email: 'nikhil.shah@ethnicthreads.example',
+    roles: ['agent'],
+    teams: ['Payments'],
     online: true,
   },
   {
@@ -65,35 +74,43 @@ export const users: GarmentUser[] = [
     name: 'Dev Malhotra',
     email: 'dev.malhotra@ethnicthreads.example',
     roles: ['agent'],
-    teams: ['Site Reliability'],
+    teams: ['Operations'],
     online: true,
   },
-  // Approves what the AI may not do by itself (starting a scrape).
+  // Approves what the AI may not do by itself (refunds).
   {
     key: 'farah',
     name: 'Farah Khan',
     email: 'farah.khan@ethnicthreads.example',
     roles: ['supervisor'],
-    teams: ['Site Reliability', 'Customer Care'],
+    teams: ['Payments', 'Customer Care'],
     online: false,
   },
 ];
 
 /**
- * Top-level names are what the app sends as `category` with a ticket
- * (see `scraper/support/routes.py` in the garment repo), so they must match.
+ * Top-level names are what the shop sends as `category` with a ticket
+ * (`shop/support.py` in the garment repo), so they must match.
  */
 export const categories: Array<{ name: string; children: string[] }> = [
-  { name: 'Listings', children: ['Wrong price', 'Out of stock', 'Broken link', 'Wrong details'] },
-  { name: 'Site problem', children: ['Search and filters', 'Sign-in', 'Page not loading'] },
-  { name: 'Feedback', children: ['Feature suggestion', 'General feedback'] },
-  { name: 'Store orders', children: ['Delivery', 'Returns and refunds'] },
+  {
+    name: 'Orders and delivery',
+    children: ['Where is my order', 'Cancellation', 'Delivery delay'],
+  },
+  {
+    name: 'Returns and refunds',
+    children: ['Return request', 'Refund status', 'Wrong or damaged item'],
+  },
+  { name: 'Payments', children: ['Payment failed', 'Charged twice'] },
+  { name: 'Products', children: ['Size and fit', 'Availability'] },
+  { name: 'Site problem', children: ['Sign-in', 'Page not loading'] },
+  { name: 'Feedback', children: [] },
 ];
 
 /**
  * Urgent tickets are timed in minutes so a breach can be seen happening in a
  * demo: a shopper who writes "urgent" and asks for a person must be answered
- * within two minutes.
+ * within two minutes, and so must a critical incident.
  */
 export const sla = {
   hours: {
@@ -124,23 +141,30 @@ export const routing: Array<{
   strategy: 'least_loaded' | 'round_robin';
 }> = [
   {
-    name: 'Scraper incidents',
+    name: 'Shop incidents',
     conditions: { tag: 'incident' },
-    team: 'Site Reliability',
+    team: 'Operations',
     strategy: 'least_loaded',
   },
   {
-    name: 'Listing problems',
+    name: 'Orders and delivery',
     conditions: {},
-    category: 'Listings',
-    team: 'Catalogue',
+    category: 'Orders and delivery',
+    team: 'Orders and Delivery',
     strategy: 'least_loaded',
   },
   {
-    name: 'Site problems',
+    name: 'Returns and refunds',
     conditions: {},
-    category: 'Site problem',
-    team: 'Site Reliability',
+    category: 'Returns and refunds',
+    team: 'Orders and Delivery',
+    strategy: 'least_loaded',
+  },
+  {
+    name: 'Payments',
+    conditions: {},
+    category: 'Payments',
+    team: 'Payments',
     strategy: 'least_loaded',
   },
   {
@@ -159,36 +183,28 @@ export const aiChannels = { webchat: 'auto', api: 'draft' } as const;
 
 export const kb = {
   files: [
-    'about-ethnic-threads.md',
-    'prices-and-availability.md',
-    'reporting-a-listing.md',
-    'using-the-site.md',
+    'about-the-shop.md',
+    'delivery.md',
+    'cancellations-returns-refunds.md',
+    'payments.md',
+    'getting-help.md',
   ],
   /** For agents and the copilot only: never shown or said to a shopper. */
   internal: {
-    title: 'Scraper incidents: what they mean and what to do',
+    title: 'Shop incidents: what they mean and what to do',
     content: [
-      '# Scraper incidents: what they mean and what to do',
+      '# Shop incidents: what they mean and what to do',
       '',
-      'Incident tickets are opened by the app itself. Repeats are counted on the same ticket; the ticket resolves by itself when the app reports a recovery and nobody has taken it.',
+      'Incident tickets are opened by the shop itself. Repeats are counted on the same ticket; the ticket resolves by itself when the shop reports a recovery and no person has started on it.',
       '',
-      '## Scraper run failed',
-      'The scrape process exited with an error. The end of its output is in the ticket. Check the scraper log, fix the cause, and start a scrape from the admin controls. A successful run resolves the incident.',
+      '## Payments are failing at checkout',
+      'Shoppers cannot pay by UPI or card; each failed checkout is one report. Cash on delivery still works. Check the payment provider, and tell shoppers who write in that they have not been charged.',
       '',
-      '## A store returned no products, or a store scrape failed',
-      'The store changed its pages, blocked the scraper or timed out. One failed cycle is common; act when it repeats. Listings from that store go out of date while it lasts.',
+      '## Orders are delayed with the carrier',
+      'Orders that have shipped are not moving. Shoppers see "Delayed with the carrier" on their order page. Nothing is lost: the orders move again when the carrier does.',
       '',
-      '## Amazon is showing a CAPTCHA',
-      'Amazon has rate-limited the scraper. It skips the search and retries in later cycles. If it lasts for hours, stop the scraper for a while.',
-      '',
-      '## Catalogue upload to S3 failed',
-      'The scrape itself worked; publishing the catalogue file failed. Check the AWS credentials of the machine that runs the scraper.',
-      '',
-      '## Catalogue is stale',
-      'No scrape has refreshed the catalogue for two days. Prices on the site may no longer match the stores. Start a scrape.',
-      '',
-      '## Who may start a scrape',
-      'The admin can start one from the site. The AI may only ask: a request to start a scrape waits under Approvals for a supervisor.',
+      '## Refunds',
+      'The AI may cancel an order that has not shipped. It may only ask for a refund: the request waits under Approvals for a supervisor. Refunds are for delivered or returned orders that were paid for, always in full.',
     ].join('\n'),
   },
 };
@@ -198,7 +214,7 @@ export interface GarmentTool {
   title: string;
   description: string;
   method: 'GET' | 'POST';
-  /** Under the worker's /api/support/tools. */
+  /** Under the shop's /api/support/tools. */
   path: string;
   parameters: Array<{
     name: string;
@@ -206,63 +222,117 @@ export interface GarmentTool {
     description: string;
     required: boolean;
   }>;
-  tier: 'read' | 'transactional';
+  /** Filled by TMS with the ticket customer's email, never by the model. */
+  customerArg?: string;
+  tier: 'read' | 'write' | 'transactional';
 }
 
+const customer = {
+  name: 'customer_email',
+  type: 'string' as const,
+  description: "The customer's email address",
+  required: true,
+};
+
 /**
- * Custom HTTP tools (ADR 0017) that call the garment app's worker. Reading is
- * free; starting a scrape is `transactional`, so it waits for a supervisor.
+ * Custom HTTP tools (ADR 0017) that call the shop. Every order tool is bound
+ * to the customer: TMS fills `customer_email` from the ticket, and the shop
+ * answers only about that customer's orders. Looking up is free, cancelling
+ * changes data, and a refund is `transactional`: it waits for a supervisor.
  */
 export const tools: GarmentTool[] = [
   {
-    name: 'catalog_status',
-    title: 'Catalogue freshness',
+    name: 'order_status',
+    title: 'Order status',
     description:
-      'How many listings the catalogue has, when it was last refreshed and whether it is stale. Use it when a shopper says prices or stock look old or wrong.',
+      "Where one of the customer's orders is: its status, carrier, tracking number, expected delivery date, total and payment. Use it when they give an order number (like ET-100123) or the ticket context has an order_id.",
     method: 'GET',
-    path: '/catalog-status',
-    parameters: [],
-    tier: 'read',
-  },
-  {
-    name: 'scraper_status',
-    title: 'Scraper status',
-    description:
-      'Whether the scraper that refreshes the catalogue is running, when it last ran and whether that run failed. Use it when the catalogue is stale or a shopper asks why the site is not updating.',
-    method: 'GET',
-    path: '/scrape-status',
-    parameters: [],
-    tier: 'read',
-  },
-  {
-    name: 'scraper_log_tail',
-    title: 'Scraper log',
-    description:
-      'The last lines of the scraper log. Use it after scraper_status shows a failed run, to see what went wrong. Never paste the log to a shopper; say what it means.',
-    method: 'GET',
-    path: '/log-tail',
+    path: '/orders/{order_id}',
     parameters: [
       {
-        name: 'lines',
-        type: 'integer',
-        description: 'How many lines, 1 to 100',
-        required: false,
+        name: 'order_id',
+        type: 'string',
+        description: 'The order number, e.g. ET-100123',
+        required: true,
       },
+      customer,
     ],
+    customerArg: 'customer_email',
+    tier: 'read',
+  },
+  {
+    name: 'list_orders',
+    title: 'Recent orders',
+    description:
+      "The customer's five most recent orders with their status. Use it when they ask about an order without giving its number.",
+    method: 'GET',
+    path: '/orders',
+    parameters: [customer],
+    customerArg: 'customer_email',
+    tier: 'read',
+  },
+  {
+    name: 'cancel_order',
+    title: 'Cancel an order',
+    description:
+      "Cancels one of the customer's orders. Only works before the order has shipped; what was paid is refunded at once. Use it only when the customer clearly asks to cancel that order.",
+    method: 'POST',
+    path: '/orders/{order_id}/cancel',
+    parameters: [
+      {
+        name: 'order_id',
+        type: 'string',
+        description: 'The order number, e.g. ET-100123',
+        required: true,
+      },
+      customer,
+      { name: 'reason', type: 'string', description: 'Why, in a few words', required: false },
+    ],
+    customerArg: 'customer_email',
+    tier: 'write',
+  },
+  {
+    name: 'issue_refund',
+    title: 'Refund an order',
+    description:
+      "Refunds one of the customer's delivered orders in full. Needs a supervisor to approve it. Use it when the customer asks for their money back for an order that was delivered.",
+    method: 'POST',
+    path: '/refunds',
+    parameters: [
+      {
+        name: 'order_id',
+        type: 'string',
+        description: 'The order number, e.g. ET-100123',
+        required: true,
+      },
+      customer,
+      { name: 'reason', type: 'string', description: 'Why, in a few words', required: false },
+    ],
+    customerArg: 'customer_email',
+    tier: 'transactional',
+  },
+  {
+    name: 'shop_status',
+    title: 'Shop status',
+    description:
+      'Whether payments and the carrier are working right now, and how many orders are delayed. Use it when a customer says they cannot pay or that the shop is not working.',
+    method: 'GET',
+    path: '/shop-status',
+    parameters: [],
     tier: 'read',
   },
   {
     name: 'product_lookup',
-    title: 'Look up a listing',
+    title: 'Look up a product',
     description:
-      'One listing by its id: title, store, price, stock and when it was last scraped. Use the product_id from the ticket context when the shopper asks about the listing they have open.',
+      'One product by its id: name, brand, price and whether it is in stock. Use the product_id from the ticket context when the customer asks about the product they have open.',
     method: 'GET',
     path: '/products/{product_id}',
     parameters: [
       {
         name: 'product_id',
         type: 'string',
-        description: 'The listing id, e.g. b18e1b5c-ee0',
+        description: 'The product id, e.g. b18e1b5c-ee0',
         required: true,
       },
     ],
@@ -270,47 +340,24 @@ export const tools: GarmentTool[] = [
   },
   {
     name: 'product_search',
-    title: 'Search listings',
+    title: 'Search products',
     description:
-      'Up to five listings whose title or brand contains the given words. Use it when a shopper names a product but there is no product_id in the ticket context.',
+      'Up to five products whose name or brand contains the given words. Use it when a customer names a product but there is no product_id in the ticket context.',
     method: 'GET',
     path: '/products',
     parameters: [
       {
         name: 'query',
         type: 'string',
-        description: 'A few words from the title or the brand, e.g. "silk saree"',
+        description: 'A few words from the name or the brand, e.g. "silk saree"',
         required: true,
       },
     ],
     tier: 'read',
   },
-  {
-    name: 'trigger_rescrape',
-    title: 'Start a scrape',
-    description:
-      'Starts the scraper to refresh prices and stock from the stores. Needs a supervisor to approve it. Use it when the catalogue is stale and no scrape is running.',
-    method: 'POST',
-    path: '/rescrape',
-    parameters: [
-      {
-        name: 'source',
-        type: 'string',
-        description: 'One store to refresh: amazon, flipkart or myntra. Leave out for all.',
-        required: false,
-      },
-      {
-        name: 'reason',
-        type: 'string',
-        description: 'Why, in a few words',
-        required: false,
-      },
-    ],
-    tier: 'transactional',
-  },
 ];
 
-/** Events the app's worker wants to hear about (its /api/support/webhook). */
+/** Events the shop wants to hear about (its /api/support/webhook). */
 export const webhookEvents = [
   'ticket.created',
   'ticket.updated',

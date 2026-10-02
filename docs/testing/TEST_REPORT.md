@@ -1,6 +1,78 @@
 # Test report
 
-## Latest: Phase 14, the Ethnic Threads demo
+## Latest: Phase 14b, the demo app as a shop
+
+Run on 2 October 2026, branch `feat/phase-14b-shop-demo`, against a freshly reset demo stack (`scripts/demo/garment-demo.ps1 reset`, `up`, then `load -Llm scripted`) with the shop (garment-web-scraper, branch `feat/shop`) running on the same machine, orders moving every five seconds.
+
+| Step                                                     | Result                                                                                     |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `format:check`, `lint`, `build`, `typecheck` (in Docker) | pass                                                                                       |
+| `pnpm test`                                              | 389 passed (api 191, Orbit Desk 110, shared 34, fake providers 33, SDK 11, help center 10) |
+| `pnpm test:int`                                          | 293 passed (25 files)                                                                      |
+| `pnpm e2e:garment` with `SCREENSHOTS=1`                  | 16 passed (15 specs and the screenshot run)                                                |
+| Five existing specs run against the demo stack           | 5 passed (`incidents`, `webhooks`, `integration-tickets`, `integrations`, `widget-site`)   |
+| Python client: `python -m unittest test_tms_support`     | 8 passed                                                                                   |
+| The shop: `pytest tests/shop tests/support`              | 84 passed (shop 34, support plumbing 50)                                                   |
+| The shop: `vitest run`                                   | 54 passed (5 files)                                                                        |
+
+### What was and wasn't tested
+
+- **Tested, through the real shop:** a visitor filling a cart, registering at checkout, placing an order and watching it move to Delivered, then returning it and being refunded by the shop's admin; cancelling before shipping; one shopper refused another's order; help with an order arriving on the desk with the order's facts, the AI's draft from the shop's order tool, the reply reaching the shopper's Help page by webhook, a follow-up and a rating; a guest's contact request followed by its link and refused without it; the chat answering from the knowledge base, reading the signed-in shopper's order and cancelling another; a visitor who typed that shopper's email being told nothing and handed to a person; a refund waiting for a supervisor and then refunding the order in the shop; failing payments counted on one urgent ticket for Operations that resolves itself; a carrier delay shown on the order page, said by the AI, and cleared; a signed test delivery and a forged one; key scope, rate limit and revocation; an urgent handover breaching its two-minute first-response target.
+- **Not tested:** the demo with a real model (it needs a key: the scripted model was used, and it has no phrase for the shop-status and product-search tools, which are covered by the shop's own tests only); the webhook retry while the shop's server is down and after a rotated secret (shown by hand in Phase 14, that code is unchanged, not repeated here); the rest of the end-to-end suite, which needs the default stack with the general sample data and was last run in full for Phase 11.
+- **Still failing in the shop's repository, and left alone:** 2 of its `tests/scraper/test_normalize.py` tests, which fail the same way on its untouched `main`. The scraper is no longer part of the site.
+
+### New tests
+
+| Where                                           | Tests | Covers                                                                                                                                                                                          |
+| ----------------------------------------------- | ----: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/test/custom-tools.int.test.ts`        |    +1 | On an integration's ticket a customer-bound tool is refused for a visitor who only typed an email, and runs for a customer the app named                                                        |
+| `apps/api/test/integration-tickets.int.test.ts` |    +1 | Listing by the app's id for a customer; views carry `customer.externalId`; an email sent with `externalId` is verified                                                                          |
+| `apps/fake-providers/src/agent-script.test.ts`  |    +6 | The scripted model with `ET-` order numbers: cancelling, a delayed order, the order in the ticket's context, else the latest                                                                    |
+| `e2e/tests/garment/shop.spec.ts`                |     3 | Cart to delivery to return and refund; cancelling before shipping; another shopper's order is not found                                                                                         |
+| `e2e/tests/garment/support.spec.ts`             |     3 | Help with an order from request to rating, with the admin's read-only view; a guest's request by its link; the shop's key lists one shopper's tickets and cannot read a ticket it did not raise |
+| `e2e/tests/garment/chat.spec.ts`                |     4 | The widget's look and a knowledge-base answer; the signed-in shopper's order looked up and another cancelled; the visitor with someone else's email; the refund that waits for a supervisor     |
+| `e2e/tests/garment/operations.spec.ts`          |     5 | Failing payments and their recovery; the carrier delay and its recovery; a signed test delivery and a forged one; key scope, limit and revocation; the two-minute SLA breach                    |
+| shop `tests/shop/` (pytest)                     |    34 | Accounts and sessions, prices taken from the catalogue, checkout, the order clock, cancel, return, refund (asked twice, refunded once), the switches and their incidents, every support route   |
+| shop `frontend/src/__tests__/shop.test.jsx`     |    23 | Cart, sign-in and registration, checkout, the order page and its actions, help with an order, the Help list, the Operations page, the chat widget's identity                                    |
+
+The earlier specs `e2e/tests/garment/requests.spec.ts` and the scraper scenarios were removed with the pages they drove; they remain on `feat/phase-14-garment-demo`.
+
+### Bugs found and fixed
+
+1. **An email typed into the chat could open someone else's orders.** Tools are bound to the ticket's customer, and on chat that could be whatever a visitor typed. On an integration's ticket, customer-bound tools now run only for a customer the app has named (ADR 0028).
+2. **Whoever typed an address first kept it.** If a visitor had typed a shopper's email into a chat, the shopper's own tickets later had no email to bind tools to. An email the app vouches for is now verified, and is taken from an unverified holder.
+3. **`GET /integration/tickets` could not list one customer's tickets**, so a signed-in customer could only follow a request by its link. It takes `customer=<externalId>` now.
+4. **The shop's Operations switches looked stuck** until the next refresh. They show the new state at once.
+5. **The shop's contact form could send the wrong topic** when it was submitted before the list of topics had loaded. The form is shown once the list is there.
+6. **The storefront still showed where each product had been scraped from** (an "Amazon" badge on every card and a Source filter). Both are gone.
+
+### Known limits
+
+- The shop simulates its own business: no money, nothing shipped, a refund is always the whole order. That is by design (ADR 0028) and is said on its pages.
+- The scripted model has no phrase for "is something wrong with payments?" or for searching products; a real model uses those tools.
+- The demo needs two processes outside Docker (the shop's server and its Vite server).
+- One installation still serves one company (Phase 15).
+
+### Screenshots
+
+Captured by `e2e/tests/garment/screenshots.spec.ts` (`SCREENSHOTS=1`).
+
+| Screen                                                           | Image                                                  |
+| ---------------------------------------------------------------- | ------------------------------------------------------ |
+| Shop: the storefront                                             | ![storefront](screenshots/shop-storefront.png)         |
+| Shop: a product                                                  | ![product](screenshots/shop-product.png)               |
+| Shop: checkout                                                   | ![checkout](screenshots/shop-checkout.png)             |
+| Shop: an order on its way, and the chat answering about it       | ![order and chat](screenshots/shop-order-and-chat.png) |
+| Shop: the order page on a phone                                  | ![order on a phone](screenshots/shop-order-phone.png)  |
+| Shop: a request to support, answered                             | ![request](screenshots/shop-request.png)               |
+| Shop, admin: orders, the simulation switches and the desk's news | ![operations](screenshots/shop-operations.png)         |
+| Orbit Desk: the queue                                            | ![queue](screenshots/shop-orbit-queue.png)             |
+| Orbit Desk: help with an order, with the AI's draft              | ![order help](screenshots/shop-orbit-order-help.png)   |
+| Orbit Desk: a refund waiting for a supervisor                    | ![approval](screenshots/shop-orbit-approval.png)       |
+| Orbit Desk: failing payments on one incident ticket              | ![incident](screenshots/shop-orbit-incident.png)       |
+| Orbit Desk: a chat ticket with the calls the AI made             | ![tools](screenshots/shop-orbit-chat-tools.png)        |
+
+## Phase 14: the Ethnic Threads demo (the app as a storefront over a scraped catalogue)
 
 Run on 2 October 2026, branch `feat/phase-14-garment-demo`, against the demo stack (`scripts/demo/garment-demo.ps1 up`, then `load -Llm scripted`) with the garment-web-scraper app (branch `feat/support-desk-integration`) running on the same machine.
 

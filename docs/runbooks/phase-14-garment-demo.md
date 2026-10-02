@@ -1,5 +1,7 @@
 # Phase 14 demo: TMS as the support desk of Ethnic Threads
 
+> This walk-through belongs to the branch `feat/phase-14-garment-demo` and the app's branch `feat/support-desk-integration`. Since then the app has been remade into a shop and the demo script, the loader's data and the specs changed with it: use [phase-14b-shop-demo.md](phase-14b-shop-demo.md) on later branches.
+
 Ethnic Threads (`garment-web-scraper`) is a real app: a storefront over a catalogue that a Python worker scrapes from Amazon, Flipkart and Myntra. This demo runs it next to TMS and shows TMS doing its support: shopper requests, chat, incidents the scraper reports about itself, approvals, SLA, webhooks and keys. Why it is built this way is in [ADR 0027](../adr/0027-garment-demo.md).
 
 Nothing in it is simulated. Every scenario below happens through the app's real code.
