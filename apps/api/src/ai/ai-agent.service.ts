@@ -256,7 +256,7 @@ export class AiAgentService {
           language,
           unconfidentTurnsBefore: 0,
           conversationId: conv.id,
-          customerEmail: boundEmail(ticket, customer),
+          customerEmail: boundEmail(ticket, customer, conv),
           dryRun: false,
           // A supervisor's note on a rejection is internal: it goes into the note for
           // colleagues (followUpNote), never into the prompt that writes to the customer.
@@ -399,7 +399,7 @@ export class AiAgentService {
         lastHandover,
       ),
       conversationId: conv.id,
-      customerEmail: boundEmail(ticket, customer),
+      customerEmail: boundEmail(ticket, customer, conv),
       dryRun: false,
       update: null,
       confirmedByTool: false,
@@ -896,10 +896,15 @@ export class AiAgentService {
  * a ticket it raised for them, or a chat with a signed identity) is acted
  * for. An address a visitor typed into the app's chat proves nothing, and
  * must not open someone else's orders.
+ *
+ * The same holds without an integration: on a web chat the email is acted
+ * for only when the chat itself vouched for the visitor (a signed identity),
+ * never when an anonymous visitor typed it.
  */
 function boundEmail(
   ticket: { integration: { slug: string } | null },
   customer: Parameters<typeof emailOf>[0],
+  conv: { channel: string; metadata: Record<string, unknown> },
 ): string | null {
   if (ticket.integration) {
     const prefix = `${ticket.integration.slug}:`;
@@ -907,6 +912,9 @@ function boundEmail(
       (x) => x.type === 'external_id' && x.value.startsWith(prefix),
     );
     if (!named) return null;
+  } else if (conv.channel === 'webchat') {
+    const vouched = conv.metadata.identity;
+    if (vouched !== 'email' && vouched !== 'external_id') return null;
   }
   return emailOf(customer);
 }

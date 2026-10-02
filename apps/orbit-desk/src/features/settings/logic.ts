@@ -8,6 +8,7 @@ import type {
 } from '@tms/shared';
 
 export type SettingsTab =
+  | 'me'
   | 'providers'
   | 'models'
   | 'ai'
@@ -29,6 +30,8 @@ export const SETTINGS_TABS: Array<{
   /** Any one of these also opens the tab (it then shows only what that permission covers). */
   anyOf?: Permission[];
 }> = [
+  // A person's own settings (notification sound): every role has these.
+  { value: 'me', label: 'My settings', needs: [] },
   { value: 'providers', label: 'AI providers', needs: ['settings:llm'] },
   { value: 'models', label: 'Models & roles', needs: ['settings:llm'] },
   { value: 'ai', label: 'AI behaviour', needs: ['settings:ai'] },

@@ -273,6 +273,34 @@ td.colTicket {
   min-width: 160px;
 }
 
+.search {
+  flex: 1 1 260px;
+  min-width: 200px;
+  max-width: 360px;
+}
+
+.search input {
+  height: 36px;
+}
+
+.clear {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--color-lavender-accent);
+  cursor: pointer;
+}
+
+.clear:hover {
+  text-decoration: underline;
+}
+
+.newBadge {
+  margin-left: var(--spacing-8);
+  vertical-align: middle;
+}
+
 .sla {
   display: block;
   margin-top: 4px;

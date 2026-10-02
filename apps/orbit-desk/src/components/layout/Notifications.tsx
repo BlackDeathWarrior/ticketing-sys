@@ -1,9 +1,15 @@
-import type { NotificationView, PresenceStatus } from '@tms/shared';
+import {
+  DEFAULT_USER_PREFERENCES,
+  type NotificationView,
+  type PresenceStatus,
+  type UserPreferences,
+} from '@tms/shared';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { useAgentEvents } from '../../api/realtime';
 import { minutesSince } from '../../data/adapters';
 import { cx, relativeTime } from '../../lib/format';
+import { armSound, playTone, PREFERENCES_CHANGED } from '../../lib/sound';
 import { useGet } from '../../lib/useGet';
 import { Icon } from '../ui';
 import styles from './Notifications.module.css';
@@ -14,9 +20,39 @@ export function NotificationBell({ onOpenTicket }: { onOpenTicket: (ticketId: st
   const list = useGet<{ unread: number; items: NotificationView[] }>('/notifications?limit=20');
   const reload = list.reload;
   const panel = useRef<HTMLDivElement>(null);
-  useAgentEvents((e) => {
-    if (e.type === 'notification.created') void reload();
+
+  // The person's own sound settings; saved ones arrive from the settings page without a reload.
+  const stored = useGet<UserPreferences>('/me/preferences');
+  const sound = useRef(DEFAULT_USER_PREFERENCES.sound);
+  if (stored.data) sound.current = stored.data.sound;
+  useEffect(() => {
+    armSound();
+    const onSaved = (e: Event) => {
+      sound.current = (e as CustomEvent<UserPreferences>).detail.sound;
+    };
+    window.addEventListener(PREFERENCES_CHANGED, onSaved);
+    return () => window.removeEventListener(PREFERENCES_CHANGED, onSaved);
+  }, []);
+
+  useAgentEvents((events) => {
+    if (events.some((e) => e.type === 'notification.created' || e.type === 'live.resumed'))
+      void reload();
+    // A new ticket for anyone: quieter than a notification meant for this person.
+    else if (sound.current.newTickets && events.some((e) => e.type === 'ticket.created'))
+      void playTone(sound.current.tone, sound.current.volume * 0.5);
   });
+
+  // A sound for notifications that were not there the last time the list loaded.
+  // The first load only takes stock: nothing rings for what arrived while away.
+  const known = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const items = list.data?.items;
+    if (!items) return;
+    const fresh = known.current ? items.filter((n) => !n.readAt && !known.current!.has(n.id)) : [];
+    known.current = new Set(items.map((n) => n.id));
+    const s = sound.current;
+    if (s.enabled && fresh.some((n) => !s.muted.includes(n.kind))) void playTone(s.tone, s.volume);
+  }, [list.data]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);

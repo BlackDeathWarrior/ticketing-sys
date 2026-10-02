@@ -29,6 +29,33 @@ export function byUrgency(a: Ticket, b: Ticket): number {
   return b.updatedAt.getTime() - a.updatedAt.getTime();
 }
 
+export type SortBy = 'newest' | 'attention' | 'updated';
+
+export const sortOptions: Array<{ value: SortBy; label: string }> = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'attention', label: 'Needs attention first' },
+  { value: 'updated', label: 'Recently updated' },
+];
+
+/**
+ * Newest first is the default: a ticket that has just arrived is at the top,
+ * where the activity feed says it should be. "Needs attention" is the old
+ * order, which buried a new normal-priority ticket under every urgent one.
+ */
+export function sortTickets(tickets: Ticket[], sort: SortBy): Ticket[] {
+  const rows = [...tickets];
+  if (sort === 'attention') return rows.sort(byUrgency);
+  if (sort === 'updated') return rows.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  return rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+const NEW_FOR_MS = 10 * 60_000;
+
+/** Opened in the last ten minutes and not finished: marked "New" in the table. */
+export function isNewTicket(t: Ticket, now = Date.now()): boolean {
+  return isOpenCategory(t.status.category) && now - t.createdAt.getTime() < NEW_FOR_MS;
+}
+
 /** Open urgent/high tickets, urgent first and oldest first within a priority. */
 export function triage(tickets: Ticket[], limit = 3): Ticket[] {
   return tickets

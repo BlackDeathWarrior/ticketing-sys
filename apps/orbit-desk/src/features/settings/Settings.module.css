@@ -224,6 +224,38 @@
   accent-color: var(--color-lavender-accent);
 }
 
+/* A group of checkboxes under one question. */
+.fieldset {
+  display: grid;
+  gap: var(--spacing-8);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.fieldset:disabled {
+  opacity: 0.5;
+}
+
+.legend,
+.rangeLabel {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: var(--text-ui);
+  color: var(--color-fog);
+}
+
+.rangeGroup {
+  display: grid;
+  align-content: start;
+}
+
+.range {
+  width: 100%;
+  height: 36px;
+  accent-color: var(--color-lavender-accent);
+}
+
 /* Roles */
 .role {
   display: grid;

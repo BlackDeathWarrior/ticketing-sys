@@ -41,8 +41,9 @@ export function KbPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  useAgentEvents((e) => {
-    if (e.type.startsWith('kb.')) void docs.reload();
+  useAgentEvents((events) => {
+    if (events.some((e) => e.type.startsWith('kb.') || e.type === 'live.resumed'))
+      void docs.reload();
   });
 
   const act = async (d: KbDocumentView, fn: () => Promise<unknown>, done?: string) => {

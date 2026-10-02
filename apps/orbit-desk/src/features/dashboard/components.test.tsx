@@ -52,6 +52,7 @@ describe('TicketTable', () => {
     total: 3,
     loading: false,
     search: '',
+    onSearch: vi.fn(),
     channel: '' as const,
     onChannel: vi.fn(),
     handling: '' as const,

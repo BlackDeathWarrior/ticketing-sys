@@ -32,6 +32,12 @@ export interface ChatStrings {
   start?: string;
   /** Read out by screen readers while the assistant writes its answer. */
   typing?: string;
+  /** The button shown when the chat could not connect or was disconnected. */
+  retry?: string;
+  /** Shown when the server ended the chat without saying why. */
+  disconnected?: string;
+  /** Under the email field when what was typed is not an email address. */
+  emailError?: string;
 }
 
 /** What a page can react to. Callbacks never receive the visitor's session token. */
@@ -72,8 +78,12 @@ export interface ChatHandle {
   close(): void;
   /** Replaces the page context; it applies to the next ticket the visitor opens. */
   setContext(context: Record<string, unknown>): void;
-  /** The visitor signed in: start a new conversation as them. */
-  identify(identityToken: string): void;
+  /**
+   * The visitor signed in (a token) or signed out (`null`): the chat becomes
+   * that person's own conversation, or an anonymous one. Nothing of the
+   * previous person's conversation stays on screen.
+   */
+  identify(identityToken: string | null): void;
   /** Disconnects and removes the widget from the page. */
   destroy(): void;
 }
@@ -106,6 +116,9 @@ const DEFAULT_STRINGS: Required<ChatStrings> = {
   details: 'Tell us who you are so we can follow up. Both are optional.',
   start: 'Start chat',
   typing: 'Support is typing',
+  retry: 'Try again',
+  disconnected: 'The chat was disconnected.',
+  emailError: 'That does not look like an email address. Correct it, or leave it empty.',
 };
 
 /** How long the typing dots may show without an answer arriving. */
@@ -128,6 +141,8 @@ header { background: var(--tms-primary); color: var(--tms-on-primary); padding: 
 header strong { font-size: 15px; }
 header button { background: none; border: 0; color: var(--tms-on-primary); font-size: 20px; cursor: pointer; line-height: 1; }
 .status { font-size: 12px; padding: 4px 14px; background: #f3f4f6; color: #4b5563; }
+.status button { margin-left: 6px; border: 0; background: none; padding: 0; font-size: 12px; color: var(--tms-primary); text-decoration: underline; cursor: pointer; }
+.details .error { margin: 0; font-size: 12px; color: #b91c1c; }
 .log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .msg { max-width: 80%; padding: 8px 10px; border-radius: 10px; white-space: pre-wrap; word-wrap: break-word; }
 .msg.customer { align-self: flex-end; background: var(--tms-primary); color: var(--tms-on-primary); }
@@ -182,7 +197,8 @@ export function init(options: ChatOptions = {}): ChatHandle {
       <div class="details" hidden>
         <p>${escapeHtml(text.details)}</p>
         <label for="tms-name">Name</label><input id="tms-name" autocomplete="name" />
-        <label for="tms-email">Email</label><input id="tms-email" type="email" autocomplete="email" />
+        <label for="tms-email">Email</label><input id="tms-email" type="email" autocomplete="email" aria-describedby="tms-email-error" />
+        <p class="error" id="tms-email-error" role="alert" hidden></p>
         <button type="button" class="start">${escapeHtml(text.start)}</button>
       </div>
       <div class="log" aria-live="polite"><p class="empty">${escapeHtml(text.intro)}</p></div>
@@ -201,8 +217,15 @@ export function init(options: ChatOptions = {}): ChatHandle {
   const sendBtn = $<HTMLButtonElement>('form button');
 
   let socket: Socket | null = null;
-  let token = stored.token;
   let identityToken = options.identityToken;
+  // One stored session per person who has used this browser, and one for anonymous use:
+  // signing out must not leave the next visitor in the previous person's conversation.
+  const sessions: Record<string, string> = { ...(stored.sessions ?? {}) };
+  if (stored.token && !sessions.anon) sessions.anon = stored.token;
+  let token: string | undefined = sessions[visitorKey(identityToken)];
+  let sessionId: string | undefined;
+  /** Why the server refused the chat, when it said so. */
+  let refusal: string | null = null;
   let context = options.context;
   let visitor = {
     name: stored.name ?? options.visitor?.name,
@@ -272,19 +295,31 @@ export function init(options: ChatOptions = {}): ChatHandle {
           email: visitor.email,
         }),
     });
-    socket.on('connect', () => setStatus('Connected'));
-    socket.on('disconnect', () => {
+    socket.on('connect', () => {
+      refusal = null;
+      setStatus('Connected');
+    });
+    socket.on('disconnect', (reason: string) => {
       setTyping(false);
-      setStatus('Reconnecting…');
+      // When the server ends the chat, socket.io does not come back by itself: offer a way to.
+      if (reason === 'io server disconnect') setStatus(refusal ?? text.disconnected, true);
+      else setStatus('Reconnecting…');
     });
     socket.on('connect_error', () => setStatus('Cannot reach support right now. Retrying…'));
     // The server refused the handshake (an unknown integration, too many chats).
     socket.on('error', (e: { message?: string }) => {
-      if (e?.message) setStatus(e.message);
+      if (!e?.message) return;
+      refusal = e.message;
+      setStatus(e.message, true);
     });
-    socket.on('session', async (s: { token: string }) => {
+    socket.on('session', async (s: { token: string; sessionId?: string }) => {
+      // The server started a different session than the one on screen (another person's
+      // token, an expired one): what is shown belongs to nobody here any more.
+      if (sessionId && s.sessionId && s.sessionId !== sessionId) resetLog();
+      sessionId = s.sessionId;
       token = s.token;
-      writeStore(storageKey, { token, ...visitor });
+      sessions[visitorKey(identityToken)] = token;
+      writeStore(storageKey, { sessions, ...visitor });
       const res = (await socket!.emitWithAck('history')) as Ack<{
         messages: ChatMessage[];
         rate?: RatingPrompt | null;
@@ -346,9 +381,30 @@ export function init(options: ChatOptions = {}): ChatHandle {
     }
   }
 
-  function setStatus(message: string) {
+  function setStatus(message: string, retry = false) {
     status.textContent = message;
+    if (retry) {
+      const again = document.createElement('button');
+      again.type = 'button';
+      again.textContent = text.retry;
+      again.addEventListener('click', () => {
+        disconnect();
+        connect();
+      });
+      status.appendChild(again);
+    }
     sendBtn.disabled = !socket?.connected;
+  }
+
+  /** An empty conversation, as when the panel is first opened. */
+  function resetLog() {
+    seen.clear();
+    asked.clear();
+    setTyping(false);
+    const intro = document.createElement('p');
+    intro.className = 'empty';
+    intro.textContent = text.intro;
+    log.replaceChildren(intro);
   }
 
   /**
@@ -440,15 +496,32 @@ export function init(options: ChatOptions = {}): ChatHandle {
   root.addEventListener('keydown', (e) => {
     if ((e as KeyboardEvent).key === 'Escape' && !panel.hidden) close();
   });
-  $<HTMLButtonElement>('.start').addEventListener('click', () => {
+  const emailError = $<HTMLElement>('#tms-email-error');
+  function start() {
+    const email = $<HTMLInputElement>('#tms-email').value.trim();
+    // Both fields are optional, but a mistyped address would be no use to anyone.
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      emailError.textContent = text.emailError;
+      emailError.hidden = false;
+      $<HTMLInputElement>('#tms-email').focus();
+      return;
+    }
+    emailError.hidden = true;
     visitor = {
       name: $<HTMLInputElement>('#tms-name').value.trim() || undefined,
-      email: $<HTMLInputElement>('#tms-email').value.trim() || undefined,
+      email: email || undefined,
     };
     details.hidden = true;
     form.hidden = false;
     connect();
     input.focus();
+  }
+  $<HTMLButtonElement>('.start').addEventListener('click', start);
+  details.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.isComposing) {
+      e.preventDefault();
+      start();
+    }
   });
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -458,7 +531,8 @@ export function init(options: ChatOptions = {}): ChatHandle {
     void send(body);
   });
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // While an input method is composing (Hindi, Chinese, Japanese…), Enter picks a word.
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       form.requestSubmit();
     }
@@ -475,14 +549,12 @@ export function init(options: ChatOptions = {}): ChatHandle {
       if (socket?.connected) socket.emit('context', next);
     },
     identify(nextToken) {
-      identityToken = nextToken;
-      // A new conversation as the signed-in person; the anonymous one stays in the helpdesk.
-      token = undefined;
-      writeStore(storageKey, {});
-      seen.clear();
-      asked.clear();
-      setTyping(false);
-      log.replaceChildren();
+      identityToken = nextToken ?? undefined;
+      // That person's own conversation if this browser has one, otherwise a new one.
+      // The server checks it too: a session is resumed only by whoever it belongs to.
+      token = sessions[visitorKey(identityToken)];
+      sessionId = undefined;
+      resetLog();
       const reconnect = !!socket;
       disconnect();
       if (reconnect || !panel.hidden) connect();
@@ -509,7 +581,34 @@ function applyTheme(host: HTMLElement, theme: ChatTheme | undefined) {
   if (theme.position === 'left') host.dataset.position = 'left';
 }
 
-function readStore(key: string): { token?: string; name?: string; email?: string } {
+/**
+ * Which stored session is this visitor's: one per signed-in person (a short
+ * hash of who the identity token names, so no address is kept in storage),
+ * and `anon` for anyone not signed in. Reading the token here proves nothing;
+ * the server verifies it.
+ */
+function visitorKey(identityToken: string | undefined): string {
+  if (!identityToken) return 'anon';
+  try {
+    const body = identityToken.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(atob(body)) as { sub?: unknown; email?: unknown };
+    const who = typeof claims.sub === 'string' ? claims.sub : claims.email;
+    if (typeof who !== 'string' || !who) return 'anon';
+    let hash = 5381;
+    for (let i = 0; i < who.length; i++) hash = ((hash << 5) + hash + who.charCodeAt(i)) >>> 0;
+    return `id:${hash.toString(36)}`;
+  } catch {
+    return 'anon';
+  }
+}
+
+function readStore(key: string): {
+  /** The single session older versions kept. */
+  token?: string;
+  sessions?: Record<string, string>;
+  name?: string;
+  email?: string;
+} {
   try {
     return JSON.parse(localStorage.getItem(key) ?? '{}');
   } catch {

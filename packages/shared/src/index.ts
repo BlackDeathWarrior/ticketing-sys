@@ -17,6 +17,7 @@ export * from './handover';
 export * from './routing';
 export * from './sla';
 export * from './notifications';
+export * from './preferences';
 export * from './whatsapp';
 export * from './channel-health';
 export * from './voice';

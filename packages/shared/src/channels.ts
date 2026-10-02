@@ -149,13 +149,9 @@ export const chatHandshakeSchema = z.object({
     .regex(/^[a-z][a-z0-9-]{1,39}$/)
     .optional(),
   context: chatContextSchema.optional(),
-  name: z.string().trim().max(200).optional(),
-  email: z
-    .string()
-    .trim()
-    .email()
-    .optional()
-    .or(z.literal('').transform(() => undefined)),
+  name: z.string().trim().max(200).optional().catch(undefined),
+  // What a visitor typed. A mistyped address is left out rather than refusing the whole chat.
+  email: z.string().trim().email().optional().catch(undefined),
 });
 
 export const chatMessageSchema = z.object({

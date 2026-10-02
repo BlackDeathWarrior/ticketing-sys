@@ -85,6 +85,11 @@ async function refresh(): Promise<boolean> {
   return refreshing;
 }
 
+/** A fresh access token for something that is not an API call (the live socket). False when signed out. */
+export function refreshSession(): Promise<boolean> {
+  return refresh();
+}
+
 export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
   let res = await raw(method, path, body);
   if (res.status === 401 && (await refresh())) res = await raw(method, path, body);
