@@ -17,6 +17,12 @@
 #      TMS_TEST_DB and TMS_TEST_REDIS_DB (default tms_test and 15): set both to
 #      test a second checkout at the same time without the two runs wiping
 #      each other's database.
+#      TMS_FAKE_HOST (default fake-providers): where the scripted model and the
+#      sample MCP server run. A checkout that changed apps/fake-providers tests
+#      against its own build, started on the same network under another name:
+#        docker build --target fake-providers -t my-fake .
+#        docker run -d --network tms_default --network-alias fake-mine my-fake
+#        TMS_FAKE_HOST=fake-mine bash scripts/check-in-docker.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -25,6 +31,7 @@ IMAGE=${NODE_IMAGE:-mirror.gcr.io/library/node:22-bookworm-slim}
 STEPS=${*:-format:check lint build typecheck test test:int}
 TEST_DB=${TMS_TEST_DB:-tms_test}
 TEST_REDIS_DB=${TMS_TEST_REDIS_DB:-15}
+FAKE_HOST=${TMS_FAKE_HOST:-fake-providers}
 
 docker compose -f infra/docker-compose.yml exec -T -e TEST_DB="$TEST_DB" postgres \
   sh -c 'psql -U tms -tc "select 1 from pg_database where datname = '"'"'$TEST_DB'"'"'" | grep -q 1 || createdb -U tms "$TEST_DB"'
@@ -47,8 +54,8 @@ docker run --rm -i --network "$NETWORK" \
   -e TEST_S3_ENDPOINT=http://objectstore:8333 \
   -e TEST_MAIL_HOST=greenmail \
   -e TEST_LITELLM_URL=http://litellm:4000 \
-  -e TEST_FAKE_LLM_URL=http://fake-providers:4010 \
-  -e TEST_FAKE_MCP_URL=http://fake-providers:4010/mcp \
+  -e TEST_FAKE_LLM_URL="http://$FAKE_HOST:4010" \
+  -e TEST_FAKE_MCP_URL="http://$FAKE_HOST:4010/mcp" \
   -e STEPS="$STEPS"   -e RUN="${RUN:-}"   -e TEST_LOG_LEVEL="${TEST_LOG_LEVEL:-}" \
   "$IMAGE" bash -euo pipefail -c '
     mkdir -p /repo && tar -xf - -C /repo && cd /repo

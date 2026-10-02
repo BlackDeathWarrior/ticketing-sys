@@ -49,7 +49,7 @@ const INTERNAL = [
   /you are the first-line support assistant/i,
   /finish every turn by calling/i,
   /lessons from reviewed customer feedback/i,
-  /<\/?(customer_message|knowledge|approval_update|summary)\b/i,
+  /<\/?(customer_message|knowledge|approval_update|summary|system_note)\b/i,
   /\b(send_reply|request_human|search_knowledge|update_ticket)\b/,
   /\bsk-[A-Za-z0-9_-]{16,}\b/,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./,

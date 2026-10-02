@@ -213,7 +213,7 @@ describe('AI agent on web chat', () => {
     expect(run).toMatchObject({
       decision: 'sent',
       model: 'openai/scripted-cheap',
-      promptVersion: 'agent-v5',
+      promptVersion: 'agent-v6',
     });
     expect(run.sources.length).toBeGreaterThan(0);
     const reply = await waitFor(async () => {
@@ -339,6 +339,28 @@ describe('AI agent on web chat', () => {
     expect(answered.at(-1)).toMatchObject({ authorType: 'ai' });
     expect(answered.at(-1)!.body).toMatch(/business days/);
     expect(answered.some((m) => m.authorType === 'system')).toBe(false);
+  });
+
+  it('asks a model that answers in plain text to use the reply tool; if it will not, a person gets the answer', async () => {
+    // Some models write their answer as plain text after a tool result. It is a good
+    // answer: reminded once, the model sends it properly, with its sources.
+    const c = await chat('Tell me in plain words: when will my refund reach my card?');
+    const run = await waitForTurn(c.ticketId);
+    expect(run.decision).toBe('sent');
+    expect(run.sources.length).toBeGreaterThan(0);
+    const history = await t.app.get(ConversationsService).chatHistory(c.session);
+    expect(history.at(-1)).toMatchObject({ authorType: 'ai' });
+    expect(history.at(-1)!.body).toMatch(/business days/);
+    // The reminder is the system's own and never reaches the customer.
+    expect(JSON.stringify(history)).not.toContain('system_note');
+
+    // A model that keeps to plain text gives no confidence: its answer goes to a person.
+    const s = await chat('Please stay in plain words: when will my refund reach my card?');
+    const stubborn = await waitForTurn(s.ticketId);
+    expect(stubborn).toMatchObject({ decision: 'handover', rules: ['low_confidence'] });
+    const notes = (await t.call('GET', `/tickets/${s.ticketId}/notes`, { token: admin })).body;
+    expect(notes[0].body).toContain('Its unsent answer was');
+    expect(notes[0].body).toMatch(/business days/);
   });
 
   it('does not tell an email sender to wait: email answers are always drafts', async () => {
@@ -519,7 +541,7 @@ describe('AI agent on tickets an integration raises', () => {
     const ticketId = (await ticket(made.body.reference)).id as string;
 
     const run = await waitForTurn(ticketId);
-    expect(run).toMatchObject({ decision: 'drafted', promptVersion: 'agent-v5' });
+    expect(run).toMatchObject({ decision: 'drafted', promptVersion: 'agent-v6' });
     expect(run.rules).toContain('draft_channel');
     const draft = (await conversations(ticketId))[0]!.messages.find(
       (m) => m.deliveryStatus === 'draft',

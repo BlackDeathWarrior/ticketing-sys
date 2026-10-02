@@ -38,6 +38,7 @@ import { LanguageService } from './language.service';
 import { assess, handoverMessage, handoverNote, waitingMessage } from './policy';
 import {
   AGENT_PROMPT_VERSION,
+  REPLY_TOOL_REMINDER,
   agentSystemPrompt,
   customerTurn,
   SUMMARY_PROMPT_VERSION,
@@ -634,6 +635,8 @@ export class AiAgentService {
       | { kind: 'reply'; args: ReturnType<typeof sendReplyArgs.parse> }
       | { kind: 'human'; reason: string }
       | null = null;
+    /** An answer the model gave as plain text; it is asked once to send it with the reply tool. */
+    let plain: string | null = null;
     for (let step = 0; step < i.behaviour.maxSteps && !final; step++) {
       let completion;
       try {
@@ -641,7 +644,8 @@ export class AiAgentService {
           role: i.channel === 'voice' ? 'chat_agent_voice' : 'chat_agent',
           messages,
           tools: [...AGENT_TOOLS, ...companyTools.map((t) => t.definition)],
-          maxTokens: 700,
+          // The reply is short; the rest is room for models that reason before they answer.
+          maxTokens: 1200,
           temperature: 0.2,
           ticketId: i.ticket.id,
           conversationId: i.conversationId,
@@ -664,11 +668,17 @@ export class AiAgentService {
       const msg = completion.choices[0]?.message;
       const calls = msg?.tool_calls?.filter((c) => c.type === 'function') ?? [];
       if (!calls.length) {
-        if (msg?.content?.trim())
-          final = {
-            kind: 'reply',
-            args: sendReplyArgs.parse({ message: msg.content, confidence: 0.5 }),
-          };
+        const text = msg?.content?.trim() || null;
+        if (text && plain === null && step + 1 < i.behaviour.maxSteps) {
+          plain = text;
+          messages.push(
+            { role: 'assistant', content: text },
+            { role: 'user', content: REPLY_TOOL_REMINDER },
+          );
+          continue;
+        }
+        // Still plain text (or nothing): the answer stands without a confidence of its own.
+        plain = text ?? plain;
         break;
       }
       messages.push({ role: 'assistant', content: msg?.content ?? null, tool_calls: calls });
@@ -741,6 +751,9 @@ export class AiAgentService {
     }
 
     out.seenSources = [...new Set(labels.values())];
+    if (!final && plain) {
+      final = { kind: 'reply', args: sendReplyArgs.parse({ message: plain, confidence: 0.5 }) };
+    }
     if (!final) {
       out.rules = ['no_answer'];
       return finish();

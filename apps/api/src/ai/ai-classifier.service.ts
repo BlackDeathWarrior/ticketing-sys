@@ -74,7 +74,8 @@ export class AiClassifierService {
           },
         ],
         responseFormat: { type: 'json_object' },
-        maxTokens: 300,
+        // Room for a model that reasons before it answers: 300 left some with half a JSON object.
+        maxTokens: 1500,
         temperature: 0,
         ticketId,
       });

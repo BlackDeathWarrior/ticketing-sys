@@ -365,7 +365,31 @@ export function isSmallTalk(question: string): boolean {
   return greeting.test(q) && words(q.replace(greeting, ' ')).length === 0;
 }
 
+/**
+ * The scripted agent. A question containing "in plain words" makes it behave
+ * like the models that answer in plain text instead of calling send_reply: it
+ * uses the tool once the system reminds it (a `<system_note>`), and with "stay
+ * in plain words" not even then.
+ */
 export function agentReply(req: ChatRequest): ScriptedReply {
+  const lastUser = [...req.messages].reverse().find((m) => m.role === 'user');
+  const reminded = textOf(lastUser).includes('<system_note>');
+  // The reminder and the plain answer before it are not part of what was asked.
+  const asked = reminded ? { ...req, messages: req.messages.slice(0, -2) } : req;
+  const out = scriptedTurn(asked);
+  const question = textOf([...asked.messages].reverse().find((m) => m.role === 'user'));
+  const sent = out.toolCalls?.find((c) => c.name === 'send_reply');
+  if (
+    sent &&
+    /\bin plain words\b/i.test(question) &&
+    (!reminded || /\bstay in plain words\b/i.test(question))
+  ) {
+    return { content: String(sent.arguments.message ?? '') };
+  }
+  return out;
+}
+
+function scriptedTurn(req: ChatRequest): ScriptedReply {
   const question = stripTags(textOf([...req.messages].reverse().find((m) => m.role === 'user')));
   const toolResults = req.messages.filter((m) => m.role === 'tool');
   const language = isHindi(question) ? 'hi' : 'en';

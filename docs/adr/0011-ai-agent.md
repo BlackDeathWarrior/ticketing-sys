@@ -35,6 +35,7 @@ The AI agent answers customers first and hands over to people when it should. Th
    - the conversation, with customer text wrapped in `<customer_message>` tags (data, not instructions).
 3. It can call `search_knowledge`, `update_ticket` (category, or raising the priority) and `request_human`, and ends with `send_reply(message, confidence, sources, language, intent, resolves_issue)`.
 4. Every tool argument is validated with zod, the turn is capped at `maxSteps`, and the model is chosen by the router (ADR 0008).
+5. A model that answers in plain text instead of calling `send_reply` (some do, after a tool result) is reminded once, in a `<system_note>` (`REPLY_TOOL_REMINDER`, prompt `agent-v6`), and the turn continues. If it still answers in plain text, that text is the reply with no confidence of its own (0.5), which hands it to a person with the answer quoted in the note. Added 2026-10-02 after a live run in which a correct, tool-confirmed answer was handed over for this reason alone.
 
 **Policy** (`policy.ts`, pure and unit-tested)
 

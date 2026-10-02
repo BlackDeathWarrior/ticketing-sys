@@ -4,7 +4,7 @@ import { DEFAULT_BRANDING } from '@tms/shared';
  * Versioned prompts (ADR 0011). The version is recorded on every AI run, so a
  * change here is traceable in the audit trail; bump it with any edit.
  */
-export const AGENT_PROMPT_VERSION = 'agent-v5';
+export const AGENT_PROMPT_VERSION = 'agent-v6';
 export const CLASSIFIER_PROMPT_VERSION = 'classifier-v1';
 export const SUMMARY_PROMPT_VERSION = 'summary-v1';
 export const HANDOVER_PROMPT_VERSION = 'handover-v1';
@@ -166,6 +166,15 @@ export function ticketContext(t: {
   ];
   return lines.length ? lines.join('\n').slice(0, CONTEXT_MAX_CHARS) : null;
 }
+
+/**
+ * What the model is told, once, when it answers in plain text instead of
+ * calling a tool. Some models do that after a tool result. Plain text reaches
+ * nobody and carries no confidence, so a correct answer would be handed over
+ * as unsure.
+ */
+export const REPLY_TOOL_REMINDER =
+  '<system_note>\nYour last message was plain text, which the customer does not see. Send that answer now by calling send_reply, with your confidence and the sources you used. If you cannot answer, call request_human.\n</system_note>';
 
 /** Wraps a customer message so the model treats it as data. */
 export function customerTurn(text: string): string {

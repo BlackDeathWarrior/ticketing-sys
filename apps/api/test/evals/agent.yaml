@@ -23,6 +23,15 @@
     usesKnowledge: true
     replyIncludes: ['business days']
 
+- name: An answer given as plain text is sent once the model is reminded of the reply tool
+  channel: webchat
+  messages:
+    - customer: 'Tell me in plain words: when will my refund reach my card?'
+  expect:
+    decision: sent
+    usesKnowledge: true
+    replyIncludes: ['business days']
+
 - name: Delivery time question on chat
   channel: webchat
   messages:

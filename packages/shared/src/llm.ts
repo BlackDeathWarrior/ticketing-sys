@@ -81,7 +81,7 @@ export const LLM_PROVIDER_INFO: Record<LlmProvider, LlmProviderInfo> = {
     prefix: 'groq/',
     keyRequired: true,
     baseUrlRequired: false,
-    testModel: 'llama-3.1-8b-instant',
+    testModel: 'openai/gpt-oss-20b',
     catalogue: 'groq',
   },
   nvidia_nim: {

@@ -22,7 +22,7 @@ import {
   type UpdateLlmModelInput,
   type UpdateLlmProviderInput,
 } from '@tms/shared';
-import { and, asc, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { asc, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import type { RequestCtx } from '../common/request-context';
@@ -186,14 +186,19 @@ export class LlmSettingsService {
     });
   }
 
-  /** A tiny real completion (or embedding) through the provider's stored key. */
+  /**
+   * A tiny real completion (or embedding) through the provider's stored key,
+   * with one of the provider's own models when it has any (an enabled one
+   * first): the built-in test model is only a guess at what the provider
+   * still offers.
+   */
   async testProvider(ctx: RequestCtx, id: string) {
     const provider = await this.providerRow(id);
     const [model] = await this.db
       .select()
       .from(llmModels)
-      .where(and(eq(llmModels.providerId, id), eq(llmModels.enabled, true)))
-      .orderBy(asc(llmModels.createdAt))
+      .where(eq(llmModels.providerId, id))
+      .orderBy(desc(llmModels.enabled), asc(llmModels.createdAt))
       .limit(1);
     const info = LLM_PROVIDER_INFO[provider.provider as LlmProvider];
     const modelName = model?.model ?? `${info.prefix}${info.testModel}`;

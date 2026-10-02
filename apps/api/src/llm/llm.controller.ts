@@ -167,7 +167,8 @@ export class LlmController {
       const r = await this.llm.chat({
         role,
         messages: [{ role: 'user', content: body.prompt }],
-        maxTokens: 50,
+        // Enough for a model that reasons first; with 50 those returned nothing at all.
+        maxTokens: 400,
         timeoutMs: 30_000,
       });
       const { completion, ...meta } = r;

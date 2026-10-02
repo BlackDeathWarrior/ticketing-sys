@@ -156,6 +156,61 @@ describe('lessons from staff', () => {
   });
 });
 
+describe('a model that forgets the reply tool', () => {
+  const found = {
+    role: 'tool',
+    tool_call_id: 'c1',
+    content: JSON.stringify({
+      results: [
+        {
+          id: 'chunk-1',
+          source: 'Returns',
+          text: 'Refunds reach your card within 5 to 7 business days of approval.',
+        },
+      ],
+    }),
+  };
+  const turn = (question: string, more: ChatRequest['messages'] = []): ChatRequest => ({
+    model: 'scripted-cheap',
+    tools,
+    messages: [
+      { role: 'system', content: 'rules' },
+      { role: 'user', content: `<customer_message>\n${question}\n</customer_message>` },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{ id: 'c1', function: { name: 'search_knowledge' } }],
+      },
+      found,
+      ...more,
+    ],
+  });
+  const reminder = { role: 'user', content: '<system_note>\nUse send_reply.\n</system_note>' };
+
+  it('answers in plain text, and through the tool once it is reminded', () => {
+    const question = 'Tell me in plain words: when will my refund reach my card?';
+    const first = agentReply(turn(question));
+    expect(first.toolCalls ?? []).toEqual([]);
+    expect(first.content).toMatch(/business days/);
+
+    const second = agentReply(
+      turn(question, [{ role: 'assistant', content: first.content }, reminder]),
+    );
+    expect(second.toolCalls![0]!.name).toBe('send_reply');
+    expect(args(second)).toMatchObject({ message: first.content, sources: ['chunk-1'] });
+  });
+
+  it('keeps to plain text when told to stay that way', () => {
+    const question = 'Please stay in plain words: when will my refund reach my card?';
+    const first = agentReply(turn(question));
+    const second = agentReply(
+      turn(question, [{ role: 'assistant', content: first.content }, reminder]),
+    );
+    expect(second.toolCalls ?? []).toEqual([]);
+    expect(second.content).toBe(first.content);
+  });
+});
+
 describe("a shop's order tools", () => {
   const shopTools = [
     ...tools,
