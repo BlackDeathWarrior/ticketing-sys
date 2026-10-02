@@ -7,6 +7,7 @@ import {
   type CreateLlmModelInput,
   type CreateLlmProviderInput,
   LLM_PROVIDER_INFO,
+  type LlmCatalogueModel,
   type LlmModelView,
   type LlmProvider,
   type LlmProviderView,
@@ -17,6 +18,7 @@ import {
   type ModelRole,
   ROLE_REQUIREMENTS,
   type SetLlmRoleInput,
+  type TestLlmModelInput,
   type UpdateLlmModelInput,
   type UpdateLlmProviderInput,
 } from '@tms/shared';
@@ -34,6 +36,7 @@ import {
   type RouterModel,
   type RouterProvider,
 } from './llm-router';
+import { catalogueFor } from './model-catalogue';
 
 type ProviderRow = typeof llmProviders.$inferSelect;
 type ModelRow = typeof llmModels.$inferSelect;
@@ -220,7 +223,51 @@ export class LlmSettingsService {
     return { ...result, model: modelName, latencyMs: Date.now() - started };
   }
 
+  /**
+   * A tiny real call to one model with the provider's stored key, before the
+   * model is registered. LiteLLM's list is a catalogue: only the provider can
+   * say whether this key may use a model. Says nothing about the provider's
+   * own connection, so `lastTest` is left alone.
+   */
+  async testModel(id: string, input: TestLlmModelInput) {
+    const provider = await this.providerRow(id);
+    const prefix = LLM_PROVIDER_INFO[provider.provider as LlmProvider].prefix;
+    const model = input.model.startsWith(prefix) ? input.model : `${prefix}${input.model}`;
+    const started = Date.now();
+    let result: { ok: boolean; error?: string };
+    try {
+      result = await this.litellm.testConnection(input.mode, deploymentParams(provider, model));
+    } catch (err) {
+      result = { ok: false, error: (err as Error).message };
+    }
+    return { ...result, model, latencyMs: Date.now() - started };
+  }
+
   // ---- Models ----
+
+  /** The models LiteLLM knows for this provider: what "Add a model" offers to choose from. */
+  async catalogue(providerId: string): Promise<LlmCatalogueModel[]> {
+    const provider = await this.providerRow(providerId);
+    const kind = provider.provider as LlmProvider;
+    if (!LLM_PROVIDER_INFO[kind].catalogue) return [];
+    const [map, registered] = await Promise.all([
+      // Without the list the name is typed, as before: not a reason to fail the form.
+      this.litellm.costMap().catch((err: Error) => {
+        this.logger.warn(`LiteLLM's model list is not available: ${err.message}`);
+        return {};
+      }),
+      this.db
+        .select({ model: llmModels.model })
+        .from(llmModels)
+        .where(eq(llmModels.providerId, providerId)),
+    ]);
+    const prefix = LLM_PROVIDER_INFO[kind].prefix;
+    const added = new Set(registered.map((m) => m.model));
+    return catalogueFor(map, kind, new Date().toISOString().slice(0, 10)).map((m) => ({
+      ...m,
+      added: added.has(`${prefix}${m.model}`),
+    }));
+  }
 
   async listModels(): Promise<LlmModelView[]> {
     const rows = await this.db

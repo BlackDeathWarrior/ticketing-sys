@@ -44,7 +44,11 @@ export function ProvidersPanel() {
         'POST',
         `/settings/llm/providers/${p.id}/test`,
       );
-      setMessage(r.ok ? `${p.label}: ${r.model} answered.` : `${p.label}: ${r.error ?? 'failed'}`);
+      setMessage(
+        r.ok
+          ? `${p.label}: ${r.model} answered.`
+          : `${p.label}, tried with ${r.model}: ${r.error ?? 'failed'}`,
+      );
     });
 
   const toggle = (p: LlmProviderView) =>
@@ -120,6 +124,9 @@ export function ProvidersPanel() {
                   </td>
                   <td>
                     <TestResult result={p.lastTest} />
+                    {p.lastTest && !p.lastTest.ok && p.lastTest.error && (
+                      <div className={styles.reason}>{p.lastTest.error}</div>
+                    )}
                   </td>
                   <td>
                     <div className={styles.actions}>

@@ -72,6 +72,26 @@ Captured by `e2e/tests/garment/screenshots.spec.ts` (`SCREENSHOTS=1`).
 | Orbit Desk: failing payments on one incident ticket              | ![incident](screenshots/shop-orbit-incident.png)       |
 | Orbit Desk: a chat ticket with the calls the AI made             | ![tools](screenshots/shop-orbit-chat-tools.png)        |
 
+### Added the same evening: choosing a model, and a provider test that tells the truth
+
+Found while connecting a real provider to the demo. A new Google Gemini provider showed "Failed" with a good key: the connection test used `gemini-2.5-flash`, which Google no longer offers to new users, and Google's explanation was cut down to `GeminiException - {`.
+
+- **Fixed:** a failed test now shows the provider's own message (`litellmErrorReason`), in the note above the table and under "Failed" in the provider's row. Gemini is tested with `gemini-flash-lite-latest`, an alias that follows Google's current model.
+- **New:** in Settings → Models & roles, **Add model** lists the provider's chat and embedding models with prices and capabilities (`GET /settings/llm/providers/:id/catalogue`, from LiteLLM's model list: retired models and models that do not answer in text are left out, and endpoints only their owner knows still take a typed name). **Test model** (`POST /settings/llm/providers/:id/test-model`) sends one short request with the stored key and shows the provider's answer, without changing the provider's own test result.
+
+| Step                                                     | Result                                                                                     |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `format:check`, `lint`, `build`, `typecheck` (in Docker) | pass                                                                                       |
+| `pnpm test`                                              | 399 passed (api 200, Orbit Desk 111, shared 34, fake providers 33, SDK 11, help center 10) |
+| `pnpm test:int`                                          | 295 passed (25 files)                                                                      |
+| `e2e/tests/settings.spec.ts`, the two model tests        | 2 passed, against the demo stack                                                           |
+
+New tests: `litellm-error.test.ts` (5: the provider's message from a multi-line body, a one-line body, the first line otherwise, no key passed on), `model-catalogue.test.ts` (4: order, what is left out, providers without a prefix, endpoints with no list), one case in Orbit Desk's `logic.test.ts` (the choice's label and facts), two in `settings.int.test.ts` (trying a model that answers and one that fails without touching `lastTest`; the list for a provider, marked once added, refused to agents), and in `e2e/tests/settings.spec.ts` the list, the phone-width check of the form, and **Test model** with a model that fails and one that answers.
+
+By hand, with the real Gemini key on the demo stack: the provider's test now reads "Connected"; the list offered 29 chat and 3 embedding models; **Test model** on `gemini-2.5-flash` showed Google's "no longer available to new users" message, and on `gemini-flash-lite-latest` it answered. No model was added: that choice is the owner's.
+
+Known limit: the list is LiteLLM's catalogue, so it can offer a model a particular key may not use (as with `gemini-2.5-flash` here). **Test model** is how to find out.
+
 ## Phase 14: the Ethnic Threads demo (the app as a storefront over a scraped catalogue)
 
 Run on 2 October 2026, branch `feat/phase-14-garment-demo`, against the demo stack (`scripts/demo/garment-demo.ps1 up`, then `load -Llm scripted`) with the garment-web-scraper app (branch `feat/support-desk-integration`) running on the same machine.

@@ -20,7 +20,7 @@ Prerequisites: `pnpm docker:up && pnpm sample:load`.
 
 ## Models and roles
 
-1. Open **Models & roles** and click **Add model**. Pick your provider and enter a model name, for example `claude-haiku-4-5`. Capabilities and prices fill in from LiteLLM.
+1. Open **Models & roles** and click **Add model**. Pick your provider and choose a model from its list, for example `claude-haiku-4-5` (for a local or self-hosted endpoint, type the name). **Test model** sends one short request with the provider's key and shows its answer. Capabilities and prices fill in from LiteLLM.
 2. Under **Roles**, "AI agent (chat and email)" lists models cheapest first. Click **Try it**: the answer names the model that replied.
 3. Set the cheapest provider's cap to `0` on **AI providers**. Back in **Models & roles**, it shows "over budget". **Try it** now answers from the next model.
 4. **Change** a role to "Fixed order", tick two models, reorder them and save. **Try it** uses the first one.

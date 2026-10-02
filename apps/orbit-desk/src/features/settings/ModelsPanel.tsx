@@ -1,10 +1,16 @@
-import type { LlmModelView, LlmProviderView, LlmRoleView, RoleMode } from '@tms/shared';
+import type {
+  LlmCatalogueModel,
+  LlmModelView,
+  LlmProviderView,
+  LlmRoleView,
+  RoleMode,
+} from '@tms/shared';
 import { type FormEvent, useState } from 'react';
 import { api } from '../../api/client';
 import { Badge, Button, Card, CardHeader, Dialog, Icon, Input, Select } from '../../components/ui';
 import { cx } from '../../lib/format';
 import { useGet } from '../../lib/useGet';
-import { formatPerMTok, move, skipLabel } from './logic';
+import { catalogueFacts, catalogueOption, formatPerMTok, move, skipLabel } from './logic';
 import styles from './Settings.module.css';
 
 export function ModelsPanel() {
@@ -315,6 +321,9 @@ function RoleRow({
   );
 }
 
+/** The choice that swaps the list for a text field. */
+const TYPE_A_NAME = '__type';
+
 function ModelForm({
   providers,
   onCancel,
@@ -325,6 +334,11 @@ function ModelForm({
   onSaved: () => void;
 }) {
   const [providerId, setProviderId] = useState(providers[0]?.id ?? '');
+  // What the provider offers, from LiteLLM's model list. Empty for endpoints only their owner knows.
+  const catalogue = useGet<LlmCatalogueModel[]>(
+    providerId ? `/settings/llm/providers/${providerId}/catalogue` : null,
+  );
+  const [choice, setChoice] = useState('');
   const [model, setModel] = useState('');
   const [label, setLabel] = useState('');
   const [mode, setMode] = useState<'chat' | 'embedding'>('chat');
@@ -333,6 +347,31 @@ function ModelForm({
   const [tools, setTools] = useState<'auto' | 'yes' | 'no'>('auto');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [tested, setTested] = useState<string | null>(null);
+
+  const loadingChoices = catalogue.loading || (!catalogue.data && !catalogue.error);
+  const offered = loadingChoices ? [] : (catalogue.data ?? []).filter((m) => m.mode === mode);
+  const chosen = offered.find((m) => m.model === choice);
+  const typing = !loadingChoices && (!offered.length || choice === TYPE_A_NAME);
+  const name = typing ? model.trim() : (chosen?.model ?? '');
+
+  // LiteLLM's list cannot say whether this key may use a model; the provider can.
+  const tryIt = async () => {
+    setTesting(true);
+    setTested(null);
+    const r = await api<{ ok: boolean; error?: string; latencyMs: number }>(
+      'POST',
+      `/settings/llm/providers/${providerId}/test-model`,
+      { model: name, mode },
+    ).catch((err: Error) => ({ ok: false, error: err.message, latencyMs: 0 }));
+    setTested(
+      r.ok
+        ? `${name} answered in ${r.latencyMs} ms.`
+        : `The provider did not accept ${name}: ${r.error ?? 'no reason given'}`,
+    );
+    setTesting(false);
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -342,7 +381,7 @@ function ModelForm({
     try {
       await api('POST', '/settings/llm/models', {
         providerId,
-        model: model.trim(),
+        model: name,
         ...(label.trim() ? { label: label.trim() } : {}),
         mode,
         ...(price(input) !== undefined ? { inputCostPerMTok: price(input) } : {}),
@@ -366,17 +405,70 @@ function ModelForm({
           Add a model
         </h2>
         <p className={styles.dialogLede}>
-          Use the provider's model name, such as claude-haiku-4-5 or llama-3.1-8b-instant.
+          {offered.length || loadingChoices
+            ? "Choose one of the provider's models, or type the name of one the list does not have."
+            : "Use the provider's model name, such as claude-haiku-4-5 or llama-3.1-8b-instant."}
         </p>
       </div>
       <Select
         id="model-provider"
         label="Provider"
         value={providerId}
-        onChange={(e) => setProviderId(e.target.value)}
+        onChange={(e) => {
+          setProviderId(e.target.value);
+          setChoice('');
+          setTested(null);
+        }}
         options={providers.map((p) => ({ value: p.id, label: p.label }))}
       />
       <div className={styles.formRow}>
+        <Select
+          id="model-mode"
+          label="Kind"
+          value={mode}
+          onChange={(e) => {
+            setMode(e.target.value as 'chat' | 'embedding');
+            setChoice('');
+            setTested(null);
+          }}
+          options={[
+            { value: 'chat', label: 'Chat' },
+            { value: 'embedding', label: 'Embeddings' },
+          ]}
+        />
+        {offered.length || loadingChoices ? (
+          <Select
+            id="model-choice"
+            label="Model"
+            value={chosen || choice === TYPE_A_NAME ? choice : ''}
+            disabled={loadingChoices}
+            onChange={(e) => {
+              setChoice(e.target.value);
+              setTested(null);
+            }}
+            options={[
+              { value: '', label: loadingChoices ? 'Loading models…' : 'Choose a model' },
+              ...offered.map((m) => ({ value: m.model, label: catalogueOption(m) })),
+              { value: TYPE_A_NAME, label: 'Another model: type its name' },
+            ]}
+          />
+        ) : (
+          <Input
+            id="model-name"
+            label="Model name"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            required
+          />
+        )}
+      </div>
+      {chosen && (
+        <p className={styles.note} data-testid="model-facts">
+          {chosen.added ? 'This model is already added. ' : ''}
+          {catalogueFacts(chosen)}
+        </p>
+      )}
+      {offered.length > 0 && typing && (
         <Input
           id="model-name"
           label="Model name"
@@ -384,23 +476,13 @@ function ModelForm({
           onChange={(e) => setModel(e.target.value)}
           required
         />
+      )}
+      <div className={styles.formRow}>
         <Input
           id="model-label"
           label="Display name (optional)"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-        />
-      </div>
-      <div className={styles.formRow}>
-        <Select
-          id="model-mode"
-          label="Kind"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as 'chat' | 'embedding')}
-          options={[
-            { value: 'chat', label: 'Chat' },
-            { value: 'embedding', label: 'Embeddings' },
-          ]}
         />
         <Select
           id="model-tools"
@@ -432,6 +514,11 @@ function ModelForm({
           onChange={(e) => setOutput(e.target.value)}
         />
       </div>
+      {tested && (
+        <p className={styles.tryOut} role="status">
+          {tested}
+        </p>
+      )}
       {error && (
         <p className={styles.error} role="alert">
           {error}
@@ -441,7 +528,15 @@ function ModelForm({
         <Button variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={saving || !model.trim() || !providerId}>
+        <Button
+          variant="secondary"
+          onClick={tryIt}
+          disabled={testing || !name || !providerId}
+          title="Sends one short request to the provider with its stored key"
+        >
+          {testing ? 'Testing…' : 'Test model'}
+        </Button>
+        <Button type="submit" disabled={saving || !name || !providerId || !!chosen?.added}>
           Add model
         </Button>
       </div>

@@ -1,6 +1,8 @@
 import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import type { Env } from '../config/env';
 import { ENV } from '../infra/tokens';
+import { litellmErrorReason } from './litellm-error';
+import type { CostMap } from './model-catalogue';
 
 export interface LiteLlmModelInfo {
   mode?: string;
@@ -18,6 +20,8 @@ export interface TestConnectionResult {
 }
 
 const TIMEOUT_MS = 15_000;
+/** LiteLLM's model list is a few megabytes and changes when LiteLLM is upgraded. */
+const COST_MAP_TTL_MS = 10 * 60_000;
 
 /**
  * LiteLLM's admin API (ADR 0003). Provider keys go into LiteLLM credentials
@@ -26,7 +30,18 @@ const TIMEOUT_MS = 15_000;
  */
 @Injectable()
 export class LiteLlmAdminClient {
+  private costMapCache: { at: number; map: CostMap } | null = null;
+
   constructor(@Inject(ENV) private readonly env: Env) {}
+
+  /** Every model LiteLLM knows, with its kind, price and capabilities. Kept for ten minutes. */
+  async costMap(): Promise<CostMap> {
+    const cached = this.costMapCache;
+    if (cached && Date.now() - cached.at < COST_MAP_TTL_MS) return cached.map;
+    const map = ((await this.call('GET', '/public/litellm_model_cost_map')) ?? {}) as CostMap;
+    this.costMapCache = { at: Date.now(), map };
+    return map;
+  }
 
   createCredential(name: string, values: Record<string, string>, provider: string) {
     return this.call('POST', '/credentials', {
@@ -85,7 +100,7 @@ export class LiteLlmAdminClient {
     if (res.status === 'success') return { ok: true };
     return {
       ok: false,
-      error: firstLine(res.result?.error) ?? 'The provider rejected the request',
+      error: litellmErrorReason(res.result?.error) ?? 'The provider rejected the request',
     };
   }
 
@@ -111,12 +126,4 @@ export class LiteLlmAdminClient {
       );
     return text ? JSON.parse(text) : undefined;
   }
-}
-
-/** LiteLLM errors carry a Python traceback; the first line is the useful part. */
-function firstLine(text: string | undefined): string | undefined {
-  return text
-    ?.split('\n')[0]
-    ?.replace(/^litellm\.\w+:\s*/, '')
-    .slice(0, 300);
 }

@@ -24,6 +24,8 @@ import {
   type ModelRole,
   type SetLlmRoleInput,
   setLlmRoleSchema,
+  type TestLlmModelInput,
+  testLlmModelSchema,
   testLlmRoleSchema,
   type UpdateLlmModelInput,
   updateLlmModelSchema,
@@ -89,6 +91,22 @@ export class LlmController {
   @HttpCode(200)
   testProvider(@Ctx() ctx: RequestCtx, @Param('id', ParseUUIDPipe) id: string) {
     return this.settings.testProvider(ctx, id);
+  }
+
+  /** Tries one model with the provider's key, before it is added. Asked for by a person, never by itself. */
+  @Post('providers/:id/test-model')
+  @HttpCode(200)
+  testModel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(testLlmModelSchema)) body: TestLlmModelInput,
+  ) {
+    return this.settings.testModel(id, body);
+  }
+
+  /** The models the provider offers, to choose from when adding one. Empty when the name must be typed. */
+  @Get('providers/:id/catalogue')
+  catalogue(@Param('id', ParseUUIDPipe) id: string) {
+    return this.settings.catalogue(id);
   }
 
   @Get('models')

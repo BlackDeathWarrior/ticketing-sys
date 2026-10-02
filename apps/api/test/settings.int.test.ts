@@ -319,4 +319,87 @@ describe('LLM providers, models and roles', () => {
       cheap.modelId,
     ]);
   });
+
+  it('tries a model before it is added, without touching the provider’s own test result', async () => {
+    const before = (await t.call('GET', '/settings/llm/providers', { token: admin })).body.find(
+      (p: { id: string }) => p.id === cheap.providerId,
+    ).lastTest;
+    const tryModel = (model: string, token = admin) =>
+      t.call('POST', `/settings/llm/providers/${cheap.providerId}/test-model`, {
+        token,
+        body: { model },
+      });
+
+    const good = await tryModel('scripted-cheap');
+    expect(good.status).toBe(200);
+    expect(good.body).toMatchObject({ ok: true, model: 'openai/scripted-cheap' });
+
+    const bad = await tryModel('always-fails');
+    expect(bad.status).toBe(200);
+    expect(bad.body).toMatchObject({ ok: false, model: 'openai/always-fails' });
+    expect(bad.body.error).toEqual(expect.any(String));
+    expect(bad.body.error.length).toBeGreaterThan(3);
+    expect(JSON.stringify(bad.body)).not.toContain(fakeKey);
+
+    const after = (await t.call('GET', '/settings/llm/providers', { token: admin })).body.find(
+      (p: { id: string }) => p.id === cheap.providerId,
+    ).lastTest;
+    expect(after).toEqual(before);
+    expect((await tryModel('has a space')).status).toBe(400);
+    expect((await tryModel('scripted-cheap', tokens.agent)).status).toBe(403);
+  });
+
+  it("offers a provider's models to choose from, and none where only the owner knows them", async () => {
+    type Offered = {
+      model: string;
+      mode: string;
+      supportsTools: boolean;
+      inputCostPerMTok: number | null;
+      added: boolean;
+    };
+    const catalogue = (id: string, token = admin) =>
+      t.call('GET', `/settings/llm/providers/${id}/catalogue`, { token });
+
+    // A self-hosted endpoint: LiteLLM cannot know what it serves.
+    const own = await catalogue(cheap.providerId);
+    expect(own.status).toBe(200);
+    expect(own.body).toEqual([]);
+
+    const made = await t.call('POST', '/settings/llm/providers', {
+      token: admin,
+      body: { provider: 'anthropic', label: `Catalogue ${uniq()}`, apiKey: fakeKey },
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const id = made.body.id as string;
+    try {
+      const listed = await catalogue(id);
+      expect(listed.status).toBe(200);
+      const models = listed.body as Offered[];
+      expect(models.length).toBeGreaterThan(3);
+      for (const m of models) {
+        expect(['chat', 'embedding']).toContain(m.mode);
+        // The provider's own name: the LiteLLM prefix is added when the model is registered.
+        expect(m.model.startsWith('anthropic/')).toBe(false);
+        expect(m.added).toBe(false);
+      }
+      const pick = models.find((m) => m.supportsTools && (m.inputCostPerMTok ?? 0) > 0)!;
+      expect(pick, 'a chat model with tools and a price').toBeDefined();
+      expect(pick.model).toMatch(/^claude-/);
+
+      // Once registered it is marked, so the form does not add it twice.
+      const added = await t.call('POST', '/settings/llm/models', {
+        token: admin,
+        body: { providerId: id, model: pick.model },
+      });
+      expect(added.status, JSON.stringify(added.body)).toBe(201);
+      expect(added.body).toMatchObject({ model: `anthropic/${pick.model}`, supportsTools: true });
+      const again = (await catalogue(id)).body as Offered[];
+      expect(again.filter((m) => m.added).map((m) => m.model)).toEqual([pick.model]);
+
+      expect((await catalogue(id, tokens.agent)).status).toBe(403);
+      expect((await catalogue('00000000-0000-4000-8000-000000000000')).status).toBe(404);
+    } finally {
+      await t.call('DELETE', `/settings/llm/providers/${id}`, { token: admin });
+    }
+  });
 });

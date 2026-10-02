@@ -2,6 +2,7 @@ import type {
   ChannelActivity,
   ChannelHealth,
   HealthState,
+  LlmCatalogueModel,
   LlmRoleCandidate,
   Permission,
 } from '@tms/shared';
@@ -69,6 +70,32 @@ export function formatUsd(value: number | null | undefined): string {
 export function formatPerMTok(value: number | null): string {
   if (value === null) return 'unknown';
   return `$${value < 1 ? value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '') : value.toFixed(2)}`;
+}
+
+/** One choice in "Add a model": the name, and its price when LiteLLM knows it. */
+export function catalogueOption(m: LlmCatalogueModel): string {
+  const price =
+    m.inputCostPerMTok === null
+      ? ''
+      : m.mode === 'embedding' || m.outputCostPerMTok === null
+        ? ` · ${formatPerMTok(m.inputCostPerMTok)} per 1M`
+        : ` · ${formatPerMTok(m.inputCostPerMTok)} in / ${formatPerMTok(m.outputCostPerMTok)} out`;
+  return `${m.model}${price}${m.added ? ' · already added' : ''}`;
+}
+
+/** What LiteLLM says about a chosen model, in a sentence under the choice. */
+export function catalogueFacts(m: LlmCatalogueModel): string {
+  const facts: string[] = [];
+  if (m.mode === 'chat') {
+    const can = [m.supportsTools && 'tools', m.supportsJson && 'JSON', m.supportsVision && 'images']
+      .filter(Boolean)
+      .join(', ');
+    facts.push(can ? `Can use ${can}` : 'No tool calling: the AI agent cannot use it');
+  }
+  if (m.contextWindow) facts.push(`reads up to ${m.contextWindow.toLocaleString('en-US')} tokens`);
+  if (m.inputCostPerMTok === null) facts.push('price unknown: set one below');
+  if (m.retiresOn) facts.push(`the provider retires it on ${m.retiresOn}`);
+  return facts.length ? `${facts.join(' · ')}.` : '';
 }
 
 export function maskedKey(last4: string | null, set = true): string {

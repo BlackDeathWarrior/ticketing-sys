@@ -143,6 +143,16 @@
   color: var(--color-lilac-white);
 }
 
+/* Why a test failed, under its result: wraps instead of widening the table. */
+.reason {
+  max-width: 44ch;
+  margin-top: 4px;
+  font-size: var(--text-ui);
+  color: var(--color-fog);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;

@@ -29,8 +29,18 @@ export interface LlmProviderInfo {
   /** A base URL must be given (local or self-hosted endpoints). */
   baseUrlRequired: boolean;
   defaultBaseUrl?: string;
-  /** Used by "Test connection" when the provider has no models yet. */
+  /**
+   * Used by "Test connection" when the provider has no models yet. Prefer a
+   * provider's "latest" alias over a dated name: providers retire models, and
+   * a retired test model makes a good key look broken.
+   */
   testModel: string;
+  /**
+   * The provider's name in LiteLLM's model list, which is where the choices in
+   * "Add a model" come from. Absent for endpoints whose models only their
+   * owner knows (local and self-hosted ones): there the name is typed.
+   */
+  catalogue?: string;
 }
 
 export const LLM_PROVIDER_INFO: Record<LlmProvider, LlmProviderInfo> = {
@@ -40,6 +50,7 @@ export const LLM_PROVIDER_INFO: Record<LlmProvider, LlmProviderInfo> = {
     keyRequired: true,
     baseUrlRequired: false,
     testModel: 'claude-haiku-4-5',
+    catalogue: 'anthropic',
   },
   openai: {
     label: 'OpenAI',
@@ -47,13 +58,15 @@ export const LLM_PROVIDER_INFO: Record<LlmProvider, LlmProviderInfo> = {
     keyRequired: true,
     baseUrlRequired: false,
     testModel: 'gpt-4o-mini',
+    catalogue: 'openai',
   },
   gemini: {
     label: 'Google Gemini',
     prefix: 'gemini/',
     keyRequired: true,
     baseUrlRequired: false,
-    testModel: 'gemini-2.5-flash',
+    testModel: 'gemini-flash-lite-latest',
+    catalogue: 'gemini',
   },
   mistral: {
     label: 'Mistral',
@@ -61,6 +74,7 @@ export const LLM_PROVIDER_INFO: Record<LlmProvider, LlmProviderInfo> = {
     keyRequired: true,
     baseUrlRequired: false,
     testModel: 'mistral-small-latest',
+    catalogue: 'mistral',
   },
   groq: {
     label: 'Groq',
@@ -68,6 +82,7 @@ export const LLM_PROVIDER_INFO: Record<LlmProvider, LlmProviderInfo> = {
     keyRequired: true,
     baseUrlRequired: false,
     testModel: 'llama-3.1-8b-instant',
+    catalogue: 'groq',
   },
   nvidia_nim: {
     label: 'NVIDIA NIM',
@@ -75,6 +90,7 @@ export const LLM_PROVIDER_INFO: Record<LlmProvider, LlmProviderInfo> = {
     keyRequired: true,
     baseUrlRequired: false,
     testModel: 'meta/llama-3.1-8b-instruct',
+    catalogue: 'nvidia_nim',
   },
   openrouter: {
     label: 'OpenRouter',
@@ -82,6 +98,7 @@ export const LLM_PROVIDER_INFO: Record<LlmProvider, LlmProviderInfo> = {
     keyRequired: true,
     baseUrlRequired: false,
     testModel: 'meta-llama/llama-3.1-8b-instruct',
+    catalogue: 'openrouter',
   },
   sarvam: {
     label: 'Sarvam',
@@ -212,6 +229,10 @@ export const createLlmModelSchema = z.object({
 });
 export type CreateLlmModelInput = z.infer<typeof createLlmModelSchema>;
 
+/** A model to try with the provider's stored key before it is registered. */
+export const testLlmModelSchema = createLlmModelSchema.pick({ model: true, mode: true });
+export type TestLlmModelInput = z.infer<typeof testLlmModelSchema>;
+
 export const updateLlmModelSchema = z
   .object({
     label: z.string().trim().min(1).max(100),
@@ -279,6 +300,23 @@ export interface LlmModelView {
   outputCostPerMTok: number | null;
   costSource: 'litellm' | 'manual' | 'unknown';
   enabled: boolean;
+}
+
+/** A model the provider offers, from LiteLLM's model list: a choice in "Add a model". */
+export interface LlmCatalogueModel {
+  /** The provider's model name without the LiteLLM prefix, e.g. `claude-haiku-4-5`. */
+  model: string;
+  mode: ModelMode;
+  supportsTools: boolean;
+  supportsJson: boolean;
+  supportsVision: boolean;
+  contextWindow: number | null;
+  inputCostPerMTok: number | null;
+  outputCostPerMTok: number | null;
+  /** The day the provider has said it will retire the model (YYYY-MM-DD), when known. */
+  retiresOn: string | null;
+  /** Already registered for this provider. */
+  added: boolean;
 }
 
 export interface LlmRoleCandidate {
