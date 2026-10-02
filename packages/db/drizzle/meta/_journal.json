@@ -155,6 +155,13 @@
       "when": 1790877009392,
       "tag": "0021_webhooks",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790979751270,
+      "tag": "0022_user_preferences",
+      "breakpoints": true
     }
   ]
 }

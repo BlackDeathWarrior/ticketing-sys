@@ -11,20 +11,24 @@ export function useGet<T>(path: string | null) {
   const [loading, setLoading] = useState(false);
   const latest = useRef(path);
   latest.current = path;
+  const calls = useRef(0);
 
   const reload = useCallback(async () => {
     if (!path) return;
+    const call = ++calls.current;
+    // Ignore responses for a path the caller has since moved away from, and an older
+    // response that arrives after a newer one (two live refreshes close together).
+    const current = () => latest.current === path && calls.current === call;
     setLoading(true);
     try {
       const result = await api<T>('GET', path);
-      // Ignore responses for a path the caller has since moved away from.
-      if (latest.current !== path) return;
+      if (!current()) return;
       setData(result);
       setError(undefined);
     } catch (err) {
-      if (latest.current === path) setError(err instanceof Error ? err.message : String(err));
+      if (current()) setError(err instanceof Error ? err.message : String(err));
     } finally {
-      if (latest.current === path) setLoading(false);
+      if (current()) setLoading(false);
     }
   }, [path]);
 

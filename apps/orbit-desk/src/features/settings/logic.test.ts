@@ -45,7 +45,8 @@ describe('settings tabs', () => {
       'usage',
       'system',
     ]);
-    expect(canOpenSettings(can(['ticket:read']))).toBe(false);
+    // Everyone has their own settings (notification sound).
+    expect(canOpenSettings(can(['ticket:read']))).toBe(true);
   });
 
   it('shows channels and customers to someone with channel settings alone', () => {

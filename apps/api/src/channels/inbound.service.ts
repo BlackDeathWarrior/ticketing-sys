@@ -293,7 +293,12 @@ function conversationMetadata(env: ParsedEnvelope): Record<string, unknown> {
     };
   }
   if (env.channel === 'webchat') {
-    return { sessionId: env.threadKey, visitorName: env.from.displayName };
+    return {
+      sessionId: env.threadKey,
+      visitorName: env.from.displayName,
+      // What the chat vouches for: `webchat_session` is an anonymous visitor, whatever they typed.
+      identity: env.from.identity.type,
+    };
   }
   if (env.channel === 'whatsapp') {
     // Set by the WhatsApp adapter; see WaConversationMeta.

@@ -50,6 +50,14 @@ export class ChatSessionService {
    * Resumes a session from its token, or starts a new one from the handshake.
    * A session keeps the integration it started with; a token from another
    * integration's site starts a new session.
+   *
+   * A session is also resumed only by the person it belongs to. A browser
+   * keeps the session token after the site's user signs out, so the token
+   * alone proves nothing about who is there now:
+   * - a session a host site vouched for needs that site's identity token for
+   *   the same person again (an expired one will do: it was issued to them);
+   * - an anonymous session is not carried into a signed-in chat.
+   * Anything else starts a new session, with no history and no identity.
    */
   async open(auth: {
     token?: string;
@@ -63,19 +71,26 @@ export class ChatSessionService {
       : null;
     if (auth.integration && !integration) throw new UnknownIntegrationError();
 
+    const presented = auth.identityToken
+      ? await this.verifyIdentity(auth.identityToken, integration?.slug)
+      : null;
     if (auth.token) {
       const resumed = await this.verifySession(auth.token);
-      if (resumed && resumed.integrationId === integration?.id) {
+      if (resumed && resumed.integrationId === integration?.id && sameVisitor(resumed, presented)) {
         return { session: resumed, token: auth.token };
       }
     }
-    const identity = auth.identityToken
-      ? await this.verifyIdentity(auth.identityToken, integration?.slug)
-      : null;
+    // A new verified session needs a token that is still valid.
+    const identity = presented && !presented.expired ? presented : null;
     const session: ChatSession = {
       sid: randomUUID(),
       ...(identity
-        ? { ...identity, verified: true }
+        ? {
+            externalId: identity.externalId,
+            email: identity.email,
+            name: identity.name,
+            verified: true,
+          }
         : { name: auth.name, email: auth.email, verified: false }),
       ...(integration ? { integrationId: integration.id, integrationSlug: integration.slug } : {}),
     };
@@ -109,7 +124,8 @@ export class ChatSessionService {
       return {
         identity: { type: 'email', value: s.email },
         displayName: s.name,
-        extraIdentities: [session],
+        // The host site vouched for the address.
+        extraIdentities: [session, { type: 'email', value: s.email, verified: true }],
       };
     }
     return {
@@ -155,8 +171,13 @@ export class ChatSessionService {
    * Identity tokens are HS256 JWTs signed by the host site: with its
    * integration's own secret when it has one, else with CHAT_IDENTITY_SECRET.
    * A token that does not verify is ignored and the visitor stays anonymous.
+   * An expired token still says who it was issued to (`expired: true`): enough
+   * to resume that person's own session, not to start a new one as them.
    */
-  private async verifyIdentity(token: string, integrationSlug?: string) {
+  private async verifyIdentity(
+    token: string,
+    integrationSlug?: string,
+  ): Promise<PresentedIdentity | null> {
     const own = integrationSlug
       ? await this.secrets.get(chatIdentitySecretKey(integrationSlug))
       : null;
@@ -165,16 +186,48 @@ export class ChatSessionService {
       this.logger.warn('identity token ignored: no chat identity secret is set');
       return null;
     }
-    try {
+    const read = async (ignoreExpiration: boolean) => {
       const c = await this.jwt.verifyAsync<{ sub?: string; email?: string; name?: string }>(token, {
         secret,
         algorithms: ['HS256'],
+        ignoreExpiration,
       });
       if (!c.sub && !c.email) return null;
-      return { externalId: c.sub, email: c.email?.toLowerCase(), name: c.name };
+      return {
+        externalId: c.sub,
+        email: c.email?.toLowerCase(),
+        name: c.name,
+        expired: ignoreExpiration,
+      };
+    };
+    try {
+      return await read(false);
     } catch (err) {
+      if ((err as Error).name === 'TokenExpiredError') {
+        try {
+          return await read(true);
+        } catch {
+          return null;
+        }
+      }
       this.logger.warn(`invalid chat identity token: ${(err as Error).message}`);
       return null;
     }
   }
+}
+
+interface PresentedIdentity {
+  externalId?: string;
+  email?: string;
+  name?: string;
+  expired: boolean;
+}
+
+/** Whether the person presenting `identity` (or none) is the one the stored session belongs to. */
+function sameVisitor(session: ChatSession, identity: PresentedIdentity | null): boolean {
+  if (!session.verified) return identity === null;
+  if (!identity) return false;
+  return session.externalId || identity.externalId
+    ? session.externalId === identity.externalId
+    : !!session.email && session.email === identity.email;
 }

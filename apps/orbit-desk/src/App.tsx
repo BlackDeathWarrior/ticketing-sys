@@ -158,19 +158,28 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
   ];
   const refresh = () => refreshers.forEach((r) => void r.reload());
 
-  useAgentEvents((e) => {
+  useAgentEvents((events) => {
     // Knowledge-base events concern the KB page, not the queue.
-    if (e.type.startsWith('kb.')) return;
+    if (events.every((e) => e.type.startsWith('kb.'))) return;
     refresh();
     setLiveTick((n) => n + 1);
   });
 
-  // "/" jumps to search from anywhere that isn't already a text field.
+  // "/" jumps to search from anywhere that isn't already a text field. The box
+  // is in the tickets card, so from another page the dashboard opens first.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === '/' && !isTyping(e.target) && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
-        searchRef.current?.focus();
+        const focus = () => {
+          searchRef.current?.focus();
+          searchRef.current?.scrollIntoView({ block: 'center' });
+        };
+        if (searchRef.current) focus();
+        else {
+          window.location.hash = '#/';
+          setTimeout(focus, 80);
+        }
       }
     };
     window.addEventListener('keydown', onKey);
@@ -218,13 +227,7 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
         <div className={styles.main}>
           <StarField className={styles.stars} />
           <TopBar
-            ref={searchRef}
             title={ROUTE_TITLES[route]}
-            search={search}
-            onSearch={(value) => {
-              setSearch(value);
-              if (value && route !== 'dashboard') window.location.hash = '#/';
-            }}
             onOpenMenu={() => setMenuOpen(true)}
             onNewTicket={() => setComposerOpen(true)}
             onOpenTicket={setSelectedId}
@@ -254,6 +257,8 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
                 openTickets={toTickets(open.data?.items)}
                 overview={overview.data}
                 search={search}
+                onSearch={setSearch}
+                searchRef={searchRef}
                 channel={channel}
                 onChannel={setChannel}
                 handling={handling}

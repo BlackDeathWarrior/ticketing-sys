@@ -15,6 +15,8 @@ import {
   createUserSchema,
   type UpdateUserInput,
   updateUserSchema,
+  type UserPreferences,
+  userPreferencesSchema,
 } from '@tms/shared';
 import { Ctx, type RequestCtx, RequirePermission } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
@@ -52,6 +54,29 @@ export class UsersController {
     @Body(new ZodPipe(updateUserSchema)) body: UpdateUserInput,
   ) {
     return this.users.update(ctx, id, body);
+  }
+}
+
+/** What a signed-in person sets for themselves; every staff role has `ticket:read`. */
+@ApiTags('users')
+@ApiBearerAuth()
+@Controller('me')
+export class MeController {
+  constructor(private readonly users: UsersService) {}
+
+  @Get('preferences')
+  @RequirePermission('ticket:read')
+  preferences(@Ctx() ctx: RequestCtx) {
+    return this.users.preferences(ctx.user!.id);
+  }
+
+  @Put('preferences')
+  @RequirePermission('ticket:read')
+  setPreferences(
+    @Ctx() ctx: RequestCtx,
+    @Body(new ZodPipe(userPreferencesSchema)) body: UserPreferences,
+  ) {
+    return this.users.setPreferences(ctx, body);
   }
 }
 

@@ -5,15 +5,17 @@ import {
   TICKET_HANDLING,
   type TicketHandling,
 } from '@tms/shared';
-import { useMemo, useState } from 'react';
+import { type RefObject, useMemo, useState } from 'react';
 import { channelLabels, minutesSince } from '../../data/adapters';
 import type { Ticket } from '../../data/types';
 import { cx, relativeTime } from '../../lib/format';
 import {
   Avatar,
+  Badge,
   Button,
   Card,
   PriorityGlyph,
+  SearchField,
   Select,
   SlaIndicator,
   StatusPill,
@@ -21,7 +23,15 @@ import {
   type TabItem,
 } from '../../components/ui';
 import { AiMark } from '../ai/AiParts';
-import { byUrgency, inTab, type StatusTab, statusTabs } from './logic';
+import {
+  inTab,
+  isNewTicket,
+  type SortBy,
+  sortOptions,
+  sortTickets,
+  type StatusTab,
+  statusTabs,
+} from './logic';
 import styles from './TicketTable.module.css';
 
 const HANDLING_OPTIONS = [
@@ -42,6 +52,9 @@ interface TicketTableProps {
   loading: boolean;
   error?: string;
   search: string;
+  onSearch: (value: string) => void;
+  /** So "/" can put the cursor in the search box from anywhere. */
+  searchRef?: RefObject<HTMLInputElement | null>;
   channel: Channel | '';
   onChannel: (channel: Channel | '') => void;
   /** AI-handled, human-handled or handed-over tickets only. */
@@ -59,6 +72,8 @@ export function TicketTable({
   loading,
   error,
   search,
+  onSearch,
+  searchRef,
   channel,
   onChannel,
   handling,
@@ -68,11 +83,17 @@ export function TicketTable({
   onClearFilters,
 }: TicketTableProps) {
   const [tab, setTab] = useState<StatusTab>('any');
+  const [sort, setSort] = useState<SortBy>('newest');
 
   const rows = useMemo(
-    () => tickets.filter((t) => inTab(t.status.category, tab)).sort(byUrgency),
-    [tickets, tab],
+    () =>
+      sortTickets(
+        tickets.filter((t) => inTab(t.status.category, tab)),
+        sort,
+      ),
+    [tickets, tab, sort],
   );
+  const filtered = Boolean(search.trim() || channel || handling || tab !== 'any');
   const tabs: TabItem<StatusTab>[] = statusTabs.map((s) => ({
     ...s,
     count: tickets.filter((t) => inTab(t.status.category, s.value)).length,
@@ -87,7 +108,9 @@ export function TicketTable({
             {title}
           </h2>
           <p className={styles.subtitle} aria-live="polite">
-            {loading && !tickets.length ? 'Loading…' : 'Open work first, then priority'}
+            {loading && !tickets.length
+              ? 'Loading…'
+              : sortOptions.find((s) => s.value === sort)!.label}
             {q && (
               <>
                 {' '}
@@ -97,9 +120,52 @@ export function TicketTable({
             {channel && ` · ${channelLabels[channel]} only`}
             {handling && ` · ${HANDLING_LABELS[handling]}`}
             {total > tickets.length && ` · showing ${tickets.length} of ${total}`}
+            {filtered && (
+              <>
+                {' · '}
+                <button
+                  type="button"
+                  className={styles.clear}
+                  onClick={() => {
+                    setTab('any');
+                    onClearFilters();
+                  }}
+                >
+                  Clear filters
+                </button>
+              </>
+            )}
           </p>
         </div>
         <div className={styles.controls}>
+          <div className={styles.search} role="search">
+            <label htmlFor="global-search" className="visually-hidden">
+              Search tickets
+            </label>
+            <SearchField
+              id="global-search"
+              ref={searchRef}
+              placeholder="Search subject or TMS number…"
+              shortcut="/"
+              value={search}
+              onChange={(e) => onSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  onSearch('');
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+          </div>
+          <Select
+            id="queue-sort"
+            label="Sort"
+            hideLabel
+            className={styles.channelSelect}
+            value={sort}
+            options={sortOptions}
+            onChange={(e) => setSort(e.target.value as SortBy)}
+          />
           <Select
             id="queue-handling"
             label="Handled by"
@@ -213,6 +279,11 @@ export function TicketTable({
                       <span className={styles.id}>{t.reference}</span>
                       <span className={styles.subjectText}>{t.subject}</span>
                     </button>
+                    {isNewTicket(t) && (
+                      <Badge tone="ai" className={styles.newBadge} data-new>
+                        New
+                      </Badge>
+                    )}
                     <span className={styles.customer}>
                       {t.customer.name}
                       {t.customer.company && ` · ${t.customer.company}`}

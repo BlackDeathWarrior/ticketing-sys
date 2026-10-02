@@ -12,9 +12,12 @@ import {
 import {
   type CreateUserInput,
   type CurrentUser,
+  DEFAULT_USER_PREFERENCES,
   isDelegable,
   type RoleView,
   type UpdateUserInput,
+  type UserPreferences,
+  userPreferencesSchema,
 } from '@tms/shared';
 import argon2 from 'argon2';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
@@ -261,6 +264,39 @@ export class UsersService {
     });
     this.invalidate(id);
     return this.get(id);
+  }
+
+  /** A person's own Orbit Desk settings, with defaults for whatever they never set. */
+  async preferences(userId: string): Promise<UserPreferences> {
+    const [row] = await this.db
+      .select({ preferences: users.preferences })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (!row) throw new NotFoundException('User not found');
+    // Stored by an older version, or edited by hand: fall back rather than fail.
+    const parsed = userPreferencesSchema.safeParse(row.preferences);
+    return parsed.success ? parsed.data : DEFAULT_USER_PREFERENCES;
+  }
+
+  /** Only ever the caller's own. */
+  async setPreferences(ctx: RequestCtx, input: UserPreferences): Promise<UserPreferences> {
+    const id = ctx.user!.id;
+    await this.db.transaction(async (tx) => {
+      await tx.update(users).set({ preferences: input }).where(eq(users.id, id));
+      await this.audit.record(tx, ctx, {
+        action: 'user.preferences_updated',
+        targetType: 'user',
+        targetId: id,
+        data: { sections: Object.keys(input) },
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'user.updated',
+        aggregateType: 'user',
+        aggregateId: id,
+        payload: { fields: ['preferences'] },
+      });
+    });
+    return this.preferences(id);
   }
 
   /** Ids of the teams a user belongs to. */
