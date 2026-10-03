@@ -5,7 +5,7 @@ import { type ChannelTraits, traitsOf } from '../channels/channel-traits';
  * Versioned prompts (ADR 0011). The version is recorded on every AI run, so a
  * change here is traceable in the audit trail; bump it with any edit.
  */
-export const AGENT_PROMPT_VERSION = 'agent-v13';
+export const AGENT_PROMPT_VERSION = 'agent-v14';
 export const CLASSIFIER_PROMPT_VERSION = 'classifier-v1';
 export const SUMMARY_PROMPT_VERSION = 'summary-v1';
 export const HANDOVER_PROMPT_VERSION = 'handover-v1';
@@ -78,6 +78,8 @@ export interface AgentPromptInput {
   companyTools: boolean;
   /** `send_reply` takes cards this turn (WhatsApp, with company tools). */
   cards?: boolean;
+  /** Nobody has answered in this conversation yet: the reply opens with a welcome. */
+  firstReply?: boolean;
   /**
    * Tools that act for a customer were left out: nobody vouched for who this is.
    * `visitor` is a chat visitor who is not signed in; `whatsapp` is a number no
@@ -130,6 +132,13 @@ export function agentSystemPrompt(i: AgentPromptInput): string {
     `- ${channelStyle(i.channel, company)}`,
     TONE,
     addressLine(i.customer.address),
+    ...(i.firstReply && traitsOf(i.channel).style !== 'email'
+      ? [
+          `- This is your first reply in this conversation. Open it with a short welcome, in the spirit of "Hi! ${
+            i.customer.address ? `${oneLine(i.customer.address.forms.at(-1) ?? '')}, ` : ''
+          }welcome to ${oneLine(company.companyName)}." (vary the wording), then answer what they asked. Do not ask how you can help when they have already said it.`,
+        ]
+      : []),
     '',
     'How to work:',
     '- The results below are already for the latest message. Use search_knowledge only with different words, when they do not cover the question.',
