@@ -177,6 +177,28 @@ export class VoiceCallsService {
     });
   }
 
+  /**
+   * The phone call this number is on right now, for a tool request that could
+   * not say which call it belongs to: the newest one still open that began in
+   * the last two hours.
+   */
+  async activeForCaller(phone: string, now = new Date()): Promise<CallRow | null> {
+    const [row] = await this.db
+      .select()
+      .from(voiceCalls)
+      .where(
+        and(
+          eq(voiceCalls.status, 'active'),
+          eq(voiceCalls.transport, 'phone'),
+          eq(voiceCalls.callerPhone, phone),
+          gt(voiceCalls.startedAt, new Date(now.getTime() - 2 * 60 * 60_000)),
+        ),
+      )
+      .orderBy(desc(voiceCalls.startedAt))
+      .limit(1);
+    return row ?? null;
+  }
+
   async byProvider(interactionId: string): Promise<CallRow | null> {
     const [row] = await this.db
       .select()
