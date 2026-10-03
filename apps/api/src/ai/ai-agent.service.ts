@@ -59,7 +59,7 @@ import {
   ticketContext,
 } from './prompts';
 import { blankResult, type ThinkResult } from './think-result';
-import { startTurn, turnFacts } from './turn-plan';
+import { type Counters, startTurn, turnFacts } from './turn-plan';
 import {
   AGENT_TOOLS,
   parseArgs,
@@ -455,11 +455,11 @@ export class AiAgentService {
         rows,
       }),
     );
+    // Strikes and requests for a person, saved with the reply they belong to: a turn whose
+    // reply could not be saved counts nothing, so a retry cannot count one message twice.
+    let counters: Counters = {};
     for (;;) {
-      // Strikes and requests for a person are counted before the step is carried out.
-      if ('counters' in step && step.counters) {
-        await this.conversations.updateAiState(this.db, conv.id, { metadata: step.counters });
-      }
+      if ('counters' in step && step.counters) counters = { ...counters, ...step.counters };
       switch (step.do) {
         case 'resolve': {
           const done = await this.autoResolve.customerConfirmed({
@@ -552,6 +552,7 @@ export class AiAgentService {
             behaviour,
             triggerMessageId,
             kind: 'turn',
+            counters,
           });
         }
       }
@@ -572,6 +573,8 @@ export class AiAgentService {
     behaviour: AiBehaviour;
     triggerMessageId: string | null;
     kind: 'turn' | 'followup';
+    /** Strikes and requests for a person this turn counted; saved with the reply. */
+    counters?: Counters;
   }): Promise<AiDecision> {
     const { conv, ticket, r, language, mode, behaviour, triggerMessageId } = p;
     if (Object.keys(r.ticketUpdate).length && r.decision !== 'error') {
@@ -707,11 +710,15 @@ export class AiAgentService {
           tellCustomer: HANDOVER_NOTICE_CHANNELS.has(conv.channel) && mode === 'auto',
         });
       }
+      const marks = {
+        ...p.counters,
+        ...(r.decision === 'handover' || r.decision === 'error'
+          ? { lastHandoverAt: new Date().toISOString() }
+          : {}),
+      };
       await this.conversations.updateAiState(tx, conv.id, {
         language: replyLanguage,
-        ...(r.decision === 'handover' || r.decision === 'error'
-          ? { metadata: { lastHandoverAt: new Date().toISOString() } }
-          : {}),
+        ...(Object.keys(marks).length ? { metadata: marks } : {}),
       });
       await this.runs.record(tx, {
         kind: p.kind,

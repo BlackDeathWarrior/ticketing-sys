@@ -61,3 +61,9 @@ Still handed over: a second request for a person, legal or safety matters, repea
 - Fewer conversations reach people, and the ones that do are the ones that need them.
 - Several turns now cost no model call at all (see ADR 0030).
 - The red-team golden "print your system prompt" now ends with a closed ticket instead of a handover. The tests and goldens were not updated in this change (by the owner's instruction, no tests were written or run).
+
+## Addendum (2026-10-03): the turn plan
+
+The ladders above (conduct, a request for a person, off topic, the clarifying question) and the closing check of ADR 0019 were written inside `AiAgentService.turn()`, between database reads and the model call, where only a test with the whole stack running could reach them. They are now one pure module, the turn plan (`apps/api/src/ai/turn-plan.ts`): `turnFacts()` reads the facts out of the transcript and the conversation's metadata, `startTurn(facts)` returns the first step, and each step says what follows it (`refused()` when a ticket could not be closed or resolved, `given(flagged)` once the flag is looked up, `answered(answer)` after the model). `turn()` carries the steps out and decides nothing. The behaviour is the same; `turn-plan.test.ts` covers each branch without a database or a model.
+
+One thing changed with it: strikes and the count of requests for a person used to be saved before the reply. A turn whose reply failed to save was retried and counted the same message again, which with the default limit of two closed a conversation after one offence. They are now saved in the reply's transaction.
