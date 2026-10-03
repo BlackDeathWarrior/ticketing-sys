@@ -528,7 +528,10 @@ export class CustomersService {
         and(
           eq(customerIdentities.customerId, customer.id),
           eq(customerIdentities.type, 'whatsapp'),
-          inArray(customerIdentities.value, replaced.map((r) => r.value)),
+          inArray(
+            customerIdentities.value,
+            replaced.map((r) => r.value),
+          ),
         ),
       );
     }
