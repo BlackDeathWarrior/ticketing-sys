@@ -546,6 +546,7 @@ export class ConversationsService {
         message.direction !== 'outbound' ||
         message.deliveryStatus !== 'failed' ||
         message.metadata.cardsDropped !== undefined ||
+        message.metadata.waTemplate !== undefined ||
         !messageCardSchema.array().min(1).safeParse(message.metadata.cards).success
       ) {
         return false;
@@ -563,11 +564,12 @@ export class ConversationsService {
         .where(eq(messages.id, messageId));
       await this.audit.record(tx, SYSTEM_CTX, {
         action: 'message.requeued_without_cards',
-        targetType: 'message',
-        targetId: messageId,
-        data: { reason },
+        targetType: 'ticket',
+        targetId: conversation.ticketId,
+        data: { messageId, reason },
       });
-      // The event a new outbound message publishes (OutboundService.replyInTx).
+      // The event a new outbound message publishes (OutboundService.replyInTx), marked so
+      // integrations are not told about the same message twice (see toWebhookEvent).
       await this.outbox.publish(tx, SYSTEM_CTX, {
         type: 'message.outbound',
         aggregateType: 'ticket',
@@ -576,6 +578,7 @@ export class ConversationsService {
           conversationId: conversation.id,
           messageId,
           channel: conversation.channel,
+          requeued: true,
         },
       });
       return true;

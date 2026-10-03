@@ -243,10 +243,13 @@ export class WhatsAppService {
       status.status as 'sent' | 'delivered' | 'read' | 'failed',
       { at: new Date(messageTime(status.timestamp)), error },
     );
-    if (result === 'applied' && error !== undefined) {
-      // Meta took cards it could not show: send the reply again as text, once. Looked up
-      // before requeueing, which clears the id the report names. A repeat of this report
-      // finds no message with that id, and the message carries `cardsDropped` by then.
+    if (result !== 'unknown' && error !== undefined) {
+      // Every failed report of a message with cards, whatever the reason, sends the reply
+      // again as text, once. Also when the report was already applied ('ignored'), so a
+      // requeue that was lost with its transaction is made up for when Meta repeats the
+      // report. Looked up before requeueing, which clears the id the report names;
+      // requeueWithoutCards does nothing for a message that is not failed, has no cards or
+      // already carries `cardsDropped`.
       const found = await this.conversations.findMessageByChannelId(this.db, 'whatsapp', status.id);
       if (found) await this.conversations.requeueWithoutCards(found.message.id, error);
     }

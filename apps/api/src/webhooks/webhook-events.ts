@@ -57,6 +57,8 @@ export function toWebhookEvent(event: DomainEvent): MappedEvent | null {
     // A customer's message, or a reply queued for them. A draft is `message.drafted`: never sent.
     case 'message.received':
     case 'message.outbound': {
+      // A reply sent again as text (ConversationsService.requeueWithoutCards) is not a new message.
+      if (p.requeued === true) return null;
       const messageId = str(p.messageId);
       return messageId
         ? { type: 'message.created', refs: { ticketId: event.aggregateId, messageId } }
