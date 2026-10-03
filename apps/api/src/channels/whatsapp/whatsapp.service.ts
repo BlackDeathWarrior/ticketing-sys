@@ -2,7 +2,11 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Database } from '@tms/db';
 import {
   type AttachmentRef,
+  CARD_LIKE,
+  CARD_VIEW,
   type MessageEnvelope,
+  messageCardSchema,
+  parseCardButtonId,
   WA_MEDIA_MAX_BYTES,
   type WaConversationMeta,
 } from '@tms/shared';
@@ -142,6 +146,7 @@ export class WhatsAppService {
     if (await this.conversations.hasChannelMessage('whatsapp', message.id)) return 'duplicate';
 
     const content = messageContent(message);
+    const tap = await this.cardTap(message);
     const { attachments, mediaError } = await this.fetchMedia(config, content, message);
     const receivedAt = messageTime(message.timestamp);
     const conversation: WaConversationMeta = {
@@ -160,18 +165,51 @@ export class WhatsAppService {
       threadKey: identity.phone || identity.waUserId!,
       channelMessageId: message.id,
       from: await this.sender(identity),
-      text: content.text || (mediaError ? `[${content.media?.kind ?? 'file'}]` : ''),
+      text: tap?.text ?? (content.text || (mediaError ? `[${content.media?.kind ?? 'file'}]` : '')),
       attachments,
       receivedAt,
       metadata: {
         conversation,
         waType: message.type,
         ...(message.context?.id ? { waReplyTo: message.context.id } : {}),
+        ...(tap ? { waCard: tap.card } : {}),
         ...(mediaError ? { waMediaError: mediaError } : {}),
       },
     };
     const result = await this.inbound.handle(envelope);
     return result.duplicate ? 'duplicate' : 'stored';
+  }
+
+  /**
+   * A tap on one of a card's buttons, as text that names the item. The title and the link
+   * come from the card we stored on the message that was tapped, never from the button id:
+   * Meta hands the id back as the customer's phone sent it. When the message or the card
+   * is gone (an old message, cards dropped) the text names the card id instead.
+   */
+  private async cardTap(message: WaMessage): Promise<{
+    text: string;
+    card: { id: string; kind: 'like' | 'view'; title?: string; url?: string };
+  } | null> {
+    const reply = message.interactive?.button_reply;
+    const parsed = reply ? parseCardButtonId(reply.id) : null;
+    if (!reply || !parsed) return null;
+    const { kind } = parsed;
+    // The schema allows 100 characters; the id is outside data, so a longer one is cut.
+    const id = parsed.cardId.slice(0, 100);
+    const label = reply.title?.trim().slice(0, 40) || (kind === 'like' ? CARD_LIKE : CARD_VIEW);
+    const sent = message.context?.id
+      ? await this.conversations.findMessageByChannelId(this.db, 'whatsapp', message.context.id)
+      : null;
+    const shown =
+      sent?.message.direction === 'outbound'
+        ? messageCardSchema.array().safeParse(sent.message.metadata.cards)
+        : null;
+    const card = shown?.success ? shown.data.find((c) => c.id === id) : undefined;
+    if (!card) return { text: `${label} (${id})`, card: { id, kind } };
+    return {
+      text: `${label}: ${card.title}`,
+      card: { id, kind, title: card.title, ...(card.url ? { url: card.url } : {}) },
+    };
   }
 
   /**

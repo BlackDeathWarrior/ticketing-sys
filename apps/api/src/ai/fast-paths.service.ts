@@ -8,7 +8,7 @@ import { LlmClientService } from '../llm/llm-client.service';
 
 /** An answer that needed no chat model. */
 export interface FastAnswer {
-  route: 'smalltalk' | 'faq' | 'cache';
+  route: 'smalltalk' | 'faq' | 'cache' | 'card_link';
   reply: string;
   confidence: number;
   intent: string;
