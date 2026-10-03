@@ -428,6 +428,18 @@ export const tools: GarmentTool[] = [
     tier: 'read',
   },
   {
+    // Nothing is charged by it: the customer pays on the shop's own checkout page.
+    name: 'payment_link',
+    title: 'Payment link',
+    description:
+      "Gives a link to the checkout page for what is in the customer's cart, with the amount to pay. Use it when the customer wants to pay, check out, or asks for a payment or cart link, and send them the link. The customer signs in to the shop and pays there; nothing is charged by this request.",
+    method: 'GET',
+    path: '/checkout-link',
+    parameters: [customer],
+    customerArg: 'customer_email',
+    tier: 'read',
+  },
+  {
     // Quantity is a total, so a call that is repeated changes nothing. There is
     // no tool that checks out: the customer sees every change before ordering.
     name: 'update_cart',

@@ -253,7 +253,8 @@ function CustomToolDialog({
               method: form.method,
               url: form.url.trim(),
               authHeader: form.authHeader || null,
-              ...(tool ? { toolId: tool.id } : {}),
+              // A new tool is checked with the key it will get: the one of the tool the helper found.
+              ...(tool ? { toolId: tool.id } : keyFrom ? { toolId: keyFrom.toolId } : {}),
             },
           }}
         />

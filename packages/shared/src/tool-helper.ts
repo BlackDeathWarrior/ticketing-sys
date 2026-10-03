@@ -76,7 +76,10 @@ export const checkCustomToolSchema = z.object({
   method: z.enum(CUSTOM_TOOL_METHODS),
   url: z.string().trim().min(8).max(500),
   authHeader: headerName.nullable().default(null),
-  /** The saved tool being edited: its stored key is used, when the address is still on the same host. */
+  /**
+   * The saved tool being edited, or for a new tool the one whose key it will
+   * use: that key is sent, when the address is on the host it was saved for.
+   */
   toolId: z.string().uuid().optional(),
 });
 export type CheckCustomToolInput = z.output<typeof checkCustomToolSchema>;
