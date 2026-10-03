@@ -48,10 +48,13 @@ async function addClose(
   known: boolean,
 ): Promise<void> {
   const options = closeOptions(interactionId, known);
-  // A job that failed for good keeps its id, and an id that exists is not added again:
-  // clear it, or this call could never be tried again (after a fix, or a late trigger).
+  // A finished job keeps its id for a while, and an id that exists is not added again: clear
+  // it, or this call could not be tried again. A failed one is retried after a fix or a late
+  // trigger; a completed one is asked once more for a recording that was not ready.
   const earlier = await queue.getJob(options.jobId);
-  if (earlier && (await earlier.isFailed())) await earlier.remove();
+  if (earlier && ((await earlier.isFailed()) || (await earlier.isCompleted()))) {
+    await earlier.remove();
+  }
   await queue.add('close', { kind: 'close', interactionId, hint, trace: currentTrace() }, options);
 }
 
