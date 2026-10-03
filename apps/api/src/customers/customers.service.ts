@@ -232,7 +232,20 @@ export class CustomersService {
           customerId: owner.customerId,
         });
       }
-      if (!owner) await this.insertIdentity(tx, ctx, c.id, input.type, value, input.verified);
+      if (!owner) {
+        await this.insertIdentity(tx, ctx, c.id, input.type, value, input.verified);
+        // A proven phone lets the AI use order tools, so a hand-made one is on record. Never the full number.
+        await this.audit.record(tx, ctx, {
+          action: 'customer.identity_added',
+          targetType: 'customer',
+          targetId: c.id,
+          data: {
+            type: input.type,
+            verified: input.verified,
+            ...(input.type === 'phone' || input.type === 'whatsapp' ? { last4: value.slice(-4) } : {}),
+          },
+        });
+      }
     });
     return this.get(c.id);
   }
