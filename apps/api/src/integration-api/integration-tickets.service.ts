@@ -24,6 +24,7 @@ import { ConversationsService } from '../conversations/conversations.service';
 import { CsatService } from '../csat/csat.service';
 import { CustomersService } from '../customers/customers.service';
 import { OrgService } from '../org/org.service';
+import { AiBehaviourService } from '../settings/ai-behaviour.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { WorkflowService } from '../workflow/workflow.service';
 
@@ -48,6 +49,7 @@ export class IntegrationTicketsService {
     private readonly workflow: WorkflowService,
     private readonly org: OrgService,
     private readonly csat: CsatService,
+    private readonly behaviour: AiBehaviourService,
   ) {}
 
   /**
@@ -267,12 +269,35 @@ export class IntegrationTicketsService {
   }
 
   private async views(rows: TicketRow[]): Promise<IntegrationTicketView[]> {
-    const known = await this.customers.externalIds([...new Set(rows.map((t) => t.customer.id))]);
-    return Promise.all(rows.map((t) => this.view(t, known.get(t.customer.id) ?? [])));
+    const [known, last, behaviour] = await Promise.all([
+      this.customers.externalIds([...new Set(rows.map((t) => t.customer.id))]),
+      this.conversations.lastVisibleMessages(
+        rows.filter((t) => t.handling === 'ai').map((t) => t.id),
+      ),
+      this.behaviour.get(),
+    ]);
+    const modes = behaviour.channels as Record<string, string>;
+    return Promise.all(
+      rows.map((t) =>
+        this.view(
+          t,
+          known.get(t.customer.id) ?? [],
+          // The AI owns the ticket, the customer wrote last, and what it writes is sent
+          // by itself (in draft mode a person reviews it first, so nobody is typing yet).
+          t.handling === 'ai' &&
+            last.get(t.id)?.direction === 'inbound' &&
+            modes[t.channel] === 'auto',
+        ),
+      ),
+    );
   }
 
   /** `externalIds`: every `external_id` identity of the ticket's customer, whichever app named it. */
-  private async view(t: TicketRow, externalIds: string[]): Promise<IntegrationTicketView> {
+  private async view(
+    t: TicketRow,
+    externalIds: string[],
+    replying: boolean,
+  ): Promise<IntegrationTicketView> {
     const status = await this.workflow.status(t.status);
     // Only the id this ticket's own integration gave the person: `<slug>:<id>`.
     const prefix = t.integration ? `${t.integration.slug}:` : null;
@@ -292,6 +317,7 @@ export class IntegrationTicketsService {
         externalId: own && prefix ? own.slice(prefix.length) : null,
       },
       handling: t.handling,
+      replying: replying && status.category !== 'resolved' && status.category !== 'closed',
       createdAt: t.createdAt.toISOString(),
       updatedAt: t.updatedAt.toISOString(),
       resolvedAt: t.resolvedAt?.toISOString() ?? null,

@@ -198,6 +198,13 @@ export interface IntegrationTicketView {
   customer: { name: string; email: string | null; externalId: string | null };
   /** Whether a person, the AI or nobody yet is answering. */
   handling: string;
+  /**
+   * The assistant is writing an answer that it will send by itself: the
+   * customer wrote last and the AI answers this channel without review. Show a
+   * typing indicator while it is true; it turns false when the answer (or a
+   * message saying a person will reply) arrives.
+   */
+  replying: boolean;
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;

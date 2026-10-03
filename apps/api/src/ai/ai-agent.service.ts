@@ -165,12 +165,12 @@ const LOCK_MS = 120_000;
 const HISTORY_TAIL = 8;
 const SUMMARIZE_AFTER = 14;
 /**
- * Channels where the customer reads our answers where they wrote (a chat, or
- * a request page inside an app): a handover tells them who will answer.
+ * Channels where the customer reads our answers where they wrote (a chat, a
+ * request page inside an app, their mailbox): a handover tells them who will answer.
  */
-const HANDOVER_NOTICE_CHANNELS = new Set(['webchat', 'whatsapp', 'api']);
-/** Live channels where a draft leaves the customer waiting in silence (a call never drafts). */
-const WAITING_CHANNELS = new Set(['webchat', 'whatsapp']);
+const HANDOVER_NOTICE_CHANNELS = new Set(['webchat', 'whatsapp', 'api', 'email']);
+/** Channels where a draft leaves the customer waiting in silence (a call never drafts; an app shows its request page). */
+const WAITING_CHANNELS = new Set(['webchat', 'whatsapp', 'api']);
 
 /** Whether the last thing the customer was sent is our "a person will reply" message. */
 function toldToWait(rows: Array<{ direction: string; metadata: unknown }>): boolean {

@@ -43,6 +43,8 @@ export interface Ticket {
   /** `externalId` is your own id for the person, when the customer is known by one. */
   customer: { name: string; email: string | null; externalId: string | null };
   handling: string;
+  /** The assistant is writing an answer it will send by itself: show a typing indicator. */
+  replying: boolean;
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;

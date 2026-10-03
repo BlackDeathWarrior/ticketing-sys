@@ -105,6 +105,7 @@ The answer is `201` with the ticket:
   "metadata": { "source": "Myntra", "price_current": 1499 },
   "customer": { "name": "Asha Verma", "email": "asha@example.com", "externalId": "user-42" },
   "handling": "none",
+  "replying": false,
   "createdAt": "2026-10-01T10:00:00.000Z",
   "updatedAt": "2026-10-01T10:00:00.000Z",
   "resolvedAt": null,
@@ -120,7 +121,7 @@ Keep `reference`: it is how you address the ticket from now on, and what you sho
 
 **Status and state.** A workspace can rename and add statuses. `status.state` is always one of `open`, `pending`, `resolved`, `closed`: build your logic on it, and show `status.name` to people.
 
-**Who is answering.** `handling` is `ai` while the assistant answers the ticket, `handed_over` when it has passed it to the team and nobody has picked it up yet, `human` once a person answers, and `none` when nobody has started. When it is `ai` and the last message is the customer's, an answer is being written: that is the moment to show a "typing" indicator. Stop showing it after about a minute, in case no answer comes. When the assistant hands over, the customer gets a message saying a person will reply, with the colleague's first name when the ticket went straight to someone.
+**Who is answering.** `handling` is `ai` while the assistant answers the ticket, `handed_over` when it has passed it to the team and nobody has picked it up yet, `human` once a person answers, and `none` when nobody has started. `replying` is `true` while the assistant is writing an answer it will send by itself (the customer wrote last and the workspace lets the AI answer this channel without review): that is the moment to show a "typing" indicator, and it turns `false` when the answer arrives. When the workspace has the AI write drafts for a person to check, `replying` stays `false` and the customer is sent a message saying a person will reply. Stop showing the indicator after about a minute anyway, in case no answer comes. When the assistant hands over, the customer gets a message saying a person will reply, with the colleague's first name when the ticket went straight to someone.
 
 ### Read the conversation
 
