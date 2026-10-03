@@ -1,6 +1,7 @@
 import {
   canActOnTeam,
   type CopilotSuggestion,
+  type MessageCard,
   type Permission,
   PRIORITIES,
   waWindow,
@@ -98,6 +99,34 @@ function AttachmentList({ files }: { files: Attachment[] }) {
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * The picture cards a WhatsApp reply carried. Titles, texts and pictures come from the
+ * company's app: the text is rendered as text, and the picture is fetched without a referrer.
+ */
+function CardList({ cards }: { cards: MessageCard[] }) {
+  return (
+    <ul className={styles.cards} aria-label="Cards shown">
+      {cards.map((c) => (
+        <li key={c.id} className={styles.card}>
+          <img
+            className={styles.cardImage}
+            src={c.imageUrl}
+            alt=""
+            width={40}
+            height={40}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+          <div className={styles.cardText}>
+            <span className={styles.cardTitle}>{c.title}</span>
+            {c.text && <span className={styles.cardBody}>{c.text}</span>}
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -546,6 +575,12 @@ function DrawerContent({
                         </time>
                       </p>
                       <p className={styles.body}>{withMentions(m.body)}</p>
+                      {m.cards && m.cards.length > 0 && <CardList cards={m.cards} />}
+                      {m.cardsDropped && (
+                        <p className={styles.cardsNote} role="note">
+                          Sent as text: {m.cardsDropped}
+                        </p>
+                      )}
                       {m.attachments.length > 0 && <AttachmentList files={m.attachments} />}
                       {m.delivery === 'failed' && m.deliveryError && (
                         <p className={styles.deliveryError} role="note">
