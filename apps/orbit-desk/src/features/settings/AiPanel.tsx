@@ -39,6 +39,7 @@ const SAVED_LABELS: Record<string, string> = {
   smalltalk: 'greetings and thanks',
   faq: 'FAQ answers',
   cache: 'repeated questions',
+  card_link: 'card links',
   closing: '“nothing else” goodbyes',
   guard: 'conversations closed for misuse',
 };

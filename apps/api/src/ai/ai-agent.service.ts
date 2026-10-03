@@ -112,6 +112,25 @@ function lineOf(m: { authorType: string; body: string; metadata: unknown }): Lin
   return { author, body: `${m.body}\n[Cards shown: ${list}]` };
 }
 
+/**
+ * The card the customer's newest message tapped, when that message is the one this turn
+ * answers: an older tap must not be answered again. The entry was written by our own
+ * webhook handler from the card we stored.
+ */
+function lastCardOf(rows: Array<{ authorType: string; metadata: unknown }>): ThinkInput['lastCard'] {
+  const last = rows.at(-1);
+  if (last?.authorType !== 'customer') return undefined;
+  const card = (last.metadata as { waCard?: Record<string, unknown> } | null)?.waCard;
+  if (!card || typeof card.id !== 'string') return undefined;
+  if (card.kind !== 'like' && card.kind !== 'view') return undefined;
+  return {
+    id: card.id,
+    kind: card.kind,
+    ...(typeof card.title === 'string' ? { title: card.title } : {}),
+    ...(typeof card.url === 'string' ? { url: card.url } : {}),
+  };
+}
+
 interface ThinkInput {
   channel: string;
   mode: AiChannelMode;
@@ -148,6 +167,8 @@ interface ThinkInput {
   personAsked?: boolean;
   /** The integration whose ticket this is: answers are only reused within one. */
   integration?: string | null;
+  /** The card button the customer's newest message tapped (WhatsApp). */
+  lastCard?: { id: string; kind: 'like' | 'view'; title?: string; url?: string };
 }
 
 const LOCK_MS = 120_000;
@@ -563,6 +584,7 @@ export class AiAgentService {
             confirmedByTool: false,
             personAsked: step.personAsked,
             integration: ticket.integration?.slug ?? null,
+            lastCard: lastCardOf(rows),
           });
           step = step.answered(r, unconfidentBefore);
           break;
@@ -804,7 +826,27 @@ export class AiAgentService {
     // Whether the sender is bound changes the answer ("My order"), so a cached one must not cross over.
     const scope = `${AGENT_PROMPT_VERSION}|${i.integration ?? '-'}|${i.channel}|${i.language ?? '-'}|${i.customerEmail ? 'bound' : 'unbound'}`;
     let fast: FastAnswer | null = null;
-    const talk = quick && paths.smallTalk ? smallTalk(last) : null;
+    // "View product" is answered with the card's link whatever the fast-path settings say.
+    // The card was shown by a company tool, so it stands as the answer's source.
+    const tapped = i.lastCard;
+    if (
+      i.channel === 'whatsapp' &&
+      !i.update &&
+      tapped?.kind === 'view' &&
+      tapped.title &&
+      tapped.url
+    ) {
+      fast = {
+        route: 'card_link',
+        reply: `${tapped.title}: ${tapped.url}`,
+        confidence: 1,
+        intent: 'view_product',
+        resolves: false,
+        sources: [{ chunkId: `card:${tapped.id}`, label: `Card: ${tapped.title}` }],
+        summary: `Card link: ${tapped.title}`,
+      };
+    }
+    const talk = !fast && quick && paths.smallTalk ? smallTalk(last) : null;
     if (talk) {
       fast = {
         route: 'smalltalk',
