@@ -117,7 +117,9 @@ function lineOf(m: { authorType: string; body: string; metadata: unknown }): Lin
  * answers: an older tap must not be answered again. The entry was written by our own
  * webhook handler from the card we stored.
  */
-function lastCardOf(rows: Array<{ authorType: string; metadata: unknown }>): ThinkInput['lastCard'] {
+function lastCardOf(
+  rows: Array<{ authorType: string; metadata: unknown }>,
+): ThinkInput['lastCard'] {
   const last = rows.at(-1);
   if (last?.authorType !== 'customer') return undefined;
   const card = (last.metadata as { waCard?: Record<string, unknown> } | null)?.waCard;
