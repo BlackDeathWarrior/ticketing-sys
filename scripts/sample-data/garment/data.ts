@@ -386,7 +386,7 @@ export const tools: GarmentTool[] = [
     name: 'product_lookup',
     title: 'Look up a product',
     description:
-      'One product by its id: name, brand, price and whether it is in stock. Use the product_id from the ticket context when the customer asks about the product they have open.',
+      'One product by its id: name, brand, price, colour, fabric, its rating out of 5 and whether it is in stock. Use the product_id from the ticket context when the customer asks about the product they have open, and an id from a search when they ask more about one of those.',
     method: 'GET',
     path: '/products/{product_id}',
     parameters: [
@@ -403,7 +403,7 @@ export const tools: GarmentTool[] = [
     name: 'product_search',
     title: 'Search products',
     description:
-      'Finds products by words from the name, brand or category (for example "kurta" or "saree"): five at a time, or as many as limit says, up to ten. Use it when a customer wants to see or browse items, and when they name a product but there is no product_id in the ticket context. When they ask for more, pass the ids already shown in exclude so nothing is repeated. It returns cards, so the products can be shown with their pictures.',
+      'Finds products by words from the name, brand or category (for example "kurta" or "saree"): five at a time, or as many as limit says, up to ten. Use it when a customer wants to see or browse items, and when they name a product but there is no product_id in the ticket context. When they ask for more, pass the ids already shown in exclude so nothing is repeated. Each product comes with its price and its rating out of 5. It returns cards, so the products can be shown with their pictures.',
     method: 'GET',
     path: '/products',
     parameters: [
@@ -424,6 +424,13 @@ export const tools: GarmentTool[] = [
         name: 'exclude',
         type: 'string',
         description: 'Ids of products already shown in this conversation, separated by commas',
+        required: false,
+      },
+      {
+        name: 'sort',
+        type: 'string',
+        description:
+          'How to order them: rating (best rated first), price_low or price_high. Leave out for the closest names first',
         required: false,
       },
     ],
