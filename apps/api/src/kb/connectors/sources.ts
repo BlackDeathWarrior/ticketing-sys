@@ -5,6 +5,7 @@ import { isIP } from 'node:net';
 import { join, relative, resolve, sep } from 'node:path';
 import { GetObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
 import { type KbConnectorType, kbConnectorConfigSchemas } from '@tms/shared';
+import { createConnection } from 'mysql2/promise';
 import { Client } from 'pg';
 import type { z } from 'zod';
 import {
@@ -561,7 +562,7 @@ function folder(ctx: SourceContext): ConnectorSource {
   };
 }
 
-// ---- PostgreSQL ----
+// ---- Databases (PostgreSQL, MySQL) ----
 
 /** One SELECT, nothing else: no second statement, no writing. */
 export function readOnlyQuery(query: string): string {
@@ -575,53 +576,56 @@ export function readOnlyQuery(query: string): string {
   return q;
 }
 
-function postgres(ctx: SourceContext): ConnectorSource {
-  const c = kbConnectorConfigSchemas.postgres.parse(ctx.config) as z.infer<
-    (typeof kbConnectorConfigSchemas)['postgres']
-  >;
+type DatabaseQuery = z.infer<(typeof kbConnectorConfigSchemas)['postgres']>;
+type Rows = Array<Record<string, unknown>>;
+
+/**
+ * The connection string of a database source, once its host passed the same
+ * check as every other address: public, unless an admin allowed the host.
+ */
+async function databaseConnection(ctx: SourceContext, scheme: RegExp, shape: string) {
+  const connection = await ctx.secret('connection');
+  if (!connection) throw new SourceError('Add the connection string first');
+  let url: URL;
+  try {
+    url = new URL(connection);
+  } catch {
+    throw new SourceError(`The connection string is not a ${shape} address`);
+  }
+  if (!scheme.test(url.protocol)) {
+    throw new SourceError(`The connection string is not a ${shape} address`);
+  }
+  const host = url.hostname.replace(/^\[|\]$/g, '');
+  if (!ctx.privateHosts.includes(host)) {
+    const addresses = isIP(host)
+      ? [host]
+      : (await lookup(host, { all: true })).map((a) => a.address);
+    if (!addresses.length || addresses.some(isPrivateAddress)) {
+      throw new UnsafeUrlError(
+        'That database is on a private network. An administrator can allow its host in KB_CONNECTOR_PRIVATE_HOSTS.',
+      );
+    }
+  }
+  return connection;
+}
+
+/** A source whose documents are the rows of one query: listed and fetched from a single read. */
+function databaseSource(c: DatabaseQuery, read: (query: string) => Promise<Rows>): ConnectorSource {
   let rows: Map<string, { title: string; body: string }> | null = null;
   const load = async () => {
     if (rows) return rows;
-    const connection = await ctx.secret('connection');
-    if (!connection) throw new SourceError('Add the connection string first');
-    let host: string;
-    try {
-      host = new URL(connection).hostname.replace(/^\[|\]$/g, '');
-    } catch {
-      throw new SourceError('The connection string is not a postgres:// address');
+    const found = await read(readOnlyQuery(c.query));
+    rows = new Map();
+    for (const row of found) {
+      const id = row[c.idColumn];
+      const body = row[c.bodyColumn];
+      if (id === undefined || id === null || body === undefined || body === null) continue;
+      rows.set(String(id), {
+        title: String(row[c.titleColumn] ?? id).slice(0, 200),
+        body: String(body),
+      });
     }
-    if (!ctx.privateHosts.includes(host)) {
-      const addresses = isIP(host)
-        ? [host]
-        : (await lookup(host, { all: true })).map((a) => a.address);
-      if (!addresses.length || addresses.some(isPrivateAddress)) {
-        throw new UnsafeUrlError(
-          'That database is on a private network. An administrator can allow its host in KB_CONNECTOR_PRIVATE_HOSTS.',
-        );
-      }
-    }
-    const query = readOnlyQuery(c.query);
-    const client = new Client({ connectionString: connection, connectionTimeoutMillis: 10_000 });
-    await client.connect();
-    try {
-      await client.query('BEGIN READ ONLY');
-      await client.query("SET LOCAL statement_timeout = '15s'");
-      const r = await client.query(`SELECT * FROM (${query}) AS kb_source LIMIT ${MAX_ITEMS}`);
-      await client.query('COMMIT');
-      rows = new Map();
-      for (const row of r.rows as Array<Record<string, unknown>>) {
-        const id = row[c.idColumn];
-        const body = row[c.bodyColumn];
-        if (id === undefined || id === null || body === undefined || body === null) continue;
-        rows.set(String(id), {
-          title: String(row[c.titleColumn] ?? id).slice(0, 200),
-          body: String(body),
-        });
-      }
-      return rows;
-    } finally {
-      await client.end().catch(() => undefined);
-    }
+    return rows;
   };
   return {
     async list() {
@@ -639,6 +643,47 @@ function postgres(ctx: SourceContext): ConnectorSource {
   };
 }
 
+function postgres(ctx: SourceContext): ConnectorSource {
+  const c = kbConnectorConfigSchemas.postgres.parse(ctx.config);
+  return databaseSource(c, async (query) => {
+    const connection = await databaseConnection(ctx, /^postgres(ql)?:$/, 'postgres://');
+    const client = new Client({ connectionString: connection, connectionTimeoutMillis: 10_000 });
+    await client.connect();
+    try {
+      await client.query('BEGIN READ ONLY');
+      await client.query("SET LOCAL statement_timeout = '15s'");
+      const r = await client.query(`SELECT * FROM (${query}) AS kb_source LIMIT ${MAX_ITEMS}`);
+      await client.query('COMMIT');
+      return r.rows as Rows;
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+  });
+}
+
+function mysql(ctx: SourceContext): ConnectorSource {
+  const c = kbConnectorConfigSchemas.mysql.parse(ctx.config);
+  return databaseSource(c, async (query) => {
+    const connection = await databaseConnection(ctx, /^mysql:$/, 'mysql://');
+    // One statement per call is the driver's default; it is never switched on here.
+    const client = await createConnection({ uri: connection, connectTimeout: 10_000 });
+    try {
+      // The time limit for a statement: MySQL names it in milliseconds, MariaDB in seconds.
+      await client
+        .query('SET SESSION max_execution_time = 15000')
+        .catch(() => client.query('SET SESSION max_statement_time = 15'));
+      await client.query('START TRANSACTION READ ONLY');
+      const [found] = await client.query(
+        `SELECT * FROM (${query}) AS kb_source LIMIT ${MAX_ITEMS}`,
+      );
+      await client.query('COMMIT');
+      return found as Rows;
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+  });
+}
+
 const SOURCES: Record<KbConnectorType, (ctx: SourceContext) => ConnectorSource> = {
   website,
   github,
@@ -647,6 +692,7 @@ const SOURCES: Record<KbConnectorType, (ctx: SourceContext) => ConnectorSource> 
   s3,
   folder,
   postgres,
+  mysql,
 };
 
 export function sourceFor(type: KbConnectorType, ctx: SourceContext): ConnectorSource {
