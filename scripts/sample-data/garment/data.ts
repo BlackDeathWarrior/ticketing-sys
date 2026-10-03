@@ -403,7 +403,7 @@ export const tools: GarmentTool[] = [
     name: 'product_search',
     title: 'Search products',
     description:
-      'Finds products by words from the name, brand or category (for example "kurta" or "saree"), up to five at a time. Use it when a customer wants to see or browse items, and when they name a product but there is no product_id in the ticket context. It returns cards, so the products can be shown with their pictures.',
+      'Finds products by words from the name, brand or category (for example "kurta" or "saree"): five at a time, or as many as limit says, up to ten. Use it when a customer wants to see or browse items, and when they name a product but there is no product_id in the ticket context. When they ask for more, pass the ids already shown in exclude so nothing is repeated. It returns cards, so the products can be shown with their pictures.',
     method: 'GET',
     path: '/products',
     parameters: [
@@ -412,6 +412,19 @@ export const tools: GarmentTool[] = [
         type: 'string',
         description: 'A few words from the name, the brand or the category, e.g. "silk saree"',
         required: true,
+      },
+      {
+        name: 'limit',
+        type: 'integer',
+        description:
+          'How many to give, 1 to 10. Ask for a few more than the customer wants, so you can leave out ones that do not fit',
+        required: false,
+      },
+      {
+        name: 'exclude',
+        type: 'string',
+        description: 'Ids of products already shown in this conversation, separated by commas',
+        required: false,
       },
     ],
     tier: 'read',

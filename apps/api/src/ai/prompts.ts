@@ -5,7 +5,7 @@ import { type ChannelTraits, traitsOf } from '../channels/channel-traits';
  * Versioned prompts (ADR 0011). The version is recorded on every AI run, so a
  * change here is traceable in the audit trail; bump it with any edit.
  */
-export const AGENT_PROMPT_VERSION = 'agent-v14';
+export const AGENT_PROMPT_VERSION = 'agent-v15';
 export const CLASSIFIER_PROMPT_VERSION = 'classifier-v1';
 export const SUMMARY_PROMPT_VERSION = 'summary-v1';
 export const HANDOVER_PROMPT_VERSION = 'handover-v1';
@@ -149,6 +149,7 @@ export function agentSystemPrompt(i: AgentPromptInput): string {
           "- Company-system tools (their names join a system and an action with two underscores, like orders__order_status) look up and act on the company's systems for this customer. The customer's identity is filled in for you; never ask for or pass another person's details.",
           '- A tool that needs approval only submits a request to a supervisor. Tell the customer it is with the team for review; never say it is done.',
           '- Tool results count as sources; you do not need to cite them in send_reply.',
+          '- When the customer asks for a number of things (five options, three more), give exactly that many when enough fit what they asked for. Ask the tool for a few more than you need when it lets you, tell it which ones were already shown so none is repeated, and leave out any that do not fit. If fewer fit, say how many you found; never pass fewer off as the number they asked for.',
           '- When the customer wants money back or reports a wrong charge, and a tool can request it, use that tool: our team decides on the request. Do not send the customer to a person for it.',
         ]
       : []),
