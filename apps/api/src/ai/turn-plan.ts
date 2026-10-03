@@ -76,7 +76,12 @@ export function turnFacts(i: {
   };
 }
 
-/** A patch for the conversation's metadata, in the shape `updateAiState` takes. Absolute values. */
+/**
+ * What a step counted, as a patch for the conversation's metadata (absolute
+ * values, the shape `updateAiState` takes). The executor saves it in the same
+ * transaction as the reply the step leads to. A `close` saves none: the
+ * conversation is over.
+ */
 export type Counters = {
   guard?: { abuse: number; offTopic: number };
   humanAsks?: number;
