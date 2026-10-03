@@ -2,6 +2,8 @@
 
 Prerequisites: `pnpm docker:up && pnpm sample:load`, a Sarvam API key (calls use Sarvam credits), and a browser with a microphone. `localhost` is allowed to use the microphone; any other address needs HTTPS.
 
+Calls over a real phone number work differently (a Sarvam Voice Agent answers): see `phone-agent.md`.
+
 ## Without a key
 
 1. Open http://localhost:8080/widget/voice.html and click **Start call**. It answers "Voice calls are not available right now. Please use the chat."
