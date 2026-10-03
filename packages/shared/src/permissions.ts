@@ -66,6 +66,7 @@ export const PERMISSIONS = [
    */
   'integration:ticket',
   'integration:event',
+  'integration:customer',
   /**
    * Act on any team's tickets (ADR 0031). Without it a ticket that belongs to
    * a team can be read and noted by anyone, but only its team acts on it.
