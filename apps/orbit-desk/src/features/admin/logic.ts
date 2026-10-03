@@ -167,6 +167,7 @@ const COUNT_LABELS: Array<[keyof RetentionCounts, string, string]> = [
   ['signInLinks', 'sign-in link', 'sign-in links'],
   ['recordings', 'recording', 'recordings'],
   ['webhookDeliveries', 'webhook delivery', 'webhook deliveries'],
+  ['phoneCodes', 'phone code', 'phone codes'],
 ];
 
 /** "12 model calls, 3 events deleted", or that there was nothing to delete. */

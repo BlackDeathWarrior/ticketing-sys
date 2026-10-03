@@ -126,6 +126,7 @@ describe('retention', () => {
     signInLinks: 0,
     recordings: 0,
     webhookDeliveries: 0,
+    phoneCodes: 0,
   };
 
   it('says what a run deleted, in words', () => {
