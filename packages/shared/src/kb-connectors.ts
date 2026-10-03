@@ -13,6 +13,7 @@ export const KB_CONNECTOR_TYPES = [
   's3',
   'folder',
   'postgres',
+  'mysql',
 ] as const;
 export type KbConnectorType = (typeof KB_CONNECTOR_TYPES)[number];
 
@@ -24,6 +25,7 @@ export const KB_CONNECTOR_LABELS: Record<KbConnectorType, string> = {
   s3: 'S3-compatible bucket',
   folder: 'Shared folder (NAS)',
   postgres: 'PostgreSQL database',
+  mysql: 'MySQL database',
 };
 
 /** The credentials each type needs, stored as secrets `kb.connector-<id>.<field>`; never returned. */
@@ -47,9 +49,19 @@ export const KB_CONNECTOR_SECRETS: Record<
   postgres: [
     { field: 'connection', label: 'Connection string (postgres://user:password@host:5432/db)' },
   ],
+  mysql: [{ field: 'connection', label: 'Connection string (mysql://user:password@host:3306/db)' }],
 };
 
 const text = (max: number) => z.string().trim().min(1).max(max);
+
+/** A database source: one query, a row per document. The same for every database type. */
+const databaseQuery = z.object({
+  /** One SELECT; it runs read-only, with a time limit and at most 500 rows. */
+  query: text(4000),
+  idColumn: text(100),
+  titleColumn: text(100),
+  bodyColumn: text(100),
+});
 
 /** What each type needs to know, besides its credentials. */
 export const kbConnectorConfigSchemas = {
@@ -86,13 +98,8 @@ export const kbConnectorConfigSchemas = {
     /** A folder the worker can read, inside one of KB_CONNECTOR_PATHS (where a NAS share is mounted). */
     path: text(500),
   }),
-  postgres: z.object({
-    /** One SELECT; it runs read-only, with a time limit and at most 500 rows. */
-    query: text(4000),
-    idColumn: text(100),
-    titleColumn: text(100),
-    bodyColumn: text(100),
-  }),
+  postgres: databaseQuery,
+  mysql: databaseQuery,
 } as const satisfies Record<KbConnectorType, z.ZodTypeAny>;
 
 const base = {
@@ -119,6 +126,7 @@ export const createKbConnectorSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('s3'), config: kbConnectorConfigSchemas.s3, ...base }),
   z.object({ type: z.literal('folder'), config: kbConnectorConfigSchemas.folder, ...base }),
   z.object({ type: z.literal('postgres'), config: kbConnectorConfigSchemas.postgres, ...base }),
+  z.object({ type: z.literal('mysql'), config: kbConnectorConfigSchemas.mysql, ...base }),
 ]);
 export type CreateKbConnectorInput = z.infer<typeof createKbConnectorSchema>;
 

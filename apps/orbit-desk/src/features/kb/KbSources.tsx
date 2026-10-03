@@ -101,6 +101,18 @@ const CONFIG_FIELDS: Record<KbConnectorType, Field[]> = {
     { key: 'titleColumn', label: 'Column with the title' },
     { key: 'bodyColumn', label: 'Column with the text' },
   ],
+  mysql: [
+    {
+      key: 'query',
+      label: 'Query (one SELECT)',
+      kind: 'textarea',
+      hint: 'It runs read-only, with a time limit and at most 500 rows.',
+      placeholder: 'SELECT id, question, answer FROM faqs WHERE published = 1',
+    },
+    { key: 'idColumn', label: 'Column with a unique id' },
+    { key: 'titleColumn', label: 'Column with the title' },
+    { key: 'bodyColumn', label: 'Column with the text' },
+  ],
 };
 
 const DEFAULTS: Record<KbConnectorType, Record<string, string>> = {
@@ -111,6 +123,7 @@ const DEFAULTS: Record<KbConnectorType, Record<string, string>> = {
   s3: { region: 'us-east-1' },
   folder: {},
   postgres: {},
+  mysql: {},
 };
 
 const SCHEDULES = [
@@ -149,6 +162,7 @@ function describe(c: KbConnectorView): string {
     case 'folder':
       return cfg.path ?? '';
     case 'postgres':
+    case 'mysql':
       return `${cfg.titleColumn} / ${cfg.bodyColumn}`;
   }
 }
