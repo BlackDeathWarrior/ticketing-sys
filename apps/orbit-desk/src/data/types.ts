@@ -1,6 +1,7 @@
 import type {
   AiClassification,
   Channel,
+  MessageCard,
   Priority,
   StatusCategory,
   TicketHandling,
@@ -89,6 +90,8 @@ export interface Message {
   viaPortal?: boolean;
   /** Files sent with the message (email, web form); `path` is the API download path. */
   attachments: Attachment[];
+  /** Product cards shown with the message (WhatsApp carousel); absent when it had none. */
+  cards?: MessageCard[];
   /** What the AI recorded with its reply: confidence, rules, knowledge used. */
   ai: { confidence: number | null; rules: string[]; sources: Array<{ label: string }> } | null;
 }

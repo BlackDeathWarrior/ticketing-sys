@@ -21,6 +21,7 @@ export * from './notifications';
 export * from './preferences';
 export * from './priority';
 export * from './whatsapp';
+export * from './cards';
 export * from './channel-health';
 export * from './voice';
 export * from './csat';

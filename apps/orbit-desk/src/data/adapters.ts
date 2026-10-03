@@ -1,4 +1,9 @@
-import type { AiClassification, StatusCategory, TicketHandling } from '@tms/shared';
+import {
+  type AiClassification,
+  messageCardSchema,
+  type StatusCategory,
+  type TicketHandling,
+} from '@tms/shared';
 import type { SlaState } from '../lib/format';
 import type {
   Channel,
@@ -104,6 +109,8 @@ export interface ApiConversation {
       ai?: { confidence?: number | null; rules?: string[]; sources?: Array<{ label: string }> };
       /** `portal`: the customer wrote it in the help center's "My requests". */
       via?: string;
+      /** The product cards shown with the message; checked against `messageCardSchema`. */
+      cards?: unknown;
     };
   }>;
 }
@@ -272,6 +279,7 @@ export function toThread(
           ? 'AI agent'
           : (m.authorName ?? (m.authorType === 'system' ? 'System' : 'Support'));
       const meta = m.metadata?.ai;
+      const cards = messageCardSchema.array().safeParse(m.metadata?.cards);
       messages.push({
         id: m.id,
         kind: fromCustomer
@@ -296,6 +304,7 @@ export function toThread(
           size: a.size,
           path: `/messages/${m.id}/attachments/${i}`,
         })),
+        ...(cards.success ? { cards: cards.data } : {}),
         ai:
           byAi && meta
             ? {
