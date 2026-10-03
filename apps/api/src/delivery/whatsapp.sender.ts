@@ -56,7 +56,11 @@ export class WhatsAppSender implements ChannelSender {
     if (!target) {
       throw new PermanentDeliveryError('This conversation has no WhatsApp number to send to.');
     }
-    const { waTemplate: template, cards: rawCards, cardsDropped } = message.metadata as {
+    const {
+      waTemplate: template,
+      cards: rawCards,
+      cardsDropped,
+    } = message.metadata as {
       waTemplate?: WaTemplateSend;
       cards?: unknown;
       cardsDropped?: unknown;
