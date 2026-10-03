@@ -1,7 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { type Database, type DbOrTx, kbChunks, kbDocuments, teams, users } from '@tms/db';
+import {
+  type Database,
+  type DbOrTx,
+  kbChunks,
+  kbConnectors,
+  kbDocuments,
+  teams,
+  users,
+} from '@tms/db';
 import {
   type CreateKbDocumentInput,
   type CurrentUser,
@@ -336,6 +344,111 @@ export class KbService {
     return { stream: await this.storage.get(doc.s3Key), doc };
   }
 
+  // ---- connectors (ADR 0033) ----
+
+  /** What a connector brought in before: by its item id, with the version it had and its text's hash. */
+  async connectorDocuments(connectorId: string) {
+    const rows = await this.db
+      .select({
+        id: kbDocuments.id,
+        externalId: kbDocuments.externalId,
+        status: kbDocuments.status,
+        contentHash: kbDocuments.contentHash,
+        metadata: kbDocuments.metadata,
+      })
+      .from(kbDocuments)
+      .where(eq(kbDocuments.connectorId, connectorId));
+    return new Map(
+      rows
+        .filter((r) => r.externalId)
+        .map((r) => [
+          r.externalId!,
+          {
+            ...r,
+            sourceVersion: String((r.metadata as { sourceVersion?: unknown }).sourceVersion ?? ''),
+          },
+        ]),
+    );
+  }
+
+  /** How many documents each connector keeps (archived ones not counted). */
+  async connectorCounts(): Promise<Map<string, number>> {
+    const rows = await this.db
+      .select({ connectorId: kbDocuments.connectorId, n: sql<number>`count(*)::int` })
+      .from(kbDocuments)
+      .where(
+        and(sql`${kbDocuments.connectorId} is not null`, sql`${kbDocuments.status} <> 'archived'`),
+      )
+      .groupBy(kbDocuments.connectorId);
+    return new Map(rows.map((r) => [r.connectorId!, r.n]));
+  }
+
+  /** A new item from a connector: a text document, a draft unless the connector approves its own. */
+  async addFromConnector(
+    ctx: RequestCtx,
+    c: { id: string; visibility: string; teamId: string | null; autoApprove: boolean },
+    item: { externalId: string; title: string; text: string; url: string | null; version: string },
+  ): Promise<string> {
+    return this.insert(ctx, {
+      source: 'text',
+      title: item.title.slice(0, 300),
+      content: item.text,
+      contentHash: contentHash(item.text),
+      url: item.url,
+      visibility: c.visibility,
+      teamId: c.visibility === 'team' ? c.teamId : null,
+      status: c.autoApprove ? 'approved' : 'draft',
+      ...(c.autoApprove ? { approvedAt: new Date() } : {}),
+      connectorId: c.id,
+      externalId: item.externalId,
+      metadata: { sourceVersion: item.version },
+    });
+  }
+
+  /**
+   * An item that changed in its source: the new text becomes a new version
+   * and is indexed again. An item that came back after being archived is
+   * a draft again (approved again, with `approve`).
+   */
+  async updateFromConnector(
+    ctx: RequestCtx,
+    id: string,
+    item: { title: string; text: string; url: string | null; version: string },
+    opts: { approve: boolean; changed: boolean },
+  ): Promise<void> {
+    const current = await this.row(id);
+    const version = opts.changed ? current.version + 1 : current.version;
+    const status =
+      current.status === 'archived' ? (opts.approve ? 'approved' : 'draft') : current.status;
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(kbDocuments)
+        .set({
+          title: item.title.slice(0, 300),
+          url: item.url,
+          status,
+          metadata: { ...current.metadata, sourceVersion: item.version },
+          ...(opts.changed
+            ? {
+                content: item.text,
+                contentHash: contentHash(item.text),
+                version,
+                indexState: 'pending' as KbIndexState,
+                indexError: null,
+              }
+            : {}),
+        })
+        .where(eq(kbDocuments.id, id));
+      if (opts.changed || status !== current.status) {
+        await this.changed(tx, ctx, id, version, 'kb.document_updated', {
+          fields: opts.changed ? ['content'] : ['status'],
+          reindex: opts.changed,
+          connector: current.connectorId,
+        });
+      }
+    });
+  }
+
   // ---- worker side ----
 
   /** The document each chunk belongs to. Chunks replaced by a re-index are simply missing. */
@@ -420,12 +533,14 @@ export class KbService {
         team: { id: teams.id, name: teams.name },
         creator: { id: creators.id, name: creators.name },
         approver: { id: approvers.id, name: approvers.name },
+        connector: { id: kbConnectors.id, name: kbConnectors.name },
         chunkCount: sql<number>`(select count(*)::int from ${kbChunks} where ${kbChunks.documentId} = ${kbDocuments.id} and ${kbChunks.version} = ${kbDocuments.indexedVersion})`,
       })
       .from(kbDocuments)
       .leftJoin(teams, eq(teams.id, kbDocuments.teamId))
       .leftJoin(creators, eq(creators.id, kbDocuments.createdBy))
-      .leftJoin(approvers, eq(approvers.id, kbDocuments.approvedBy));
+      .leftJoin(approvers, eq(approvers.id, kbDocuments.approvedBy))
+      .leftJoin(kbConnectors, eq(kbConnectors.id, kbDocuments.connectorId));
   }
 }
 
@@ -451,6 +566,7 @@ function toView(r: Row): KbDocumentView {
     sizeBytes: d.sizeBytes,
     createdBy: r.creator?.id ? r.creator : null,
     approvedBy: r.approver?.id ? r.approver : null,
+    connector: r.connector?.id ? r.connector : null,
     approvedAt: d.approvedAt?.toISOString() ?? null,
     indexedAt: d.indexedAt?.toISOString() ?? null,
     createdAt: d.createdAt.toISOString(),

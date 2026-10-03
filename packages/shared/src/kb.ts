@@ -141,6 +141,8 @@ export interface KbDocumentView {
   sizeBytes: number | null;
   createdBy: { id: string; name: string } | null;
   approvedBy: { id: string; name: string } | null;
+  /** The source that keeps it in sync (ADR 0033); null for documents added by hand. */
+  connector: { id: string; name: string } | null;
   approvedAt: string | null;
   indexedAt: string | null;
   createdAt: string;

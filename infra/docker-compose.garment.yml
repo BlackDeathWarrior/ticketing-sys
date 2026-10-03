@@ -22,6 +22,8 @@ x-garment-env: &garment-env
   # The AI's tools and the webhooks call the app's worker on the host machine.
   TOOL_PRIVATE_HOSTS: fake-providers,host.docker.internal
   WEBHOOK_PRIVATE_HOSTS: host.docker.internal
+  # Knowledge sources (ADR 0033) may be the stack's own object store.
+  KB_CONNECTOR_PRIVATE_HOSTS: objectstore
   # Short waits, so a breach and a retry can be watched happening.
   SLA_SWEEP_SECONDS: '10'
   WEBHOOK_BACKOFF_MS: '3000'

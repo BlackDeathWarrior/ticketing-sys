@@ -20,6 +20,7 @@ import { WhatsAppWebhookWorker } from '../channels/whatsapp/whatsapp-webhook.que
 import { InfraModule } from '../infra/infra.module';
 import { KbIndexerService } from '../kb/kb-indexer.service';
 import { KbIngestHandler, KbIngestWorker } from '../kb/kb-ingest.worker';
+import { KbSyncHandler, KbSyncWorker } from '../kb/connectors/kb-sync.worker';
 import { KbModule } from '../kb/kb.module';
 import { LearningHandler, LearningModule } from '../learning/learning.module';
 import { LlmModule } from '../llm/llm.module';
@@ -107,6 +108,8 @@ const env = loadEnv();
     KbIndexerService,
     KbIngestWorker,
     KbIngestHandler,
+    KbSyncWorker,
+    KbSyncHandler,
     AiWorker,
     AiDispatchHandler,
     AiAutoResolveWorker,
@@ -128,6 +131,7 @@ const env = loadEnv();
         DeliveryHandler,
         SettingsChangedHandler,
         KbIngestHandler,
+        KbSyncHandler,
         AiDispatchHandler,
         WebFormAckHandler,
         ApprovalsHandler,

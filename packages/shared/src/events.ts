@@ -41,6 +41,9 @@ export const DOMAIN_EVENT_TYPES = [
   'kb.document_indexed',
   /** Re-embed everything, e.g. after the embedding model changed. */
   'kb.reindex_requested',
+  /** Someone asked for a knowledge-base connector to sync now (ADR 0033). */
+  'kb.connector_sync_requested',
+  'kb.connector_changed',
   /** An AI turn finished (sent, drafted, handed over or failed). */
   'ai.turn_completed',
   /** The AI handed the conversation to humans. */

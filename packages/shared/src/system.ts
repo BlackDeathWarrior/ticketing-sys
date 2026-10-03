@@ -76,4 +76,5 @@ export const QUEUE_LABELS: Record<string, string> = {
   'ai-auto-resolve': 'Resolving tickets the AI answered',
   retention: 'Deleting old operational data and call recordings',
   'webhook-deliveries': 'Webhooks to integrations',
+  'kb-sync': 'Knowledge base connectors (syncing outside sources)',
 };

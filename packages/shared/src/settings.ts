@@ -5,7 +5,7 @@ import { z } from 'zod';
  * are not here: they live in LiteLLM. Values are write-only: the API returns
  * the last four characters at most.
  */
-export const SECRET_SCOPES = ['channel', 'tool', 'integration'] as const;
+export const SECRET_SCOPES = ['channel', 'tool', 'integration', 'kb'] as const;
 export type SecretScope = (typeof SECRET_SCOPES)[number];
 
 export interface SecretDefinition {
@@ -31,12 +31,13 @@ export const secretKeySchema = z
   .min(3)
   .max(120)
   .refine(
-    (k) => k in SECRET_KEYS || /^(tool|integration)\.[a-z0-9_-]{1,50}\.[a-z0-9_]{1,50}$/.test(k),
+    (k) => k in SECRET_KEYS || /^(tool|integration|kb)\.[a-z0-9_-]{1,50}\.[a-z0-9_]{1,50}$/.test(k),
     { message: 'Unknown secret key' },
   );
 
 export function secretScope(key: string): SecretScope {
   if (key in SECRET_KEYS) return SECRET_KEYS[key as KnownSecretKey].scope;
+  if (key.startsWith('kb.')) return 'kb';
   return key.startsWith('tool.') ? 'tool' : 'integration';
 }
 

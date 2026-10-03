@@ -65,6 +65,13 @@ const envSchema = z
     /** Let KB URL sources point at private addresses (local demos and tests only). */
     KB_ALLOW_PRIVATE_URLS: bool.default('false'),
     /** Concurrent KB ingestion jobs per worker. */
+    /**
+     * Folders a "shared folder" connector may read, comma-separated (ADR 0033):
+     * where a NAS share is mounted into the worker. Empty: no folder connector works.
+     */
+    KB_CONNECTOR_PATHS: z.string().default(''),
+    /** Hosts connectors may reach although they are private (an in-house database or wiki), comma-separated. */
+    KB_CONNECTOR_PRIVATE_HOSTS: z.string().default(''),
     KB_INGEST_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(2),
 
     /** Concurrent AI jobs (turns and classifications) per worker. */

@@ -23,6 +23,7 @@ import { useGet } from '../../lib/useGet';
 import { relativeFromIso } from '../settings/logic';
 import styles from './Kb.module.css';
 import { KbSearch } from './KbSearch';
+import { KbSources } from './KbSources';
 import {
   formatBytes,
   indexLabel,
@@ -139,7 +140,7 @@ export function KbPage() {
                     <td>
                       <div className={styles.docTitle}>{d.title}</div>
                       <div className={styles.muted}>
-                        {SOURCE_LABELS[d.source]}
+                        {d.connector ? d.connector.name : SOURCE_LABELS[d.source]}
                         {d.filename && ` · ${d.filename} ${formatBytes(d.sizeBytes)}`}
                         {d.url && ` · ${new URL(d.url).hostname}`}
                         {d.version > 1 && ` · v${d.version}`}
@@ -220,6 +221,8 @@ export function KbPage() {
           </div>
         )}
       </Card>
+
+      {manager && <KbSources />}
 
       <Dialog open={adding} onClose={() => setAdding(false)} labelledBy="kb-add-title">
         {adding && (
