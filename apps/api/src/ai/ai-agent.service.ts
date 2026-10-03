@@ -522,9 +522,7 @@ export class AiAgentService {
         }
         case 'ask': {
           const { ticket, customer, summary } = await rest();
-          const transcript: Line[] = rows
-            .filter((m) => m.authorType !== 'system')
-            .map(lineOf);
+          const transcript: Line[] = rows.filter((m) => m.authorType !== 'system').map(lineOf);
           const unconfidentBefore = await this.runs.unconfidentTurns(
             conv.id,
             behaviour.sendAt,
