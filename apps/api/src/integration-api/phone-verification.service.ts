@@ -11,7 +11,7 @@ import {
   type PhoneVerificationStarted,
   type StartPhoneVerificationInput,
 } from '@tms/shared';
-import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, isNull, lt, min, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import { WhatsAppCodeSender } from '../channels/whatsapp/whatsapp-code.sender';
@@ -22,6 +22,9 @@ import { CustomersService } from '../customers/customers.service';
 import { DB, ENV } from '../infra/tokens';
 
 const MINUTE_MS = 60_000;
+/** Codes one number may be sent per hour. */
+const CODES_PER_HOUR = 5;
+const HOUR_SECONDS = 3600;
 
 const MESSAGES: Record<PhoneCodeFailure, string> = {
   'no-code': 'Ask for a new code.',
@@ -60,8 +63,9 @@ export class PhoneVerificationService {
     const { phone, customer } = input;
     const integrationId = key.integration.id;
     await this.limit('phone-code-minute', phone, 1, 60);
-    await this.limit('phone-code-hour', phone, 5, 3600);
+    await this.limit('phone-code-hour', phone, CODES_PER_HOUR, HOUR_SECONDS);
     await this.limit('phone-code-customer', `${integrationId}:${customer.externalId}`, 10, 3600);
+    await this.holdHourlyBound(integrationId, phone);
 
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const id = randomUUID();
@@ -187,11 +191,34 @@ export class PhoneVerificationService {
     );
   }
 
-  /** A 429 with `Retry-After`, as the `@RateLimit` guard answers. */
+  /**
+   * A 429 with `Retry-After`, as the `@RateLimit` guard answers. Always on, even
+   * with RATE_LIMITS off: each code is a paid message to someone's phone (ADR 0021).
+   */
   private async limit(name: string, who: string, limit: number, windowSeconds: number) {
-    if (!this.limiter.enabled) return;
     const used = await this.limiter.hit(name, who, limit, windowSeconds);
     if (!used.allowed) throw tooManyRequests(used.retryAfter, 'verification codes');
+  }
+
+  /**
+   * The hourly bound per number again, from the table, for when Redis is
+   * unreachable and the counters let everything through.
+   */
+  private async holdHourlyBound(integrationId: string, phone: string): Promise<void> {
+    const since = new Date(Date.now() - HOUR_SECONDS * 1000);
+    const [sent] = await this.db
+      .select({ n: count(), oldest: min(phoneVerifications.createdAt) })
+      .from(phoneVerifications)
+      .where(
+        and(
+          eq(phoneVerifications.integrationId, integrationId),
+          eq(phoneVerifications.phone, phone),
+          gte(phoneVerifications.createdAt, since),
+        ),
+      );
+    if (!sent || sent.n < CODES_PER_HOUR || !sent.oldest) return;
+    const retryAfter = Math.ceil((sent.oldest.getTime() + HOUR_SECONDS * 1000 - Date.now()) / 1000);
+    throw tooManyRequests(Math.max(retryAfter, 1), 'verification codes');
   }
 
   /** Keyed with the server's secret and bound to the row, so a leaked table cannot be brute-forced offline. */
