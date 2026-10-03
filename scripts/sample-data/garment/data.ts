@@ -231,6 +231,7 @@ export const kb = {
     'cancellations-returns-refunds.md',
     'payments.md',
     'getting-help.md',
+    'whatsapp.md',
   ],
   /** For agents and the copilot only: never shown or said to a shopper. */
   internal: {

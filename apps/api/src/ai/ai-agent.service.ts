@@ -11,6 +11,7 @@ import {
   type SimulateAiInput,
   type SimulateAiResult,
   describeArgs,
+  normalizeIdentity,
 } from '@tms/shared';
 import Redis from 'ioredis';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
@@ -836,7 +837,12 @@ export class AiAgentService {
           knowledge: knowledge.map((k) => ({ id: k.id, label: k.source, text: k.text })),
           categories,
           companyTools: companyTools.length > 0,
-          unverified: allTools.length > companyTools.length,
+          unverified:
+            allTools.length > companyTools.length
+              ? i.channel === 'whatsapp'
+                ? 'whatsapp'
+                : 'visitor'
+              : undefined,
           personAsked: !!i.personAsked,
           update: i.update,
           lessons,
@@ -1143,6 +1149,11 @@ export class AiAgentService {
  * The same holds without an integration: on a web chat the email is acted
  * for only when the chat itself vouched for the visitor (a signed identity),
  * never when an anonymous visitor typed it.
+ *
+ * On WhatsApp the sender is acted for only when the number the conversation is
+ * with is a phone identity of the customer that a code has proven. Meta proves
+ * who is writing from that number; the code proved whose account the number
+ * belongs to. A sender Meta gave us no number for is never bound.
  */
 function boundEmail(
   ticket: { integration: { slug: string } | null },
@@ -1158,13 +1169,21 @@ function boundEmail(
   } else if (conv.channel === 'webchat') {
     const vouched = conv.metadata.identity;
     if (vouched !== 'email' && vouched !== 'external_id') return null;
+  } else if (conv.channel === 'whatsapp') {
+    const waPhone = typeof conv.metadata.waPhone === 'string' ? conv.metadata.waPhone : '';
+    const number = normalizeIdentity('phone', waPhone);
+    if (!number) return null;
+    const proven = customer.identities.some(
+      (x) => x.type === 'phone' && x.verified && normalizeIdentity('phone', x.value) === number,
+    );
+    if (!proven) return null;
   }
   return emailOf(customer);
 }
 
 function emailOf(customer: {
   primaryEmail: string | null;
-  identities: Array<{ type: string; value: string }>;
+  identities: Array<{ type: string; value: string; verified: boolean }>;
 }): string | null {
   return (
     customer.primaryEmail ?? customer.identities.find((x) => x.type === 'email')?.value ?? null

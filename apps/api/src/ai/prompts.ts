@@ -4,7 +4,7 @@ import { DEFAULT_BRANDING } from '@tms/shared';
  * Versioned prompts (ADR 0011). The version is recorded on every AI run, so a
  * change here is traceable in the audit trail; bump it with any edit.
  */
-export const AGENT_PROMPT_VERSION = 'agent-v9';
+export const AGENT_PROMPT_VERSION = 'agent-v10';
 export const CLASSIFIER_PROMPT_VERSION = 'classifier-v1';
 export const SUMMARY_PROMPT_VERSION = 'summary-v1';
 export const HANDOVER_PROMPT_VERSION = 'handover-v1';
@@ -56,8 +56,12 @@ export interface AgentPromptInput {
   categories: string[];
   /** Company-system tools are available this turn. */
   companyTools: boolean;
-  /** Tools that act for a customer were left out: nobody vouched for who this is. */
-  unverified?: boolean;
+  /**
+   * Tools that act for a customer were left out: nobody vouched for who this is.
+   * `visitor` is a chat visitor who is not signed in; `whatsapp` is a number no
+   * customer account has proven.
+   */
+  unverified?: 'visitor' | 'whatsapp';
   /** The customer asked for a person; the AI helps first and says a colleague is available. */
   personAsked?: boolean;
   /**
@@ -114,9 +118,14 @@ export function agentSystemPrompt(i: AgentPromptInput): string {
           '- When the customer wants money back or reports a wrong charge, and a tool can request it, use that tool: our team decides on the request. Do not send the customer to a person for it.',
         ]
       : []),
-    ...(i.unverified
+    ...(i.unverified === 'visitor'
       ? [
           '- This visitor is not signed in, so you cannot look up or change orders, payments or account details for them. If they ask for that, tell them to sign in and ask again; do not ask for an email address or order details to work around it.',
+        ]
+      : []),
+    ...(i.unverified === 'whatsapp'
+      ? [
+          '- This WhatsApp number is not linked to a customer account, so you cannot look up or change orders, payments or account details for them. If they ask for that, tell them to add this WhatsApp number to their account on the website and then write here again; do not ask for an email address or order details to work around it.',
         ]
       : []),
     ...(i.personAsked
