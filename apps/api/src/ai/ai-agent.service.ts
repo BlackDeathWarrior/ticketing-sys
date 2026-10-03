@@ -22,7 +22,9 @@ import Redis from 'ioredis';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
+import { aiIsAnswering } from '../channels/ai-answering';
 import { OutboundService } from '../channels/outbound.service';
+import { WhatsAppTypingService } from '../channels/whatsapp/whatsapp-typing.service';
 import { lockTicketThenConversation } from '../channels/lock-order';
 import { AI_CTX, SYSTEM_CTX } from '../common/request-context';
 import { ConversationsService } from '../conversations/conversations.service';
@@ -223,6 +225,7 @@ export class AiAgentService {
     private readonly tickets: TicketsService,
     private readonly customers: CustomersService,
     private readonly outbound: OutboundService,
+    private readonly whatsappTyping: WhatsAppTypingService,
     private readonly org: OrgService,
     private readonly behaviour: AiBehaviourService,
     private readonly runs: AiRunsService,
@@ -502,6 +505,10 @@ export class AiAgentService {
     const lastRow = rows.at(-1);
     // Already answered (a burst of messages is answered once), or nothing to answer.
     if (!lastRow || lastRow.authorType !== 'customer') return 'skipped';
+    // The customer sees that an answer is being written. Not waited for: it must not delay the answer.
+    if (aiIsAnswering({ heldBy: conv.controller, mode, customerWroteLast: true })) {
+      void this.whatsappTyping.show(conv.channel, lastRow.channelMessageId);
+    }
 
     const language = conv.language ?? (await this.language.detect(lastRow.body));
     // Loaded by the first step after the closing check: a "no, thanks" to the closing

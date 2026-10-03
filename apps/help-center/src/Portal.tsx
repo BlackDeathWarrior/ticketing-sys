@@ -229,7 +229,7 @@ function useLoad<T>(token: string, path: string, onExpired: () => void) {
     setData(null);
     load();
   }, [load]);
-  return { data, setData, error };
+  return { data, setData, error, refresh: load };
 }
 
 function TicketList({
@@ -297,11 +297,24 @@ function TicketDetail({
   onExpired: () => void;
 }) {
   const path = `/portal/tickets/${encodeURIComponent(reference)}`;
-  const { data: ticket, setData, error } = useLoad<PortalTicketDetail>(token, path, onExpired);
+  const {
+    data: ticket,
+    setData,
+    error,
+    refresh,
+  } = useLoad<PortalTicketDetail>(token, path, onExpired);
   const [reply, setReply] = useState('');
   const [busy, setBusy] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+
+  // While the assistant is writing, look again every few seconds so its answer shows by itself.
+  const replying = ticket?.replying === true;
+  useEffect(() => {
+    if (!replying) return;
+    const timer = window.setInterval(refresh, 4000);
+    return () => window.clearInterval(timer);
+  }, [replying, refresh]);
 
   const send = async (e: FormEvent) => {
     e.preventDefault();
@@ -396,6 +409,11 @@ function TicketDetail({
                 </li>
               ))}
             </ol>
+          )}
+          {ticket.replying && (
+            <p className="muted" role="status" data-replying>
+              The AI assistant is writing a reply…
+            </p>
           )}
 
           {ticket.canRate && (

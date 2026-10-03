@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { LlmClientService } from '../llm/llm-client.service';
 import { AiBehaviourService } from '../settings/ai-behaviour.service';
+import { aiIsAnswering } from './ai-answering';
 
 /**
  * Decides who owns a new conversation: the AI when its channel mode is not
@@ -26,5 +27,14 @@ export class AiPolicyService {
       this.logger.debug(`AI not taking ${channel}: ${(err as Error).message}`);
       return false;
     }
+  }
+
+  /** Whether a conversation the customer has just written in is being answered by the AI by itself. */
+  async answering(channel: string, controller: string): Promise<boolean> {
+    return aiIsAnswering({
+      heldBy: controller,
+      mode: await this.behaviour.modeFor(channel),
+      customerWroteLast: true,
+    });
   }
 }

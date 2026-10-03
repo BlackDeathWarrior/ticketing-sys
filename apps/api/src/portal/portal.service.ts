@@ -27,6 +27,7 @@ import {
 import { eq, lt } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
+import { aiIsAnswering } from '../channels/ai-answering';
 import { InboundService } from '../channels/inbound.service';
 import type { RequestCtx } from '../common/request-context';
 import { RateLimiterService } from '../common/rate-limit';
@@ -36,6 +37,7 @@ import { ConversationsService } from '../conversations/conversations.service';
 import { CsatService } from '../csat/csat.service';
 import { CustomersService } from '../customers/customers.service';
 import { DB, ENV } from '../infra/tokens';
+import { AiBehaviourService } from '../settings/ai-behaviour.service';
 import { CustomerExperienceService } from '../settings/customer-experience.service';
 import { StorageService } from '../storage/storage.service';
 import { TicketsService } from '../tickets/tickets.service';
@@ -74,6 +76,7 @@ export class PortalService {
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
     private readonly experience: CustomerExperienceService,
+    private readonly behaviour: AiBehaviourService,
     private readonly customers: CustomersService,
     private readonly tickets: TicketsService,
     private readonly workflow: WorkflowService,
@@ -270,6 +273,7 @@ export class PortalService {
           size: a.size,
         })),
       }));
+    const last = messages.at(-1);
     return {
       reference: ticket.reference,
       subject: ticket.subject,
@@ -279,6 +283,13 @@ export class PortalService {
       updatedAt: ticket.updatedAt.toISOString(),
       messages,
       canReply: status !== 'closed',
+      replying: aiIsAnswering({
+        heldBy: ticket.handling,
+        // The AI answers where the customer last wrote.
+        mode: last ? await this.behaviour.modeFor(last.channel) : 'off',
+        customerWroteLast: last?.from === 'you',
+        settled: status === 'resolved' || status === 'closed',
+      }),
       canRate: !notRatable,
       rating,
     };

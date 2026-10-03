@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  type AiChannelMode,
   type CreateIntegrationTicketInput,
   type CsatSubmit,
   type CsatView,
@@ -18,6 +19,7 @@ import {
   type Priority,
   type StatusCategory,
 } from '@tms/shared';
+import { aiIsAnswering } from '../channels/ai-answering';
 import { InboundService } from '../channels/inbound.service';
 import type { ApiKeyContext } from '../common/request-context';
 import { ConversationsService } from '../conversations/conversations.service';
@@ -276,18 +278,13 @@ export class IntegrationTicketsService {
       ),
       this.behaviour.get(),
     ]);
-    const modes = behaviour.channels as Record<string, string>;
+    const modes = behaviour.channels as Record<string, AiChannelMode | undefined>;
     return Promise.all(
       rows.map((t) =>
-        this.view(
-          t,
-          known.get(t.customer.id) ?? [],
-          // The AI owns the ticket, the customer wrote last, and what it writes is sent
-          // by itself (in draft mode a person reviews it first, so nobody is typing yet).
-          t.handling === 'ai' &&
-            last.get(t.id)?.direction === 'inbound' &&
-            modes[t.channel] === 'auto',
-        ),
+        this.view(t, known.get(t.customer.id) ?? [], {
+          mode: modes[t.channel] ?? 'off',
+          customerWroteLast: last.get(t.id)?.direction === 'inbound',
+        }),
       ),
     );
   }
@@ -296,7 +293,7 @@ export class IntegrationTicketsService {
   private async view(
     t: TicketRow,
     externalIds: string[],
-    replying: boolean,
+    turn: { mode: AiChannelMode; customerWroteLast: boolean },
   ): Promise<IntegrationTicketView> {
     const status = await this.workflow.status(t.status);
     // Only the id this ticket's own integration gave the person: `<slug>:<id>`.
@@ -317,7 +314,11 @@ export class IntegrationTicketsService {
         externalId: own && prefix ? own.slice(prefix.length) : null,
       },
       handling: t.handling,
-      replying: replying && status.category !== 'resolved' && status.category !== 'closed',
+      replying: aiIsAnswering({
+        heldBy: t.handling,
+        ...turn,
+        settled: status.category === 'resolved' || status.category === 'closed',
+      }),
       createdAt: t.createdAt.toISOString(),
       updatedAt: t.updatedAt.toISOString(),
       resolvedAt: t.resolvedAt?.toISOString() ?? null,
