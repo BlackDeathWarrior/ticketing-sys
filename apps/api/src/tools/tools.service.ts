@@ -35,6 +35,13 @@ import { assertPublicUrl, UnsafeUrlError } from '../common/url-fetch';
 import type { Env } from '../config/env';
 import { DB, ENV } from '../infra/tokens';
 import { SecretsService } from '../settings/secrets.service';
+import {
+  catalogueAddresses,
+  type CatalogueOperation,
+  type KnownSystem,
+  knownSystems,
+  operationsFromOpenApi,
+} from './tool-discovery';
 import { listTools, type McpTarget } from './mcp-client';
 
 export type ServerRow = typeof mcpServers.$inferSelect;
@@ -248,6 +255,7 @@ export class ToolsService {
    */
   async createCustom(ctx: RequestCtx, v: ParsedCustomTool): Promise<ToolView> {
     await this.checkUrl(sampleUrl(v.url));
+    const key = v.keyFromToolId && v.authHeader ? await this.keyOf(v.keyFromToolId, v.url) : null;
     const server = await this.customServer();
     const [taken] = await this.db
       .select({ id: tools.id })
@@ -277,12 +285,81 @@ export class ToolsService {
         ctx,
         'tool.custom_created',
         t!.id,
-        { name: v.name, method: v.method, url: v.url, tier: v.tier, enabled: v.enabled },
+        {
+          name: v.name,
+          method: v.method,
+          url: v.url,
+          tier: v.tier,
+          enabled: v.enabled,
+          ...(key ? { keyFrom: key.from } : {}),
+        },
         'tool',
       );
       return t!;
     });
+    if (key) await this.secrets.set(ctx, customToolTokenKey(v.name), key.token);
     return this.view(row, server, ctx.user?.name ?? null);
+  }
+
+  /**
+   * The saved key of another custom tool, for a new tool at `url`. Only when
+   * both addresses are on the same host: a key never follows a tool to a
+   * system it was not saved for.
+   */
+  private async keyOf(
+    toolId: string,
+    url: string,
+  ): Promise<{ token: string; from: string } | null> {
+    const { tool } = await this.customTool(toolId);
+    const host = (address: string) => new URL(sampleUrl(address)).host.toLowerCase();
+    if (!tool.http || host(tool.http.url) !== host(url)) {
+      throw new BadRequestException(
+        'The key of that tool can only be used for an address on the same system',
+      );
+    }
+    const token = await this.customToken(tool);
+    return token ? { token, from: tool.name } : null;
+  }
+
+  /** The company systems the custom tools already call, with what their tools have in common. */
+  async knownSystems(): Promise<KnownSystem[]> {
+    return knownSystems(await this.listCustom());
+  }
+
+  /**
+   * What a known system says it can do: its OpenAPI document, read with the
+   * key the desk already holds for it. An empty list when it publishes none
+   * or cannot be reached; a helper works without it, only with less to go on.
+   */
+  async catalogue(system: KnownSystem): Promise<CatalogueOperation[]> {
+    const headers: Record<string, string> = { accept: 'application/json' };
+    if (system.keyed && system.keyHeader) {
+      const { tool } = await this.customTool(system.keyed.id);
+      const token = await this.customToken(tool);
+      if (token) {
+        headers[system.keyHeader] =
+          system.keyHeader.toLowerCase() === 'authorization' ? `Bearer ${token}` : token;
+      }
+    }
+    for (const address of catalogueAddresses(system)) {
+      try {
+        const host = new URL(address).hostname.toLowerCase();
+        await assertPublicUrl(address, this.env.TOOL_PRIVATE_HOSTS.includes(host));
+        const response = await fetch(address, {
+          headers,
+          redirect: 'error',
+          signal: AbortSignal.timeout(CATALOGUE_TIMEOUT_MS),
+        });
+        if (!response.ok) continue;
+        const text = await response.text();
+        if (text.length > CATALOGUE_MAX_CHARS) continue;
+        const operations = operationsFromOpenApi(JSON.parse(text), address);
+        if (operations.length) return operations;
+      } catch {
+        // Not there, not JSON, or not reachable: try the next place.
+      }
+    }
+    return [];
   }
 
   /** Replaces a custom tool's definition. Its name stays: the model and the history use it. */
@@ -678,6 +755,8 @@ export function guessCustomerArg(schema: Record<string, unknown>): string | null
 }
 
 const CHECK_TIMEOUT_MS = 8_000;
+const CATALOGUE_TIMEOUT_MS = 4_000;
+const CATALOGUE_MAX_CHARS = 400_000;
 
 /** Why a request got no answer at all, in words for someone who does not run servers. */
 function explainNetworkError(err: unknown): string {

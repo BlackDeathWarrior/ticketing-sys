@@ -120,7 +120,18 @@ function check(v: Checked, ctx: z.RefinementCtx) {
   }
 }
 
-export const createCustomToolSchema = z.object(fields).superRefine(check);
+export const createCustomToolSchema = z
+  .object({
+    ...fields,
+    /**
+     * A custom tool of the same system whose saved key the new tool should use
+     * too. The key is copied on the server and only for an address on the same
+     * host, so someone who may not handle keys can still add a tool to a
+     * system the desk already talks to.
+     */
+    keyFromToolId: z.string().uuid().optional(),
+  })
+  .superRefine(check);
 export type CreateCustomToolInput = z.input<typeof createCustomToolSchema>;
 export type ParsedCustomTool = z.output<typeof createCustomToolSchema>;
 

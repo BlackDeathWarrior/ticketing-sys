@@ -193,6 +193,8 @@ function CustomToolDialog({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A tool of the same system whose saved key the helper found: the new tool uses it too.
+  const [keyFrom, setKeyFrom] = useState<{ toolId: string; title: string } | null>(null);
   const set = <K extends keyof CustomToolForm>(key: K, value: CustomToolForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
   const setParam = (i: number, patch: Partial<CustomToolForm['parameters'][number]>) =>
@@ -208,7 +210,13 @@ function CustomToolDialog({
     try {
       const body = customToolBody(form);
       if (tool) await api('PUT', `/tools/custom/${tool.id}`, body);
-      else await api('POST', '/tools/custom', { ...body, name: form.name.trim() });
+      else {
+        await api('POST', '/tools/custom', {
+          ...body,
+          name: form.name.trim(),
+          ...(keyFrom && body.authHeader ? { keyFromToolId: keyFrom.toolId } : {}),
+        });
+      }
       onSaved();
     } catch (err) {
       setError((err as Error).message);
@@ -233,6 +241,7 @@ function CustomToolDialog({
           path="/ai/tool-helper/custom-tool"
           draft={helperDraftOf(form)}
           onDraft={(draft) => setForm((f) => withHelperDraft(f, draft, !!tool))}
+          onAnswer={(answer) => setKeyFrom(tool ? null : (answer.keyFrom ?? null))}
           placeholder="Look up how many of a product we have in stock, from our warehouse system at https://warehouse.example.com"
           connection={{
             checkPath: '/tools/custom/check',
@@ -293,6 +302,13 @@ function CustomToolDialog({
             placeholder="https://api.example.com/stock/{sku}"
           />
         </div>
+
+        {keyFrom && form.authHeader && (
+          <p className={settings.note} role="status" data-key-from>
+            This tool will use the key already saved for “{keyFrom.title}”, which talks to the same
+            system. Nobody needs to enter a key.
+          </p>
+        )}
 
         <fieldset className={styles.params}>
           <legend>Values the AI fills in</legend>

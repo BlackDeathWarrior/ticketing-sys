@@ -27,6 +27,18 @@ import {
   mcpServerHelperPrompt,
 } from './prompts';
 
+/** How many company systems the helper is told about; a desk talks to a handful at most. */
+const MAX_SYSTEMS = 3;
+
+/** `https://shop.example.com` of an address that may hold `{placeholders}`, or null. */
+function originOf(url: string): string | null {
+  try {
+    return new URL(url.replace(/\{[^{}]*\}/g, 'x')).origin;
+  } catch {
+    return null;
+  }
+}
+
 const NOT_UNDERSTOOD =
   'I could not work that out. Please describe it again in other words: what should be looked up or changed, and in which system.';
 
@@ -48,17 +60,46 @@ export class AiToolHelperService {
 
   async customTool(input: CustomToolHelperInput): Promise<ToolHelperAnswer<CustomToolDraft>> {
     const taken = (await this.tools.listCustom()).map((t) => t.name);
-    const said = await this.ask(customToolHelperPrompt({ taken }), input.messages, input.draft);
+    // What the desk can find out by itself, so the person is not asked for it: the systems
+    // the tools already call, their conventions, and what each says it can do.
+    const systems = (await this.tools.knownSystems()).slice(0, MAX_SYSTEMS);
+    const catalogues = await Promise.all(systems.map((s) => this.tools.catalogue(s)));
+    const said = await this.ask(
+      customToolHelperPrompt({
+        taken,
+        systems: systems.map((s, i) => ({
+          base: s.base,
+          keyHeader: s.keyHeader,
+          customerParameter: s.customerParameter,
+          existingTools: s.tools,
+          operations: catalogues[i],
+        })),
+      }),
+      input.messages,
+      input.draft,
+    );
     const draft = customToolDraftSchema.parse(said.fields);
     const missing = [...said.missing];
-    // A name that exists would be refused at saving; say so now instead.
+    // A name that exists would be refused at saving. With a free one at hand the
+    // person is not asked: they did not choose the first one either.
     if (draft.name && taken.includes(draft.name)) {
-      delete draft.name;
-      missing.push(
-        'Choose another name for the AI: a tool with the suggested name already exists.',
-      );
+      const base = draft.name.slice(0, 37);
+      const free = [2, 3, 4, 5, 6, 7, 8, 9]
+        .map((n) => `${base}_${n}`)
+        .find((n) => !taken.includes(n));
+      if (free) draft.name = free;
+      else delete draft.name;
     }
-    return { message: said.message, draft, missing, model: said.model };
+
+    // A tool for a system the desk already talks to follows that system's ways, whatever the
+    // model left out, and can use the key that is already saved for it.
+    const system = draft.url ? systems.find((s) => originOf(draft.url!) === s.origin) : undefined;
+    if (system && draft.authHeader === undefined) draft.authHeader = system.keyHeader;
+    const keyFrom =
+      system?.keyed && draft.authHeader
+        ? { toolId: system.keyed.id, title: system.keyed.title }
+        : null;
+    return { message: said.message, draft, missing, keyFrom, model: said.model };
   }
 
   async mcpServer(input: McpServerHelperInput): Promise<ToolHelperAnswer<McpServerDraft>> {
