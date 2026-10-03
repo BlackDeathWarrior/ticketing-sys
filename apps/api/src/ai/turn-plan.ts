@@ -1,6 +1,13 @@
-import { type AiBehaviour, type AiRule, asksForHuman, declinesMoreHelp } from '@tms/shared';
+import {
+  type AiBehaviour,
+  type AiRule,
+  asksForHuman,
+  type Channel,
+  declinesMoreHelp,
+} from '@tms/shared';
+import { traitsOf } from '../channels/channel-traits';
 import { acceptsOffer, type GuardHit, type GuardKind, screenInbound } from './guard';
-import { byEmail, clarifyMessage, conductWarning, offTopicWarning, personOffer } from './policy';
+import { clarifyMessage, conductWarning, offTopicWarning, personOffer } from './policy';
 import { blankResult, type ThinkResult } from './think-result';
 
 /**
@@ -21,7 +28,7 @@ export interface TurnFacts {
     closing: boolean;
     personOffer: boolean;
   } | null;
-  channel: string;
+  channel: Channel;
   /** `off` never reaches the plan. */
   mode: 'auto' | 'draft';
   /** For fixed wording only. */
@@ -40,7 +47,7 @@ export interface TurnFacts {
  * the conversation (`guard`, `humanAsks`) are read here and nowhere else.
  */
 export function turnFacts(i: {
-  channel: string;
+  channel: Channel;
   mode: 'auto' | 'draft';
   language: string | null;
   behaviour: AiBehaviour;
@@ -133,7 +140,7 @@ export function startTurn(facts: TurnFacts): Step {
  * there does it warn, offer or close on its own. Elsewhere (email, drafts) a
  * person decides, and a caller on the phone is put through.
  */
-const live = (f: TurnFacts) => f.mode === 'auto' && !byEmail(f.channel) && f.channel !== 'voice';
+const live = (f: TurnFacts) => f.mode === 'auto' && traitsOf(f.channel).actsAlone;
 
 /** A reply that needs no model: fixed wording, sent as it is. */
 function fixed(f: TurnFacts, reply: string, rules: AiRule[], summary: string): ThinkResult {
@@ -178,7 +185,7 @@ function closingCheck(f: TurnFacts): Step {
 /** Conduct: what the message is, before any model sees it (ADR 0029). A call is never screened. */
 function conduct(f: TurnFacts): Step {
   const guard = f.settings.guardrails;
-  if (!guard.enabled || f.channel === 'voice') return personRequest(f);
+  if (!guard.enabled || !traitsOf(f.channel).conductScreened) return personRequest(f);
   const hit = screenInbound(f.message, f.earlier);
   if (!hit) return personRequest(f);
   return withFlag(f, (repeat) => conductHit(f, hit, repeat));

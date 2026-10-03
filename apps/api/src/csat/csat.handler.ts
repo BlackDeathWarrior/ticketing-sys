@@ -8,6 +8,7 @@ import {
   type DomainEventType,
   isLowRating,
 } from '@tms/shared';
+import { traitsOf } from '../channels/channel-traits';
 import { ConversationsService } from '../conversations/conversations.service';
 import { EMITTER } from '../infra/tokens';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -72,7 +73,7 @@ export class CsatHandler implements DomainEventHandler {
       return;
     }
 
-    if ((conv.channel === 'email' || conv.channel === 'web_form') && settings.csatByEmail) {
+    if (traitsOf(conv.channel).repliesByEmail && settings.csatByEmail) {
       const meta = conv.metadata as { address?: string; name?: string };
       const to = meta.address ?? ticket.customer.primaryEmail;
       const email = await this.channels.email();

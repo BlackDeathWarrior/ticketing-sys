@@ -1,4 +1,5 @@
 import { DEFAULT_BRANDING } from '@tms/shared';
+import { type ChannelTraits, traitsOf } from '../channels/channel-traits';
 
 /**
  * Versioned prompts (ADR 0011). The version is recorded on every AI run, so a
@@ -21,7 +22,7 @@ const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 /** How a reply should read on a channel. Emails are signed with the support team's name. */
 function channelStyle(channel: string, company: PromptCompany): string {
   const email = `Email: a short, complete email body: greet the customer by first name, answer in clear paragraphs, and end with "Kind regards, ${oneLine(company.supportName)}". No subject line.`;
-  const styles: Record<string, string> = {
+  const styles: Record<ChannelTraits['style'], string> = {
     webchat:
       'Web chat: reply in one to three short sentences, friendly and plain. No greeting line or sign-off.',
     whatsapp:
@@ -29,12 +30,10 @@ function channelStyle(channel: string, company: PromptCompany): string {
     voice:
       'Phone call: one or two short spoken sentences. No lists, links, symbols or abbreviations.',
     email,
-    // Web-form requests are answered by email.
-    web_form: email,
     // Tickets raised through the API are read inside the app that raised them.
     api: 'In-app support request: a short, complete answer in plain text, in clear paragraphs. No greeting line, no sign-off, no markdown.',
   };
-  return styles[channel] ?? styles.webchat!;
+  return styles[traitsOf(channel).style];
 }
 
 export interface AgentPromptInput {

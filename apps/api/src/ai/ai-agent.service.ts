@@ -7,6 +7,7 @@ import {
   cautionText,
   AI_RULE_LABELS,
   asksForHuman,
+  type Channel,
   smallTalk,
   type SimulateAiInput,
   type SimulateAiResult,
@@ -37,6 +38,7 @@ import { LearningService } from '../learning/learning.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { ApprovalsService } from '../tools/approvals.service';
 import { forModel, type InvokeResult, ToolGatewayService } from '../tools/tool-gateway.service';
+import { traitsOf } from '../channels/channel-traits';
 import { type AgentTool, ToolsService } from '../tools/tools.service';
 import { AiAutoResolveService } from './ai-auto-resolve';
 import { AiRunsService } from './ai-runs.service';
@@ -45,7 +47,6 @@ import { LanguageService } from './language.service';
 import {
   approvalOutcomeMessage,
   assess,
-  byEmail,
   closingQuestion,
   handoverMessage,
   handoverNote,
@@ -196,13 +197,6 @@ interface ThinkInput {
 const LOCK_MS = 120_000;
 const HISTORY_TAIL = 8;
 const SUMMARIZE_AFTER = 14;
-/**
- * Channels where the customer reads our answers where they wrote (a chat, a
- * request page inside an app, their mailbox): a handover tells them who will answer.
- */
-const HANDOVER_NOTICE_CHANNELS = new Set(['webchat', 'whatsapp', 'api', 'email']);
-/** Channels where a draft leaves the customer waiting in silence (a call never drafts; an app shows its request page). */
-const WAITING_CHANNELS = new Set(['webchat', 'whatsapp', 'api']);
 
 /** Whether the last thing the customer was sent is our "a person will reply" message. */
 function toldToWait(rows: Array<{ direction: string; metadata: unknown }>): boolean {
@@ -500,6 +494,9 @@ export class AiAgentService {
     const behaviour = await this.behaviour.get();
     const mode = (behaviour.channels as Record<string, AiChannelMode>)[conv.channel] ?? 'off';
     if (mode === 'off') return 'skipped';
+    // Throws for a channel this build does not know; past this line it is a Channel.
+    traitsOf(conv.channel);
+    const channel = conv.channel as Channel;
 
     const rows = await this.conversations.transcript(conv.id, 30);
     const lastRow = rows.at(-1);
@@ -520,7 +517,7 @@ export class AiAgentService {
       : undefined;
 
     const facts = turnFacts({
-      channel: conv.channel,
+      channel,
       mode,
       language,
       behaviour,
@@ -664,6 +661,7 @@ export class AiAgentService {
     }
 
     const replyLanguage = r.language ?? language;
+    const traits = traitsOf(conv.channel);
     const decision = await this.db.transaction(async (tx): Promise<AiDecision> => {
       // A person may have taken over while the model was thinking: then the AI stays quiet.
       const current = await lockTicketThenConversation(
@@ -695,12 +693,7 @@ export class AiAgentService {
       if ((r.decision === 'sent' || r.decision === 'drafted') && r.reply) {
         // The draft waits for a person; say so once, instead of leaving a live chat silent.
         // Written first, so the draft stays the last thing in the agent's timeline.
-        if (
-          r.decision === 'drafted' &&
-          mode === 'auto' &&
-          WAITING_CHANNELS.has(conv.channel) &&
-          !p.toldToWait
-        ) {
+        if (r.decision === 'drafted' && mode === 'auto' && traits.holdingMessage && !p.toldToWait) {
           await this.outbound.holdingReply(tx, conv.id, waitingMessage(replyLanguage));
         }
         // An answer that settles the request ends by asking whether anything else is needed.
@@ -761,7 +754,7 @@ export class AiAgentService {
         );
         // A caller hears it now. On the other channels the customer is told once
         // routing has chosen who answers, so the message can name them (HandoverHandler).
-        if (conv.channel === 'voice' && mode === 'auto') {
+        if (traits.handoverNotice === 'in_turn' && mode === 'auto') {
           const m = await this.outbound.aiReply(
             AI_CTX,
             conv.id,
@@ -791,7 +784,7 @@ export class AiAgentService {
           source: r.rules.includes('asked_for_human') ? 'customer' : 'ai',
           reason: reasons.join('; '),
           rules: r.rules,
-          tellCustomer: HANDOVER_NOTICE_CHANNELS.has(conv.channel) && mode === 'auto',
+          tellCustomer: traits.handoverNotice === 'after_routing' && mode === 'auto',
         });
       }
       const marks = {
@@ -845,7 +838,7 @@ export class AiAgentService {
 
     // ---- Answers that need no model (ADR 0030). An email wants an email, so not there. ----
     const paths = i.behaviour.fastPaths;
-    const quick = !i.update && !i.personAsked && !byEmail(i.channel);
+    const quick = !i.update && !i.personAsked && traitsOf(i.channel).quickAnswers;
     const customerLines = i.transcript.filter((l) => l.author === 'customer').length;
     /** The opening question of a conversation with nothing attached: the same for anyone who asks it. */
     const general = quick && customerLines === 1 && !i.summary && !i.ticket.context;

@@ -8,6 +8,7 @@ import {
 import type { DomainEvent, DomainEventType } from '@tms/shared';
 import { type Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
+import { traitsOf } from '../channels/channel-traits';
 import type { Env } from '../config/env';
 import { ConversationsService } from '../conversations/conversations.service';
 import { ENV } from '../infra/tokens';
@@ -23,7 +24,6 @@ const TURN_PRIORITY: Record<string, number> = { urgent: 1, high: 2, normal: 3, l
 const CLASSIFY_PRIORITY = 5;
 /** How long a typed message waits before its turn starts. */
 const SETTLE_MS = 1_200;
-const TYPED_CHANNELS = new Set(['webchat', 'whatsapp', 'api']);
 
 type AiJob = (
   | {
@@ -183,7 +183,7 @@ export class AiDispatchHandler implements DomainEventHandler {
         conversationId: conv.id,
         messageId: p.messageId,
         priority: await this.tickets.priorityOf(conv.ticketId).catch(() => undefined),
-        settle: TYPED_CHANNELS.has(conv.channel),
+        settle: traitsOf(conv.channel).settlesBursts,
       });
     }
   }

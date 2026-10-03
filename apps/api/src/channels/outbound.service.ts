@@ -17,6 +17,7 @@ import { CustomersService } from '../customers/customers.service';
 import { DB } from '../infra/tokens';
 import { ChannelConfigService } from '../settings/channel-config.service';
 import { TicketsService } from '../tickets/tickets.service';
+import { traitsOf } from './channel-traits';
 import { replySubject } from './email/email.util';
 import { isValidE164 } from './whatsapp/phone-utils';
 import { isBusinessScopedUserId } from './whatsapp/wa-identity';
@@ -342,7 +343,7 @@ export class OutboundService {
     const byAi = author === 'ai';
     // On a voice call a reply is spoken as it is stored: there is nothing left to deliver.
     const spoken = conv.channel === 'voice' && !opts.draft;
-    const ourAddress = repliesByEmail(conv.channel) ? await this.emailAddress() : null;
+    const ourAddress = traitsOf(conv.channel).repliesByEmail ? await this.emailAddress() : null;
     const ticket = await this.tickets.lockRow(tx, conv.ticketId);
     const email = ourAddress
       ? await this.emailHeaders(tx, conv, ticket.number, ourAddress, opts.messageId)
@@ -476,9 +477,6 @@ export class OutboundService {
     return config.address;
   }
 }
-
-/** Web-form tickets are answered by email, like email tickets. */
-const repliesByEmail = (channel: string) => channel === 'email' || channel === 'web_form';
 
 function acknowledgement(a: { name?: string; subject: string; reference: string; team: string }) {
   const first = a.name?.trim().split(/\s+/)[0];

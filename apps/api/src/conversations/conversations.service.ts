@@ -74,7 +74,7 @@ export class ConversationsService {
   }
 
   /** The conversation that contains the newest of the given provider message ids. */
-  async findByMessageIds(tx: DbOrTx, channels: Channel[], channelMessageIds: string[]) {
+  async findByMessageIds(tx: DbOrTx, channels: readonly Channel[], channelMessageIds: string[]) {
     if (!channelMessageIds.length) return null;
     const [row] = await tx
       .select({ conversation: conversations })
@@ -82,7 +82,7 @@ export class ConversationsService {
       .innerJoin(conversations, eq(conversations.id, messages.conversationId))
       .where(
         and(
-          inArray(messages.channel, channels),
+          inArray(messages.channel, [...channels]),
           inArray(messages.channelMessageId, channelMessageIds),
         ),
       )
@@ -91,11 +91,13 @@ export class ConversationsService {
     return row?.conversation ?? null;
   }
 
-  async findLatestForTicket(tx: DbOrTx, ticketId: string, channels: Channel[]) {
+  async findLatestForTicket(tx: DbOrTx, ticketId: string, channels: readonly Channel[]) {
     const [row] = await tx
       .select()
       .from(conversations)
-      .where(and(eq(conversations.ticketId, ticketId), inArray(conversations.channel, channels)))
+      .where(
+        and(eq(conversations.ticketId, ticketId), inArray(conversations.channel, [...channels])),
+      )
       .orderBy(desc(conversations.createdAt))
       .limit(1);
     return row ?? null;
