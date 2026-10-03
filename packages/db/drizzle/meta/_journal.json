@@ -190,6 +190,13 @@
       "when": 1790996643481,
       "tag": "0026_kb_connectors",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791037732328,
+      "tag": "0027_hesitant_tigra",
+      "breakpoints": true
     }
   ]
 }
