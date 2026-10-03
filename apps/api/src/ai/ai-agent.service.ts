@@ -103,7 +103,11 @@ function lineOf(m: { authorType: string; body: string; metadata: unknown }): Lin
     .safeParse((m.metadata as { cards?: unknown } | null)?.cards);
   if (!shown.success || !shown.data.length) return { author, body: m.body };
   // Outside text: one line, and nothing that looks like the note's own brackets or separator.
-  const tidy = (v: string) => v.replace(/[[\];]/g, '').replace(/\s+/g, ' ').trim();
+  const tidy = (v: string) =>
+    v
+      .replace(/[[\];]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   const list = shown.data.map((c) => `${tidy(c.title)} (${tidy(c.id)})`).join('; ');
   return { author, body: `${m.body}\n[Cards shown: ${list}]` };
 }
