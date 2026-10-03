@@ -93,6 +93,8 @@ export interface Message {
   viaPortal?: boolean;
   /** Files sent with the message (email, web form); `path` is the API download path. */
   attachments: Attachment[];
+  /** What a voice message says, written down for the AI; null when nothing could be made out. Absent otherwise. */
+  transcript?: string | null;
   /** Product cards shown with the message (WhatsApp carousel); absent when it had none. */
   cards?: MessageCard[];
   /** Why the cards were not shown and the reply went as text; absent when they were. */

@@ -7,7 +7,13 @@ import {
 } from '@tms/shared';
 import { traitsOf } from '../channels/channel-traits';
 import { acceptsOffer, type GuardHit, type GuardKind, screenInbound } from './guard';
-import { clarifyMessage, conductWarning, offTopicWarning, personOffer } from './policy';
+import {
+  clarifyMessage,
+  conductWarning,
+  offTopicWarning,
+  personOffer,
+  wordlessReply,
+} from './policy';
 import { blankResult, type ThinkResult } from './think-result';
 
 /**
@@ -38,6 +44,11 @@ export interface TurnFacts {
   settings: Pick<AiBehaviour, 'guardrails' | 'handover' | 'sendAt' | 'maxFailedTurns'>;
   /** Whether the customer was flagged recently. Left out by the executor: the plan asks with `need_flagged`. */
   flagged?: boolean;
+  /**
+   * The message has no words to answer: a voice message that could not be made
+   * out, or a file sent on its own. Left out when it has words.
+   */
+  wordless?: 'voice' | 'file';
 }
 
 /**
@@ -55,6 +66,12 @@ export function turnFacts(i: {
   rows: Array<{ authorType: string; direction: string; body: string; metadata: unknown }>;
 }): TurnFacts {
   const before = i.rows.at(-2);
+  const latest = i.rows.at(-1);
+  // No words, or only the placeholder a channel leaves for a file it could not fetch.
+  const noWords = !!latest && /^(\[[a-z]+\])?$/.test(latest.body.trim());
+  const kind = (latest?.metadata as { waType?: unknown; transcript?: unknown } | null) ?? {};
+  const spoken =
+    kind.transcript !== undefined || kind.waType === 'audio' || kind.waType === 'voice';
   const said = (before?.metadata ?? null) as {
     closing?: unknown;
     ai?: { closingQuestion?: unknown; personOffer?: unknown };
@@ -77,6 +94,7 @@ export function turnFacts(i: {
     channel: i.channel,
     mode: i.mode,
     language: i.language,
+    ...(noWords ? { wordless: spoken ? ('voice' as const) : ('file' as const) } : {}),
     strikes: { abuse: Number(guard.abuse) || 0, offTopic: Number(guard.offTopic) || 0 },
     humanAsks: Number(i.metadata.humanAsks) || 0,
     settings: i.behaviour,
@@ -132,6 +150,21 @@ const CONDUCT_RULE: Record<Closure, AiRule> = {
 };
 
 export function startTurn(facts: TurnFacts): Step {
+  // Nothing to read: say so, where the customer is waiting for the AI itself. A model
+  // asked to answer an empty message makes something up.
+  if (facts.wordless && live(facts)) {
+    return {
+      do: 'send',
+      result: fixed(
+        facts,
+        wordlessReply(facts.language, facts.wordless),
+        [],
+        facts.wordless === 'voice'
+          ? 'A voice message that could not be made out: asked to send it again or type'
+          : 'A file with no words: asked what they need',
+      ),
+    };
+  }
   return closingCheck(facts);
 }
 

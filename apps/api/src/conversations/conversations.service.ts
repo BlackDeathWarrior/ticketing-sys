@@ -387,6 +387,22 @@ export class ConversationsService {
       .where(eq(conversations.id, id));
   }
 
+  /**
+   * What a voice message says, kept on the message so it is listened to once:
+   * the AI reads it as the customer's words and an agent sees it under the
+   * file. `text` null: nothing could be made out. Derived from the message,
+   * like the AI's summary; what the customer sent is not changed.
+   */
+  async noteTranscript(
+    messageId: string,
+    transcript: { text: string | null; model: string },
+  ): Promise<void> {
+    await this.db
+      .update(messages)
+      .set({ metadata: sql`${messages.metadata} || ${JSON.stringify({ transcript })}::jsonb` })
+      .where(eq(messages.id, messageId));
+  }
+
   /** Ids of AI drafts still waiting for review on a conversation. */
   async pendingDraftIds(tx: DbOrTx, conversationId: string): Promise<string[]> {
     const rows = await tx

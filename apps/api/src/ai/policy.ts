@@ -250,6 +250,22 @@ export function welcomeMessage(
   return wordings[Math.abs(Math.trunc(variant)) % wordings.length]!;
 }
 
+/**
+ * What a customer is told when their message has no words the AI can read: a
+ * voice message nobody could make out, or a file sent on its own. Asking is
+ * the honest answer; a reply to nothing would be a guess.
+ */
+export function wordlessReply(language: string | null, kind: 'voice' | 'file'): string {
+  if (language === 'hi') {
+    return kind === 'voice'
+      ? 'माफ़ कीजिए, मैं आपका वॉइस मैसेज समझ नहीं पाया। क्या आप इसे दोबारा भेज सकते हैं, या लिखकर बता सकते हैं कि आपको क्या चाहिए?'
+      : 'धन्यवाद, आपकी फ़ाइल मिल गई। कृपया कुछ शब्दों में बताएँ कि आपको किस बारे में मदद चाहिए।';
+  }
+  return kind === 'voice'
+    ? "Sorry, I couldn't make out your voice message. Could you send it again, or type what you need?"
+    : 'Thanks, I got your file. Could you tell me in a few words what you need help with?';
+}
+
 /** The first answer to "I want a person": the AI is the first line and offers to sort it out. */
 export function personOffer(language: string | null): string {
   return language === 'hi'
