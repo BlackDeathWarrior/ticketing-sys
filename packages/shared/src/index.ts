@@ -25,6 +25,7 @@ export * from './whatsapp';
 export * from './cards';
 export * from './channel-health';
 export * from './voice';
+export * from './phone';
 export * from './csat';
 export * from './portal';
 export * from './learning';

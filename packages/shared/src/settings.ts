@@ -22,6 +22,8 @@ export const SECRET_KEYS = {
   'whatsapp.app_secret': { scope: 'channel', channel: 'whatsapp', label: 'App secret' },
   'whatsapp.verify_token': { scope: 'channel', channel: 'whatsapp', label: 'Webhook verify token' },
   'sarvam.api_key': { scope: 'channel', channel: 'sarvam', label: 'API subscription key' },
+  'phone.sarvam_api_key': { scope: 'channel', channel: 'phone', label: 'Voice Agents API key' },
+  'phone.hook_token': { scope: 'channel', channel: 'phone', label: 'Hook token' },
 } as const satisfies Record<string, SecretDefinition>;
 export type KnownSecretKey = keyof typeof SECRET_KEYS;
 
@@ -62,7 +64,7 @@ export function maskedLast4(value: string): string | null {
 
 // ---- Channel configuration (non-secret parts; secrets above) ----
 
-export const CHANNEL_KINDS = ['email', 'whatsapp', 'sarvam'] as const;
+export const CHANNEL_KINDS = ['email', 'whatsapp', 'sarvam', 'phone'] as const;
 export type ChannelKind = (typeof CHANNEL_KINDS)[number];
 
 const host = z.string().trim().min(1).max(255);
@@ -122,10 +124,33 @@ export const sarvamChannelConfigSchema = z.object({
 });
 export type SarvamChannelConfig = z.infer<typeof sarvamChannelConfigSchema>;
 
+/**
+ * Phone calls on a number rented from Sarvam (ADR 0034). A Sarvam Voice Agent
+ * answers; these are the ids of that agent and its number in Sarvam's dashboard.
+ */
+export const phoneChannelConfigSchema = z.object({
+  enabled: z.boolean(),
+  orgId: z.string().trim().min(1).max(100),
+  workspaceId: z.string().trim().min(1).max(100),
+  /** The agent ("app") that answers, and the version that is deployed. */
+  appId: z.string().trim().min(1).max(100),
+  appVersion: z.coerce.number().int().min(1),
+  connectionId: z.string().trim().min(1).max(100),
+  /** The rented number, in international form. */
+  agentPhoneNumber: z
+    .string()
+    .trim()
+    .regex(/^\+\d{8,15}$/, 'Give the full international number, starting with +'),
+  /** On: outbound calls only between 09:00 and 21:00 India time. */
+  callingHours: z.boolean().default(false),
+});
+export type PhoneChannelConfig = z.infer<typeof phoneChannelConfigSchema>;
+
 export const CHANNEL_CONFIG_SCHEMAS = {
   email: emailChannelConfigSchema,
   whatsapp: whatsappChannelConfigSchema,
   sarvam: sarvamChannelConfigSchema,
+  phone: phoneChannelConfigSchema,
 } as const;
 
 export interface ChannelSettingsView<C = Record<string, unknown>> {
