@@ -361,11 +361,16 @@ export class CustomersService {
     toId: string,
     type: IdentityType,
     clearedPrimary: boolean,
+    userIds: string[] = [],
   ) {
     const primary = type === 'email' ? 'primaryEmail' : 'primaryPhone';
+    const moved = userIds.length ? { userIdsMoved: userIds } : {};
     for (const [id, data] of [
-      [fromId, { identityMovedTo: toId, type, ...(clearedPrimary ? { [primary]: null } : {}) }],
-      [toId, { identityMovedFrom: fromId, type }],
+      [
+        fromId,
+        { identityMovedTo: toId, type, ...moved, ...(clearedPrimary ? { [primary]: null } : {}) },
+      ],
+      [toId, { identityMovedFrom: fromId, type, ...moved }],
     ] as const) {
       await this.audit.record(tx, ctx, {
         action: 'customer.updated',
@@ -480,24 +485,45 @@ export class CustomersService {
     for (const holder of holders) {
       const other = await this.findActive(tx, holder.customerId, false);
       const theirs = await tx
-        .select({ type: customerIdentities.type })
+        .select({ type: customerIdentities.type, value: customerIdentities.value })
         .from(customerIdentities)
         .where(eq(customerIdentities.customerId, other.id));
-      const phoneOnly =
-        !other.primaryEmail && theirs.every((i) => PHONE_ONLY_TYPES.includes(i.type));
-      if (phoneOnly) {
-        // Nothing but a number identified them: they were this person on another channel.
+      // Merging hands over everything they have, so only when that is this number and nothing else.
+      const wholeCustomer =
+        !other.primaryEmail &&
+        theirs.every((i) => PHONE_ONLY_TYPES.includes(i.type)) &&
+        theirs.every((i) => i.type === 'whatsapp_bsuid' || i.value === value);
+      if (wholeCustomer) {
+        // Nothing but this number identified them: they were this person on another channel.
         await this.mergeInTx(tx, ctx, other, customer);
         continue;
       }
+      // WhatsApp finds a sender by user id before the number, so the ids go with it, but
+      // only when this was the only number they wrote from.
+      const writesFromOnlyThis =
+        theirs.some((i) => i.type === 'whatsapp' && i.value === value) &&
+        !theirs.some((i) => i.type === 'whatsapp' && i.value !== value);
+      const userIds = writesFromOnlyThis
+        ? theirs.filter((i) => i.type === 'whatsapp_bsuid').map((i) => i.value)
+        : [];
       await tx
         .update(customerIdentities)
         .set({ customerId: customer.id })
         .where(
           and(
             eq(customerIdentities.customerId, other.id),
-            eq(customerIdentities.value, value),
-            inArray(customerIdentities.type, ['phone', 'whatsapp']),
+            or(
+              and(
+                eq(customerIdentities.value, value),
+                inArray(customerIdentities.type, ['phone', 'whatsapp']),
+              ),
+              userIds.length
+                ? and(
+                    eq(customerIdentities.type, 'whatsapp_bsuid'),
+                    inArray(customerIdentities.value, userIds),
+                  )
+                : undefined,
+            ),
           ),
         );
       const [cleared] = await tx
@@ -505,10 +531,17 @@ export class CustomersService {
         .set({ primaryPhone: null })
         .where(and(eq(customers.id, other.id), eq(customers.primaryPhone, value)))
         .returning({ id: customers.id });
-      await this.recordIdentityMove(tx, ctx, other.id, customer.id, 'phone', !!cleared);
+      await this.recordIdentityMove(tx, ctx, other.id, customer.id, 'phone', !!cleared, userIds);
     }
 
-    await this.attachIdentity(tx, ctx, customer.id, { type: 'phone', value, verified: true });
+    const attached = await this.attachIdentity(tx, ctx, customer.id, {
+      type: 'phone',
+      value,
+      verified: true,
+    });
+    if (!attached) {
+      throw new ConflictException('This number was just linked to another customer. Ask for a new code.');
+    }
     await tx.update(customers).set({ primaryPhone: value }).where(eq(customers.id, customer.id));
 
     // One proven number per customer: the numbers it replaces go, with their WhatsApp twins.
