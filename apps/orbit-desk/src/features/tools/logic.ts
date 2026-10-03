@@ -1,5 +1,6 @@
 import {
   type ApprovalStatus,
+  type CustomToolDraft,
   type CustomToolMethod,
   type CustomToolParamType,
   describeArgs,
@@ -130,6 +131,56 @@ export function formFromTool(tool: ToolView): CustomToolForm {
     tier: tool.tier,
     customerArg: tool.customerArg ?? '',
     enabled: tool.enabled,
+  };
+}
+
+/** The key headers the forms offer; the helper's suggestion is kept only when it is one of them. */
+const KEY_HEADERS = ['Authorization', 'X-Api-Key'];
+
+/** A key header as the forms hold it: one of the offered headers, or '' for none. */
+export const keyHeaderChoice = (header: string | null): string =>
+  header && KEY_HEADERS.includes(header) ? header : '';
+
+/**
+ * The form with what the AI helper filled in. Fields the helper left out stay
+ * as they are, and the tool stays switched off or on as it was: the helper
+ * never switches a tool on. `keepName`: an existing tool's name cannot change.
+ */
+export function withHelperDraft(
+  form: CustomToolForm,
+  draft: CustomToolDraft,
+  keepName: boolean,
+): CustomToolForm {
+  const parameters = draft.parameters?.map((p) => ({ ...p })) ?? form.parameters;
+  const customerArg =
+    draft.customerArg === undefined ? form.customerArg : (draft.customerArg ?? '');
+  return {
+    ...form,
+    name: keepName ? form.name : (draft.name ?? form.name),
+    title: draft.title ?? form.title,
+    description: draft.description ?? form.description,
+    method: draft.method ?? form.method,
+    url: draft.url ?? form.url,
+    authHeader:
+      draft.authHeader === undefined ? form.authHeader : keyHeaderChoice(draft.authHeader),
+    parameters,
+    tier: draft.tier ?? form.tier,
+    customerArg: parameters.some((p) => p.name === customerArg) ? customerArg : '',
+  };
+}
+
+/** The form as the helper reads it, so a second description changes it instead of starting again. */
+export function helperDraftOf(form: CustomToolForm): CustomToolDraft {
+  return {
+    name: form.name.trim() || undefined,
+    title: form.title.trim() || undefined,
+    description: form.description.trim() || undefined,
+    method: form.method,
+    url: form.url.trim() || undefined,
+    authHeader: form.authHeader || null,
+    parameters: form.parameters.filter((p) => p.name.trim()),
+    tier: form.tier,
+    customerArg: form.customerArg || null,
   };
 }
 

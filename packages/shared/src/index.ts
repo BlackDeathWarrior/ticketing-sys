@@ -14,6 +14,7 @@ export * from './ai';
 export * from './web-form';
 export * from './tools';
 export * from './custom-tools';
+export * from './tool-helper';
 export * from './handover';
 export * from './routing';
 export * from './sla';

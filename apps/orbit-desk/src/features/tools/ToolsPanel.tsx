@@ -1,4 +1,10 @@
-import { type McpServerView, TOOL_TIERS, type ToolTier, type ToolView } from '@tms/shared';
+import {
+  type McpServerDraft,
+  type McpServerView,
+  TOOL_TIERS,
+  type ToolTier,
+  type ToolView,
+} from '@tms/shared';
 import { type FormEvent, useState } from 'react';
 import { api } from '../../api/client';
 import {
@@ -18,7 +24,8 @@ import { minutesSince } from '../../data/adapters';
 import { SecretField } from '../settings/ChannelsPanel';
 import settings from '../settings/Settings.module.css';
 import { CustomTools } from './CustomTools';
-import { parseArgs, resultPreview, schemaArgs, tierLabel } from './logic';
+import { keyHeaderChoice, parseArgs, resultPreview, schemaArgs, tierLabel } from './logic';
+import { ToolHelper } from './ToolHelper';
 import styles from './Tools.module.css';
 
 /**
@@ -381,6 +388,21 @@ function AddServer({ onAdded }: { onAdded: () => void }) {
         id="add-server"
         title="Add an MCP server"
         subtitle="Streamable HTTP. Internal addresses are refused unless an operator allowed the host."
+      />
+      <ToolHelper<McpServerDraft>
+        id="server-helper"
+        path="/ai/tool-helper/mcp-server"
+        draft={{
+          name: name.trim() || undefined,
+          url: url.trim() || undefined,
+          authHeader: authHeader || null,
+        }}
+        onDraft={(draft) => {
+          if (draft.name !== undefined) setName(draft.name);
+          if (draft.url !== undefined) setUrl(draft.url);
+          if (draft.authHeader !== undefined) setAuthHeader(keyHeaderChoice(draft.authHeader));
+        }}
+        placeholder="Connect our order system. Its documentation says the MCP address is https://orders.example.com/mcp and it needs a key."
       />
       <form className={settings.form} onSubmit={add} aria-label="Add an MCP server">
         <div className={settings.formRow}>
