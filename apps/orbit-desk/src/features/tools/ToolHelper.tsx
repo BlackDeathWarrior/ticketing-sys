@@ -38,6 +38,7 @@ export function ToolHelper<Draft>({
   path,
   draft,
   onDraft,
+  onAnswer,
   placeholder,
   connection,
 }: {
@@ -47,6 +48,8 @@ export function ToolHelper<Draft>({
   /** The form as it stands, so a second description changes it instead of starting again. */
   draft: Draft;
   onDraft: (draft: Draft) => void;
+  /** The whole answer, for a form that uses more of it than the draft. */
+  onAnswer?: (answer: ToolHelperAnswer<Draft>) => void;
   placeholder: string;
   connection: HelperConnection;
 }) {
@@ -65,6 +68,7 @@ export function ToolHelper<Draft>({
     try {
       const answer = await api<ToolHelperAnswer<Draft>>('POST', path, { messages: next, draft });
       onDraft(answer.draft);
+      onAnswer?.(answer);
       setTurns([...next, { from: 'helper' as const, text: answer.message }].slice(-MAX_TURNS));
       setMissing(answer.missing);
       setText('');

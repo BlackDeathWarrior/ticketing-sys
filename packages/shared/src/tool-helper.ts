@@ -137,5 +137,11 @@ export interface ToolHelperAnswer<Draft> {
   draft: Draft;
   /** What it still needs before the form can be saved, as questions in plain words. */
   missing: string[];
+  /**
+   * Custom tools only: a tool of the same system whose saved key the new tool
+   * can use, so nobody has to find or type a key. Chosen by the desk from the
+   * address, never by the model.
+   */
+  keyFrom?: { toolId: string; title: string } | null;
   model: string;
 }
