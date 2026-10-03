@@ -160,7 +160,10 @@ export class PhoneToolsService {
    * gets a real answer and leaves no record.
    */
   private async open(interactionId: string | null, phone: string | null): Promise<CallRow | null> {
-    return interactionId ? this.calls.beginPhone({ interactionId, phone }) : null;
+    if (interactionId) return this.calls.beginPhone({ interactionId, phone });
+    // A tool that cannot name its call (a code tool at Sarvam has the caller's number but
+    // not always the call's id) still belongs to the call that number is on.
+    return phone ? this.calls.activeForCaller(phone) : null;
   }
 
   private async offered(): Promise<AgentTool[]> {
