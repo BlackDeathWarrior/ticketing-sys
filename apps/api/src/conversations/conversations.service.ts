@@ -120,7 +120,8 @@ export class ConversationsService {
       .where(
         and(
           eq(conversations.channel, 'whatsapp'),
-          sql`${conversations.metadata}->>'waPhone' = ${phone}`,
+          // Digits to digits: a number stored with a leading + still matches.
+          sql`regexp_replace(${conversations.metadata}->>'waPhone', '[^0-9]', '', 'g') = ${phone}`,
           sql`${lastInbound} is not null`,
         ),
       )
