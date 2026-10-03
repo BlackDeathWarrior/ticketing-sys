@@ -13,6 +13,7 @@ import { AiAutoResolveService } from './ai-auto-resolve';
 import { AiClassifierService } from './ai-classifier.service';
 import { AiCopilotService } from './ai-copilot.service';
 import { AiRunsModule } from './ai-runs.module';
+import { AiToolHelperService } from './ai-tool-helper.service';
 import { AiController } from './ai.controller';
 import { AiFastPathsService } from './fast-paths.service';
 import { LanguageService } from './language.service';
@@ -40,6 +41,7 @@ import { LanguageService } from './language.service';
     AiAgentService,
     AiClassifierService,
     AiCopilotService,
+    AiToolHelperService,
     LanguageService,
     AiAutoResolveService,
     AiFastPathsService,

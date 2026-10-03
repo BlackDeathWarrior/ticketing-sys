@@ -3,6 +3,10 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   type CopilotInput,
   copilotSchema,
+  type CustomToolHelperInput,
+  customToolHelperSchema,
+  type McpServerHelperInput,
+  mcpServerHelperSchema,
   type SimulateAiInput,
   simulateAiSchema,
 } from '@tms/shared';
@@ -14,6 +18,7 @@ import { AiAgentService } from './ai-agent.service';
 import { AiAutoResolveService } from './ai-auto-resolve';
 import { AiCopilotService } from './ai-copilot.service';
 import { AiRunsService } from './ai-runs.service';
+import { AiToolHelperService } from './ai-tool-helper.service';
 import { AiFastPathsService } from './fast-paths.service';
 
 @ApiTags('ai')
@@ -26,6 +31,7 @@ export class AiController {
     private readonly runs: AiRunsService,
     private readonly tickets: TicketsService,
     private readonly copilot: AiCopilotService,
+    private readonly toolHelper: AiToolHelperService,
     private readonly autoResolve: AiAutoResolveService,
     private readonly fast: AiFastPathsService,
   ) {}
@@ -36,6 +42,22 @@ export class AiController {
   @RequirePermission('message:send')
   suggest(@Param('id') id: string, @Body(new ZodPipe(copilotSchema)) body: CopilotInput) {
     return this.copilot.suggest(id, body.instruction ?? null);
+  }
+
+  /** Fills in the custom tool form from a description; nothing is stored or created. */
+  @Post('ai/tool-helper/custom-tool')
+  @HttpCode(200)
+  @RequirePermission('tool:create')
+  helpWithCustomTool(@Body(new ZodPipe(customToolHelperSchema)) body: CustomToolHelperInput) {
+    return this.toolHelper.customTool(body);
+  }
+
+  /** The same for the MCP server form, for the people who may add servers. */
+  @Post('ai/tool-helper/mcp-server')
+  @HttpCode(200)
+  @RequirePermission('tool:manage')
+  helpWithMcpServer(@Body(new ZodPipe(mcpServerHelperSchema)) body: McpServerHelperInput) {
+    return this.toolHelper.mcpServer(body);
   }
 
   /** Autonomy per channel and the confidence thresholds. */

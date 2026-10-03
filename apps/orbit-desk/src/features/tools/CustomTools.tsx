@@ -1,6 +1,7 @@
 import {
   CUSTOM_TOOL_METHODS,
   CUSTOM_TOOL_PARAM_TYPES,
+  type CustomToolDraft,
   type RoleView,
   TOOL_TIERS,
   type ToolView,
@@ -18,8 +19,11 @@ import {
   customToolBody,
   emptyCustomTool,
   formFromTool,
+  helperDraftOf,
   tierLabel,
+  withHelperDraft,
 } from './logic';
+import { ToolHelper } from './ToolHelper';
 import { TestDialog } from './ToolsPanel';
 import styles from './Tools.module.css';
 
@@ -224,6 +228,13 @@ function CustomToolDialog({
           Describe one request. Put <code>{'{name}'}</code> in the address where a value belongs;
           other values go in the query for GET and DELETE, or in a JSON body.
         </p>
+        <ToolHelper<CustomToolDraft>
+          id="ct-helper"
+          path="/ai/tool-helper/custom-tool"
+          draft={helperDraftOf(form)}
+          onDraft={(draft) => setForm((f) => withHelperDraft(f, draft, !!tool))}
+          placeholder="Look up how many of a product we have in stock, from our warehouse system at https://warehouse.example.com"
+        />
         <div className={settings.formRow}>
           <Input
             id="ct-title"

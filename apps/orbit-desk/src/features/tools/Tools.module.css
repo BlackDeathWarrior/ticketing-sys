@@ -237,6 +237,43 @@
   }
 }
 
+/* The AI helper beside a tool or server form. */
+.helper {
+  display: grid;
+  gap: var(--spacing-12);
+  margin-bottom: var(--spacing-16);
+  padding: var(--spacing-16);
+  border-radius: var(--radius-cards);
+  box-shadow: var(--shadow-rim);
+}
+
+.helperTitle {
+  margin: 0;
+  font-size: var(--text-ui);
+}
+
+.helperTurns,
+.helperMissing {
+  display: grid;
+  gap: var(--spacing-8);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-ui);
+  overflow-wrap: anywhere;
+}
+
+.helperTurn[data-from='you'] {
+  color: var(--color-fog);
+}
+
+.helperWho {
+  display: block;
+  margin: 0 0 var(--spacing-4);
+  font-size: var(--text-caption);
+  color: var(--color-ash);
+}
+
 /* Custom tools */
 .request {
   display: flex;
