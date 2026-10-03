@@ -142,7 +142,9 @@ export class WhatsAppService {
     const { attachments, mediaError } = await this.fetchMedia(config, content, message);
     const receivedAt = messageTime(message.timestamp);
     const conversation: WaConversationMeta = {
-      waPhone: identity.phone || undefined,
+      // null, not undefined: a message without a number must clear the one an earlier
+      // message left, or the AI would act on a number this sender did not write from.
+      waPhone: identity.phone || null,
       waUserId: identity.waUserId ?? undefined,
       waUsername: identity.waUsername ?? undefined,
       profileName: identity.name || undefined,

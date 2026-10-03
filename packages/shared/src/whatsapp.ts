@@ -25,8 +25,8 @@ export function waWindow(lastInboundAt: string | null | undefined, now = new Dat
 
 /** What a WhatsApp conversation remembers about the person on the other end. */
 export interface WaConversationMeta {
-  /** Digits-only phone number; absent for a username-only sender. */
-  waPhone?: string;
+  /** Digits-only phone number; absent or null for a username-only sender. */
+  waPhone?: string | null;
   /** Business-scoped user id (BSUID). */
   waUserId?: string;
   waUsername?: string;

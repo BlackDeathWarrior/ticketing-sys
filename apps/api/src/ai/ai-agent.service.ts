@@ -1150,14 +1150,18 @@ export class AiAgentService {
  * for only when the chat itself vouched for the visitor (a signed identity),
  * never when an anonymous visitor typed it.
  *
- * On WhatsApp the sender is acted for only when the number the conversation is
- * with is a phone identity of the customer that a code has proven. Meta proves
- * who is writing from that number; the code proved whose account the number
- * belongs to. A sender Meta gave us no number for is never bound.
+ * On WhatsApp, whatever kind of ticket it is, the sender is acted for only
+ * when the number the conversation is with is a phone identity of the customer
+ * that a code has proven (a thread staff opened on an app's ticket included).
+ * Meta proves who is writing from that number; the code proved whose account
+ * the number belongs to. A sender Meta gave us no number for is never bound.
  */
 function boundEmail(
   ticket: { integration: { slug: string } | null },
-  customer: Parameters<typeof emailOf>[0],
+  customer: {
+    primaryEmail: string | null;
+    identities: Array<{ type: string; value: string; verified: boolean }>;
+  },
   conv: { channel: string; metadata: Record<string, unknown> },
 ): string | null {
   if (ticket.integration) {
@@ -1169,7 +1173,8 @@ function boundEmail(
   } else if (conv.channel === 'webchat') {
     const vouched = conv.metadata.identity;
     if (vouched !== 'email' && vouched !== 'external_id') return null;
-  } else if (conv.channel === 'whatsapp') {
+  }
+  if (conv.channel === 'whatsapp') {
     const waPhone = typeof conv.metadata.waPhone === 'string' ? conv.metadata.waPhone : '';
     const number = normalizeIdentity('phone', waPhone);
     if (!number) return null;
@@ -1183,7 +1188,7 @@ function boundEmail(
 
 function emailOf(customer: {
   primaryEmail: string | null;
-  identities: Array<{ type: string; value: string; verified: boolean }>;
+  identities: Array<{ type: string; value: string }>;
 }): string | null {
   return (
     customer.primaryEmail ?? customer.identities.find((x) => x.type === 'email')?.value ?? null
