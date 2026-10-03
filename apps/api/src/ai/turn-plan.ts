@@ -324,6 +324,8 @@ function clarifying(f: TurnFacts, r: ThinkResult, unconfidentBefore: number): Th
     ...r,
     decision: 'sent',
     reply: clarifyMessage(f.language),
+    // The cards were picked for the model's answer, not for this message.
+    cards: [],
     // Stays below the send threshold on record, so it counts towards "tried and failed".
     confidence: Math.min(r.confidence ?? 0, Math.max(0, f.settings.sendAt - 0.01)),
     rules: ['clarifying'],

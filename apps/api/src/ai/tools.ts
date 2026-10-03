@@ -117,7 +117,7 @@ export function withCardsField(tools: ChatCompletionTool[]): ChatCompletionTool[
               type: 'array',
               items: { type: 'string' },
               description:
-                'Ids of the items to show as picture cards, from the `cards` a tool returned this turn',
+                `Ids of the items to show as picture cards (up to ${MAX_CARDS}), from the \`cards\` a tool returned this turn`,
             },
           },
         },
@@ -141,8 +141,18 @@ export const sendReplyArgs = z.object({
   intent: z.string().trim().max(60).optional(),
   resolves_issue: z.boolean().optional(),
   off_topic: z.boolean().optional().catch(undefined),
-  // Ids of cards a tool returned this turn; think() keeps only those and only on WhatsApp.
-  cards: z.array(z.string().trim().max(100)).max(MAX_CARDS).default([]).catch([]),
+  // Ids of cards a tool returned this turn. Models get this wrong in small ways, so it keeps the
+  // usable strings and lets think() pick the known ones (the first MAX_CARDS), and only on WhatsApp.
+  cards: z
+    .array(z.unknown())
+    .default([])
+    .catch([])
+    .transform((list) =>
+      list.flatMap((v) => {
+        const id = typeof v === 'string' ? v.trim() : '';
+        return id && id.length <= 100 ? [id] : [];
+      }),
+    ),
 });
 
 /** Parses a tool call's JSON arguments; returns the zod error message on failure. */

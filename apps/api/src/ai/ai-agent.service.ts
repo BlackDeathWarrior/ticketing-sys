@@ -102,7 +102,9 @@ function lineOf(m: { authorType: string; body: string; metadata: unknown }): Lin
     .array()
     .safeParse((m.metadata as { cards?: unknown } | null)?.cards);
   if (!shown.success || !shown.data.length) return { author, body: m.body };
-  const list = shown.data.map((c) => `${c.title} (${c.id})`).join('; ');
+  // Outside text: one line, and nothing that looks like the note's own brackets or separator.
+  const tidy = (v: string) => v.replace(/[[\];]/g, '').replace(/\s+/g, ' ').trim();
+  const list = shown.data.map((c) => `${tidy(c.title)} (${tidy(c.id)})`).join('; ');
   return { author, body: `${m.body}\n[Cards shown: ${list}]` };
 }
 
@@ -347,6 +349,8 @@ export class AiAgentService {
             ...r,
             decision: mode === 'auto' ? 'sent' : 'drafted',
             reply: approvalOutcomeMessage(language, { action, status: outcome.status, reason }),
+            // Any cards were picked for an answer that is being replaced.
+            cards: [],
             confidence: 1,
             rules: mode === 'auto' ? [] : ['draft_channel'],
             handoverReason: null,
@@ -1072,7 +1076,7 @@ export class AiAgentService {
     out.offTopic = !!a.off_topic;
     out.sources = [...cited.map((id) => ({ chunkId: id, label: labels.get(id)! })), ...toolSources];
     // Ids from an earlier turn or made up are dropped; the model's order stays, repeats go.
-    if (cardsOffered) {
+    if (cardsOffered && (out.decision === 'sent' || out.decision === 'drafted')) {
       out.cards = [...new Set(a.cards)]
         .flatMap((id) => cardsSeen.get(id) ?? [])
         .slice(0, MAX_CARDS);
