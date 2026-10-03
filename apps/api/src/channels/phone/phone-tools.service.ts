@@ -1,0 +1,161 @@
+import { Injectable, Logger } from '@nestjs/common';
+import {
+  PHONE_TOOL_RESULT_MAX,
+  type PhoneStartInput,
+  type PhoneStartReply,
+  type PhoneToolEntry,
+  type PhoneToolInput,
+  type PhoneToolName,
+  type PhoneToolReply,
+} from '@tms/shared';
+import { AI_CTX } from '../../common/request-context';
+import { CustomersService } from '../../customers/customers.service';
+import { KbSearchService } from '../../kb/kb-search.service';
+import { BrandingService } from '../../settings/branding.service';
+import { ToolGatewayService } from '../../tools/tool-gateway.service';
+import { type AgentTool, ToolsService } from '../../tools/tools.service';
+import { type CallRow, VoiceCallsService } from '../voice/voice-calls.service';
+
+/** Sarvam waits 30 seconds for a tool at most; we answer before that with something to say. */
+const TOOL_DEADLINE_MS = 25_000;
+const KB_HITS = 3;
+
+const NOT_LINKED =
+  "This caller's number is not linked to a shop account. They can add and confirm it under their account on the shop site, then call again.";
+const NEEDS_COLLEAGUE =
+  'That needs a colleague. Offer the caller a call back and use request_person.';
+const TOO_LONG = 'That took too long. Apologise and offer to try once more.';
+
+const ok = (result: string): PhoneToolReply => ({
+  ok: true,
+  result: result.slice(0, PHONE_TOOL_RESULT_MAX),
+});
+const fail = (result: string): PhoneToolReply => ({ ok: false, result });
+
+/**
+ * What the phone agent at Sarvam can ask this desk for during a call
+ * (ADR 0039). The desk runs no model here: the agent decides, and every
+ * company tool still goes through the gateway, for the customer the caller's
+ * proven number belongs to and nobody else.
+ */
+@Injectable()
+export class PhoneToolsService {
+  private readonly logger = new Logger(PhoneToolsService.name);
+
+  constructor(
+    private readonly tools: ToolsService,
+    private readonly gateway: ToolGatewayService,
+    private readonly kb: KbSearchService,
+    private readonly customers: CustomersService,
+    private readonly branding: BrandingService,
+    private readonly calls: VoiceCallsService,
+  ) {}
+
+  /**
+   * Every enabled tool, read now, so one added in Settings is there on the
+   * next call. Tools that need an approval are left out until the outcome can
+   * reach the caller (a call back).
+   */
+  async catalogue(): Promise<PhoneToolEntry[]> {
+    return (await this.offered()).map((t) => {
+      const fn = (t.definition as { function: { description?: string; parameters?: unknown } })
+        .function;
+      return {
+        name: t.qualifiedName,
+        description: fn.description ?? t.tool.name,
+        parameters: (fn.parameters ?? {}) as Record<string, unknown>,
+      };
+    });
+  }
+
+  /** The call begins: who is calling, and what the agent can use. */
+  async start(input: PhoneStartInput): Promise<PhoneStartReply> {
+    const call = await this.calls.beginPhone(input);
+    const owner = call.callerPhone ? await this.customers.provenPhoneOwner(call.callerPhone) : null;
+    return {
+      customer_name: owner?.name ?? '',
+      known: !!owner,
+      company: (await this.branding.get()).companyName,
+      desk_tools: JSON.stringify(await this.catalogue()),
+    };
+  }
+
+  async run(tool: PhoneToolName, body: PhoneToolInput): Promise<PhoneToolReply> {
+    // The start hook may never have arrived: any tool call opens the call's record.
+    const call = await this.calls.beginPhone(body);
+    switch (tool) {
+      case 'list_tools':
+        return ok(JSON.stringify(await this.catalogue()));
+      case 'search_knowledge':
+        return this.searchKnowledge(body.query ?? '');
+      case 'request_person':
+        await this.calls.markHandover(call.id, body.reason || 'The caller asked for a person');
+        return ok(
+          'Noted. Tell the caller a colleague will get back to them, then end the call politely.',
+        );
+      case 'desk_tool':
+        return this.deskTool(call, body);
+    }
+  }
+
+  private async offered(): Promise<AgentTool[]> {
+    return (await this.tools.agentTools()).filter((t) => t.tool.tier !== 'transactional');
+  }
+
+  private async searchKnowledge(query: string): Promise<PhoneToolReply> {
+    if (!query) return fail('Give the question to look up in "query".');
+    const { hits } = await this.kb.search(
+      {},
+      { q: query, limit: KB_HITS, audience: 'customer', includeDrafts: false },
+    );
+    if (!hits.length) return ok('Nothing in the knowledge base matches.');
+    return ok(
+      hits.map((h) => `${h.title}${h.section ? ` › ${h.section}` : ''}: ${h.snippet}`).join('\n\n'),
+    );
+  }
+
+  private async deskTool(call: CallRow, body: PhoneToolInput): Promise<PhoneToolReply> {
+    const name = body.name ?? '';
+    const all = await this.tools.agentTools();
+    const byBareName = all.filter((t) => t.tool.name === name);
+    const found =
+      all.find((t) => t.qualifiedName === name) ??
+      (byBareName.length === 1 ? byBareName[0] : undefined);
+    if (!found) {
+      const names = (await this.offered()).map((t) => t.qualifiedName).join(', ');
+      return fail(`There is no tool called "${name}". The tools are: ${names}.`);
+    }
+    if (found.tool.tier === 'transactional') return fail(NEEDS_COLLEAGUE);
+
+    // The number comes from the call's record, which only the token-protected hooks set.
+    const owner = call.callerPhone ? await this.customers.provenPhoneOwner(call.callerPhone) : null;
+    const run = this.gateway.invoke(AI_CTX, {
+      tool: found.tool,
+      server: found.server,
+      args: body.arguments?.trim() || '{}',
+      ticketId: null,
+      conversationId: null,
+      customerEmail: owner?.email ?? null,
+    });
+    // Kept for the ticket even when the answer comes too late for the caller.
+    void run
+      .then((r) => (r.callId ? this.calls.noteToolCall(call.id, r.callId) : undefined))
+      .catch((err: Error) => this.logger.warn(`tool call on call ${call.id}: ${err.message}`));
+
+    const r = await Promise.race([
+      run,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), TOOL_DEADLINE_MS)),
+    ]).catch((err: Error) => ({ status: 'error' as const, callId: null, error: err.message }));
+    if (!r) return fail(TOO_LONG);
+    switch (r.status) {
+      case 'ok':
+        return ok(typeof r.result === 'string' ? r.result : JSON.stringify(r.result ?? {}));
+      case 'denied':
+        return fail(found.tool.customerArg && !owner?.email ? NOT_LINKED : r.error);
+      case 'error':
+        return fail(r.error);
+      default:
+        return fail(NEEDS_COLLEAGUE);
+    }
+  }
+}
