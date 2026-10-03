@@ -20,8 +20,13 @@ const ATTEMPTS = 8;
 const ATTEMPTS_UNKNOWN = 4;
 const BACKOFF_MS = 15_000;
 const SWEEP_MS = 5 * 60_000;
-/** A call with no "ended" trigger is closed this long after it began. */
-const STALE_MINUTES = 15;
+/**
+ * A call with no "ended" trigger is closed this long after it began: longer than a call
+ * lasts, so a call still in progress is not closed under the caller. After a day it is
+ * given up on.
+ */
+const STALE_MINUTES = 60;
+const GIVE_UP_MINUTES = 24 * 60;
 
 type CloseJob =
   | { kind: 'close'; interactionId: string; hint: PhoneCallHint; trace?: string | null }
@@ -36,6 +41,20 @@ const closeOptions = (interactionId: string, known = true) => ({
   removeOnFail: { age: 7 * 86_400, count: 1_000 },
 });
 
+async function addClose(
+  queue: Queue<CloseJob>,
+  interactionId: string,
+  hint: PhoneCallHint,
+  known: boolean,
+): Promise<void> {
+  const options = closeOptions(interactionId, known);
+  // A job that failed for good keeps its id, and an id that exists is not added again:
+  // clear it, or this call could never be tried again (after a fix, or a late trigger).
+  const earlier = await queue.getJob(options.jobId);
+  if (earlier && (await earlier.isFailed())) await earlier.remove();
+  await queue.add('close', { kind: 'close', interactionId, hint, trace: currentTrace() }, options);
+}
+
 /** API side: the "ended" route answers Sarvam at once and leaves the ticket to the worker. */
 @Injectable()
 export class PhoneCallQueue implements BeforeApplicationShutdown {
@@ -48,11 +67,7 @@ export class PhoneCallQueue implements BeforeApplicationShutdown {
   async add(interactionId: string, hint: PhoneCallHint, known: boolean): Promise<void> {
     this.connection ??= new Redis(this.env.REDIS_URL, { maxRetriesPerRequest: null });
     this.queue ??= new Queue<CloseJob>(PHONE_CALL_QUEUE, { connection: this.connection });
-    await this.queue.add(
-      'close',
-      { kind: 'close', interactionId, hint, trace: currentTrace() },
-      closeOptions(interactionId, known),
-    );
+    await addClose(this.queue, interactionId, hint, known);
   }
 
   async beforeApplicationShutdown() {
@@ -107,17 +122,9 @@ export class PhoneCallWorker implements OnApplicationBootstrap, BeforeApplicatio
   private async process(job: Job<CloseJob>) {
     const d = job.data;
     if (d.kind === 'sweep') {
-      for (const call of await this.calls.stalePhoneCalls(STALE_MINUTES)) {
+      for (const call of await this.calls.stalePhoneCalls(STALE_MINUTES, GIVE_UP_MINUTES)) {
         if (!call.providerCallId) continue;
-        await this.queue.add(
-          'close',
-          {
-            kind: 'close',
-            interactionId: call.providerCallId,
-            hint: { phone: null, seconds: null },
-          },
-          closeOptions(call.providerCallId),
-        );
+        await addClose(this.queue, call.providerCallId, { phone: null, seconds: null }, true);
       }
       return;
     }

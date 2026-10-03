@@ -16,6 +16,14 @@ import { ChannelSignalsService } from '../../settings/channel-signals.service';
 
 const digest = (value: string) => createHash('sha256').update(value).digest();
 
+/** True unless `PHONE_SARVAM_IPS` lists Sarvam's addresses and this is not one of them. */
+export function fromSarvam(env: Env, address: string): boolean {
+  const allowed = env.PHONE_SARVAM_IPS.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return !allowed.length || allowed.includes(address);
+}
+
 /**
  * Lets Sarvam's phone agent in (ADR 0039): the routes it protects are
  * `@Public()` for the staff guard, and every request must carry the hook
@@ -41,10 +49,7 @@ export class PhoneHookGuard implements CanActivate {
       throw new UnauthorizedException('Invalid hook token');
     }
 
-    const allowed = this.env.PHONE_SARVAM_IPS.split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (allowed.length && !allowed.includes(req.ip)) throw new ForbiddenException();
+    if (!fromSarvam(this.env, req.ip)) throw new ForbiddenException();
 
     await this.signals.touch('phone', 'webhookAt');
     return true;
