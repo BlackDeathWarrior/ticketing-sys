@@ -540,7 +540,9 @@ export class CustomersService {
       verified: true,
     });
     if (!attached) {
-      throw new ConflictException('This number was just linked to another customer. Ask for a new code.');
+      throw new ConflictException(
+        'This number was just linked to another customer. Ask for a new code.',
+      );
     }
     await tx.update(customers).set({ primaryPhone: value }).where(eq(customers.id, customer.id));
 
