@@ -4,11 +4,9 @@ import {
   type AiBehaviour,
   type AiChannelMode,
   type AiDecision,
-  type AiRule,
   cautionText,
   AI_RULE_LABELS,
   asksForHuman,
-  declinesMoreHelp,
   smallTalk,
   type SimulateAiInput,
   type SimulateAiResult,
@@ -38,18 +36,14 @@ import { type AgentTool, ToolsService } from '../tools/tools.service';
 import { AiAutoResolveService } from './ai-auto-resolve';
 import { AiRunsService } from './ai-runs.service';
 import { AiFastPathsService, type FastAnswer } from './fast-paths.service';
-import { acceptsOffer, type GuardHit, screenInbound } from './guard';
 import { LanguageService } from './language.service';
 import {
   approvalOutcomeMessage,
   assess,
-  clarifyMessage,
+  byEmail,
   closingQuestion,
-  conductWarning,
   handoverMessage,
   handoverNote,
-  offTopicWarning,
-  personOffer,
   smallTalkReply,
   waitingMessage,
   withClosingQuestion,
@@ -64,6 +58,8 @@ import {
   summarySystemPrompt,
   ticketContext,
 } from './prompts';
+import { blankResult, type ThinkResult } from './think-result';
+import { startTurn, turnFacts } from './turn-plan';
 import {
   AGENT_TOOLS,
   parseArgs,
@@ -73,23 +69,10 @@ import {
   updateTicketArgs,
 } from './tools';
 
-/** Channels answered by email: no fixed one-liners, no warnings or closing by the AI alone. */
-const BY_EMAIL = new Set(['email', 'web_form']);
-/** A request for a person this short says nothing else: it gets the fixed offer. */
-const PERSON_ONLY_CHARS = 60;
-
-type ConductClosure = 'jailbreak' | 'abuse' | 'spam' | 'off_topic';
-const CONDUCT_RULE: Record<ConductClosure, AiRule> = {
-  jailbreak: 'jailbreak_attempt',
-  abuse: 'abusive_language',
-  spam: 'spam',
-  off_topic: 'off_topic',
-};
-
-/** How often this conversation has been warned (kept on the conversation, `metadata.guard`). */
-function guardState(metadata: Record<string, unknown>): { abuse: number; offTopic: number } {
-  const g = (metadata.guard ?? {}) as { abuse?: unknown; offTopic?: unknown };
-  return { abuse: Number(g.abuse) || 0, offTopic: Number(g.offTopic) || 0 };
+/** Runs `fn` at most once and hands every caller the same result. */
+function once<T>(fn: () => Promise<T>): () => Promise<T> {
+  let result: Promise<T> | undefined;
+  return () => (result ??= fn());
 }
 
 /** Thrown when another turn holds the conversation; the queue retries shortly. */
@@ -137,28 +120,6 @@ interface ThinkInput {
   personAsked?: boolean;
   /** The integration whose ticket this is: answers are only reused within one. */
   integration?: string | null;
-}
-
-export interface ThinkResult {
-  decision: Exclude<AiDecision, 'skipped'>;
-  reply: string | null;
-  confidence: number | null;
-  selfConfidence: number | null;
-  rules: AiRule[];
-  handoverReason: string | null;
-  language: string | null;
-  intent: string | null;
-  resolves: boolean;
-  /** The model says the message has nothing to do with the company. */
-  offTopic: boolean;
-  ticketUpdate: { category?: string; priority?: 'urgent' | 'high' | 'normal' | 'low' };
-  tools: Array<{ name: string; summary: string }>;
-  sources: Array<{ chunkId: string; label: string }>;
-  seenSources: string[];
-  model: string | null;
-  costUsd: number;
-  latencyMs: number;
-  error: string | null;
 }
 
 const LOCK_MS = 120_000;
@@ -455,6 +416,11 @@ export class AiAgentService {
     };
   }
 
+  /**
+   * One turn: gathers the facts, then carries out the turn plan step by step
+   * (`turn-plan.ts`). What the AI does with the message, and in which order, is
+   * the plan's; this only reads, asks the model and writes.
+   */
   private async turn(conversationId: string, triggerMessageId: string | null): Promise<AiDecision> {
     const conv = await this.conversations.get(conversationId).catch(() => null);
     if (!conv || conv.controller !== 'ai') return 'skipped';
@@ -467,223 +433,129 @@ export class AiAgentService {
     // Already answered (a burst of messages is answered once), or nothing to answer.
     if (!lastRow || lastRow.authorType !== 'customer') return 'skipped';
 
-    // "Is there anything else?" answered with a no: nothing for a model to do. The same
-    // goes for a "thanks" after the goodbye, which should not start the conversation again.
-    const previous = rows.at(-2);
-    const said = previous?.metadata as {
-      closing?: boolean;
-      ai?: { closingQuestion?: boolean };
-    } | null;
-    if (
-      mode === 'auto' &&
-      previous?.direction === 'outbound' &&
-      (said?.ai?.closingQuestion || said?.closing) &&
-      declinesMoreHelp(lastRow.body)
-    ) {
-      const done = await this.autoResolve.customerConfirmed({
-        ticketId: conv.ticketId,
-        conversationId: conv.id,
-        channel: conv.channel,
-        language: conv.language ?? null,
-        triggerMessageId,
-        silent: !said?.ai?.closingQuestion,
-      });
-      if (done !== 'skipped') return done;
-    }
-
-    const ticket = await this.tickets.get(conv.ticketId);
-    const customer = await this.customers.get(ticket.customerId);
-    const transcript: Line[] = rows
-      .filter((m) => m.authorType !== 'system')
-      .map((m) => ({ author: m.authorType as Line['author'], body: m.body }));
     const language = conv.language ?? (await this.language.detect(lastRow.body));
-    const summary = await this.summaryFor(conv.id, rows, conv.summary, conv.metadata, ticket.id);
+    // Loaded at the first step that needs them: a "no, thanks" to the closing question needs none.
+    const rest = once(async () => {
+      const ticket = await this.tickets.get(conv.ticketId);
+      const customer = await this.customers.get(ticket.customerId);
+      const summary = await this.summaryFor(conv.id, rows, conv.summary, conv.metadata, ticket.id);
+      return { ticket, customer, summary };
+    });
     const lastHandover = conv.metadata.lastHandoverAt
       ? new Date(String(conv.metadata.lastHandoverAt))
       : undefined;
-    const send = (r: ThinkResult) =>
-      this.apply({
-        conv,
-        ticket,
-        r,
-        language,
-        lastCustomerBody: lastRow.body,
-        aiReplies: rows.filter((m) => m.authorType === 'ai').length,
-        toldToWait: toldToWait(rows),
+
+    let step = startTurn(
+      turnFacts({
+        channel: conv.channel,
         mode,
-        behaviour,
-        triggerMessageId,
-        kind: 'turn',
-      });
-    /** A reply that needs no model: fixed wording, sent as it is. */
-    const fixed = (reply: string, rules: AiRule[], summary: string): ThinkResult => ({
-      ...blankResult(language),
-      decision: 'sent',
-      reply,
-      confidence: 1,
-      selfConfidence: 1,
-      rules,
-      tools: [{ name: 'no_model', summary }],
-    });
-    // Where the AI answers by itself in a place the customer is reading: only there does it
-    // warn, offer or close on its own. Elsewhere (email, drafts) a person decides, and a
-    // caller on the phone is put through.
-    const live = mode === 'auto' && !BY_EMAIL.has(conv.channel) && conv.channel !== 'voice';
-    const guard = behaviour.guardrails;
-    const strikes = guardState(conv.metadata);
-    const flagged = () =>
-      this.customers.flaggedSince(customer.id, new Date(Date.now() - guard.flagHours * 3_600_000));
-    const endFor = (closure: ConductClosure, hit: GuardHit | null, repeat: boolean) =>
-      this.autoResolve.closeForConduct({
-        ticketId: ticket.id,
-        conversationId: conv.id,
-        customerId: customer.id,
         language,
-        closure,
-        pattern: hit?.pattern ?? null,
-        rules: [CONDUCT_RULE[closure], ...(repeat ? (['repeat_offender'] as AiRule[]) : [])],
-        // An attempt on the AI's instructions is flagged; so is someone closed twice.
-        flag: closure === 'jailbreak' || closure === 'abuse' || repeat,
-        triggerMessageId,
-      });
-
-    // ---- Conduct: what the message is, before any model sees it (ADR 0029) ----
-    if (guard.enabled && conv.channel !== 'voice') {
-      const earlier = rows
-        .slice(0, -1)
-        .filter((m) => m.authorType === 'customer')
-        .map((m) => m.body);
-      const hit = screenInbound(lastRow.body, earlier);
-      // Someone flagged recently gets no benefit of the doubt and no second warning.
-      const repeat = hit ? await flagged() : false;
-      if (hit && (hit.strength === 'strong' || repeat)) {
-        if (!live) {
-          return send({
-            ...blankResult(language),
-            rules: [CONDUCT_RULE[hit.kind]],
-            handoverReason: `The message matched the guard pattern "${hit.pattern}"`,
-          });
-        }
-        const count = strikes.abuse + 1;
-        const close =
-          repeat || (hit.kind === 'jailbreak' ? guard.closeOnJailbreak : count >= guard.abuseLimit);
-        if (close) {
-          const done = await endFor(hit.kind, hit, repeat);
-          if (done !== 'skipped') return done;
-        } else if (hit.kind !== 'jailbreak') {
-          await this.conversations.updateAiState(this.db, conv.id, {
-            metadata: { guard: { ...strikes, abuse: count } },
-          });
-          return send(
-            fixed(
-              conductWarning(language, hit.kind),
-              [CONDUCT_RULE[hit.kind]],
-              `Warned the customer (${hit.kind}, ${count} of ${guard.abuseLimit}); no model was asked`,
-            ),
-          );
-        }
-        // An attempt on the instructions with closing switched off goes to the model, where
-        // the customer's text is data like any other.
-      }
-    }
-
-    // ---- A request for a person: the AI offers to sort it out first (ADR 0029) ----
-    const offered = (previous?.metadata as { ai?: { personOffer?: boolean } } | null)?.ai
-      ?.personOffer;
-    const insists = !!offered && acceptsOffer(lastRow.body);
-    let personAsked = false;
-    if ((asksForHuman(lastRow.body) || insists) && live) {
-      const asks = Number(conv.metadata.humanAsks ?? 0) + 1;
-      await this.conversations.updateAiState(this.db, conv.id, { metadata: { humanAsks: asks } });
-      if (insists || asks >= behaviour.handover.personRequestsBeforeHandover) {
-        return send({ ...blankResult(language), rules: ['asked_for_human'] });
-      }
-      if (lastRow.body.trim().length <= PERSON_ONLY_CHARS) {
-        return send(
-          fixed(
-            personOffer(language),
-            ['person_offered'],
-            'The customer asked for a person: offered to sort it out first; no model was asked',
-          ),
-        );
-      }
-      // They said what it is about as well: answer that, and say a colleague is available.
-      personAsked = true;
-    }
-
-    const unconfidentBefore = await this.runs.unconfidentTurns(
-      conv.id,
-      behaviour.sendAt,
-      lastHandover,
+        behaviour,
+        metadata: conv.metadata,
+        rows,
+      }),
     );
-    let r = await this.think({
-      channel: conv.channel,
-      mode,
-      behaviour,
-      transcript: summary ? transcript.slice(-HISTORY_TAIL) : transcript,
-      summary,
-      ticket: {
-        id: ticket.id,
-        reference: ticket.reference,
-        subject: ticket.subject,
-        status: ticket.status,
-        category: ticket.category?.id
-          ? `${ticket.category.name}${ticket.subcategory?.id ? ` > ${ticket.subcategory.name}` : ''}`
-          : null,
-        categoryId: ticket.category?.id ?? null,
-        context: ticketContext(ticket),
-      },
-      customer: { name: customer.displayName, type: customer.customerType },
-      language,
-      unconfidentTurnsBefore: unconfidentBefore,
-      conversationId: conv.id,
-      customerEmail: boundEmail(ticket, customer, conv),
-      dryRun: false,
-      update: null,
-      confirmedByTool: false,
-      personAsked,
-      integration: ticket.integration?.slug ?? null,
-    });
-    if (personAsked && r.decision === 'sent') r.rules = [...r.rules, 'person_offered'];
-
-    // ---- Nothing to do with the company: a redirect, a warning, then closed ----
-    if (r.offTopic && guard.enabled && live && r.decision === 'sent') {
-      const count = strikes.offTopic + 1;
-      const repeat = await flagged();
-      if (repeat || count >= guard.offTopicLimit) {
-        const done = await endFor('off_topic', null, repeat);
-        if (done !== 'skipped') return done;
+    for (;;) {
+      // Strikes and requests for a person are counted before the step is carried out.
+      if ('counters' in step && step.counters) {
+        await this.conversations.updateAiState(this.db, conv.id, { metadata: step.counters });
       }
-      await this.conversations.updateAiState(this.db, conv.id, {
-        metadata: { guard: { ...strikes, offTopic: count } },
-      });
-      r.rules = [...r.rules, 'off_topic'];
-      r.resolves = false;
-      if (count === guard.offTopicLimit - 1 && r.reply) {
-        r.reply = `${r.reply}\n\n${offTopicWarning(language)}`;
+      switch (step.do) {
+        case 'resolve': {
+          const done = await this.autoResolve.customerConfirmed({
+            ticketId: conv.ticketId,
+            conversationId: conv.id,
+            channel: conv.channel,
+            language: conv.language ?? null,
+            triggerMessageId,
+            silent: step.silent,
+          });
+          if (done !== 'skipped') return done;
+          step = step.refused();
+          break;
+        }
+        case 'need_flagged': {
+          const { customer } = await rest();
+          const since = new Date(Date.now() - behaviour.guardrails.flagHours * 3_600_000);
+          step = step.given(await this.customers.flaggedSince(customer.id, since));
+          break;
+        }
+        case 'close': {
+          const { ticket, customer } = await rest();
+          const done = await this.autoResolve.closeForConduct({
+            ticketId: ticket.id,
+            conversationId: conv.id,
+            customerId: customer.id,
+            language,
+            closure: step.closure,
+            pattern: step.pattern,
+            rules: step.rules,
+            flag: step.flag,
+            triggerMessageId,
+          });
+          if (done !== 'skipped') return done;
+          step = step.refused();
+          break;
+        }
+        case 'ask': {
+          const { ticket, customer, summary } = await rest();
+          const transcript: Line[] = rows
+            .filter((m) => m.authorType !== 'system')
+            .map((m) => ({ author: m.authorType as Line['author'], body: m.body }));
+          const unconfidentBefore = await this.runs.unconfidentTurns(
+            conv.id,
+            behaviour.sendAt,
+            lastHandover,
+          );
+          const r = await this.think({
+            channel: conv.channel,
+            mode,
+            behaviour,
+            transcript: summary ? transcript.slice(-HISTORY_TAIL) : transcript,
+            summary,
+            ticket: {
+              id: ticket.id,
+              reference: ticket.reference,
+              subject: ticket.subject,
+              status: ticket.status,
+              category: ticket.category?.id
+                ? `${ticket.category.name}${ticket.subcategory?.id ? ` > ${ticket.subcategory.name}` : ''}`
+                : null,
+              categoryId: ticket.category?.id ?? null,
+              context: ticketContext(ticket),
+            },
+            customer: { name: customer.displayName, type: customer.customerType },
+            language,
+            unconfidentTurnsBefore: unconfidentBefore,
+            conversationId: conv.id,
+            customerEmail: boundEmail(ticket, customer, conv),
+            dryRun: false,
+            update: null,
+            confirmedByTool: false,
+            personAsked: step.personAsked,
+            integration: ticket.integration?.slug ?? null,
+          });
+          step = step.answered(r, unconfidentBefore);
+          break;
+        }
+        case 'send': {
+          const { ticket } = await rest();
+          return this.apply({
+            conv,
+            ticket,
+            r: step.result,
+            language,
+            lastCustomerBody: lastRow.body,
+            aiReplies: rows.filter((m) => m.authorType === 'ai').length,
+            toldToWait: toldToWait(rows),
+            mode,
+            behaviour,
+            triggerMessageId,
+            kind: 'turn',
+          });
+        }
       }
     }
-
-    // ---- Unsure: ask the customer to say more before giving up on them ----
-    // A person is for when the AI has tried and failed, not for its first doubt.
-    const unsure =
-      r.decision === 'handover' &&
-      r.rules.length > 0 &&
-      r.rules.every((rule) => rule === 'low_confidence' || rule === 'no_answer');
-    if (unsure && live && unconfidentBefore + 1 < behaviour.maxFailedTurns) {
-      r = {
-        ...r,
-        decision: 'sent',
-        reply: clarifyMessage(language),
-        // Stays below the send threshold on record, so it counts towards "tried and failed".
-        confidence: Math.min(r.confidence ?? 0, Math.max(0, behaviour.sendAt - 0.01)),
-        rules: ['clarifying'],
-        handoverReason: null,
-        resolves: false,
-      };
-    }
-
-    return send(r);
   }
 
   /** Sends, drafts or hands over as the turn decided, and records the run, in one transaction. */
@@ -881,7 +753,7 @@ export class AiAgentService {
 
     // ---- Answers that need no model (ADR 0030). An email wants an email, so not there. ----
     const paths = i.behaviour.fastPaths;
-    const quick = !i.update && !i.personAsked && !BY_EMAIL.has(i.channel);
+    const quick = !i.update && !i.personAsked && !byEmail(i.channel);
     const customerLines = i.transcript.filter((l) => l.author === 'customer').length;
     /** The opening question of a conversation with nothing attached: the same for anyone who asks it. */
     const general = quick && customerLines === 1 && !i.summary && !i.ticket.context;
@@ -1332,28 +1204,4 @@ function followUpNote(
   ]
     .filter(Boolean)
     .join('\n');
-}
-
-/** A turn that did nothing yet: hands over unless the model says otherwise. */
-function blankResult(language: string | null): ThinkResult {
-  return {
-    decision: 'handover',
-    reply: null,
-    confidence: null,
-    selfConfidence: null,
-    rules: [],
-    handoverReason: null,
-    language,
-    intent: null,
-    resolves: false,
-    offTopic: false,
-    ticketUpdate: {},
-    tools: [],
-    sources: [],
-    seenSources: [],
-    model: null,
-    costUsd: 0,
-    latencyMs: 0,
-    error: null,
-  };
 }
