@@ -198,6 +198,7 @@ class TmsClient:
         *,
         email: Optional[str] = None,
         name: Optional[str] = None,
+        title: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Sends a 6-digit code to the customer's WhatsApp. Needs the `integration:customer` scope.
 
@@ -207,7 +208,7 @@ class TmsClient:
         sent: 409 (WhatsApp cannot reach this number now), 429 (wait
         `retry_after` seconds) or 502 (Meta refused).
         """
-        payload = {"customer": _phone_customer(external_id, email, name), "phone": phone}
+        payload = {"customer": _phone_customer(external_id, email, name, title), "phone": phone}
         return self._request("POST", "/integration/customers/phone-verifications", payload)
 
     def check_phone_verification(
@@ -218,15 +219,19 @@ class TmsClient:
         *,
         email: Optional[str] = None,
         name: Optional[str] = None,
+        title: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Checks the code the customer typed. On success the number is proven for them.
+
+        `title` is how the customer chose to be addressed ("Mr.", "Ms.", "Mrs.",
+        "Mx." or "Dr."); the support AI then uses it with their name.
 
         Returns `{"verified": True, "phone": ...}`. A wrong code is a
         `TmsError` with status 400 and `err.body["reason"]` one of
         `wrong-code`, `expired`, `too-many-attempts` or `no-code`.
         """
         payload = {
-            "customer": _phone_customer(external_id, email, name),
+            "customer": _phone_customer(external_id, email, name, title),
             "phone": phone,
             "code": code,
         }
@@ -361,8 +366,10 @@ def _without_none(values: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in values.items() if v is not None}
 
 
-def _phone_customer(external_id: str, email: Optional[str], name: Optional[str]) -> Dict[str, Any]:
-    return _without_none({"externalId": external_id, "email": email, "name": name})
+def _phone_customer(
+    external_id: str, email: Optional[str], name: Optional[str], title: Optional[str] = None
+) -> Dict[str, Any]:
+    return _without_none({"externalId": external_id, "email": email, "name": name, "title": title})
 
 
 def _segment(value: str) -> str:

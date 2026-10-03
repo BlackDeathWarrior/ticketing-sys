@@ -18,6 +18,7 @@ import {
   type CreateCustomerInput,
   type CustomerFlagKind,
   type CustomerFlagView,
+  type CustomerTitle,
   type IdentityInput,
   type IdentityType,
   normalizeIdentity,
@@ -216,6 +217,32 @@ export class CustomersService {
       });
     });
     return this.get(c.id);
+  }
+
+  /**
+   * How the customer chose to be addressed ("Mr.", "Ms."), as an app that
+   * knows them passed it on. Kept in `attributes.title`; the same title again
+   * changes nothing.
+   */
+  async setTitleInTx(tx: DbOrTx, ctx: RequestCtx, id: string, title: CustomerTitle): Promise<void> {
+    const c = await this.findActive(tx, id);
+    if (c.attributes.title === title) return;
+    await tx
+      .update(customers)
+      .set({ attributes: { ...c.attributes, title } })
+      .where(eq(customers.id, c.id));
+    await this.audit.record(tx, ctx, {
+      action: 'customer.updated',
+      targetType: 'customer',
+      targetId: c.id,
+      data: { attributes: { title } },
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'customer.updated',
+      aggregateType: 'customer',
+      aggregateId: c.id,
+      payload: { fields: ['attributes'] },
+    });
   }
 
   async addIdentity(ctx: RequestCtx, id: string, input: IdentityInput) {

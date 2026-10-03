@@ -42,6 +42,7 @@ import { ApprovalsService } from '../tools/approvals.service';
 import { forModel, type InvokeResult, ToolGatewayService } from '../tools/tool-gateway.service';
 import { traitsOf } from '../channels/channel-traits';
 import { type AgentTool, ToolsService } from '../tools/tools.service';
+import { type Address, addressOf, titleOf } from './address';
 import { AiAutoResolveService } from './ai-auto-resolve';
 import { AiRunsService } from './ai-runs.service';
 import { AiFastPathsService, type FastAnswer } from './fast-paths.service';
@@ -156,6 +157,19 @@ function lastCardOf(
   };
 }
 
+/** The customer as the model and the fixed replies know them: name, type and how to address them. */
+function promptCustomer(customer: {
+  displayName: string;
+  customerType: string;
+  attributes: Record<string, unknown>;
+}) {
+  return {
+    name: customer.displayName,
+    type: customer.customerType,
+    address: addressOf(customer.displayName, titleOf(customer.attributes)),
+  };
+}
+
 interface ThinkInput {
   channel: string;
   mode: AiChannelMode;
@@ -173,7 +187,7 @@ interface ThinkInput {
     /** What the app that raised the ticket sent with it, for the prompt. */
     context?: string | null;
   };
-  customer: { name: string; type: string };
+  customer: { name: string; type: string; address?: Address | null };
   language: string | null;
   unconfidentTurnsBefore: number;
   conversationId: string | null;
@@ -370,7 +384,7 @@ export class AiAgentService {
             categoryId: ticket.category?.id ?? null,
             context: ticketContext(ticket),
           },
-          customer: { name: customer.displayName, type: customer.customerType },
+          customer: promptCustomer(customer),
           language,
           unconfidentTurnsBefore: 0,
           conversationId: conv.id,
@@ -602,7 +616,7 @@ export class AiAgentService {
               categoryId: ticket.category?.id ?? null,
               context: ticketContext(ticket),
             },
-            customer: { name: customer.displayName, type: customer.customerType },
+            customer: promptCustomer(customer),
             language,
             unconfidentTurnsBefore: unconfidentBefore,
             conversationId: conv.id,
@@ -876,7 +890,7 @@ export class AiAgentService {
     if (talk) {
       fast = {
         route: 'smalltalk',
-        reply: smallTalkReply(talk, i.language),
+        reply: smallTalkReply(talk, i.language, i.customer.address?.short),
         confidence: 1,
         intent: talk,
         resolves: talk === 'thanks',

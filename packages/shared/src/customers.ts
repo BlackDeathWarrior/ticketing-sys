@@ -10,6 +10,15 @@ export const IDENTITY_TYPES = [
   'external_id',
 ] as const;
 export const identityTypeSchema = z.enum(IDENTITY_TYPES);
+
+/**
+ * How a customer chose to be addressed, in an app that knows them. Kept in
+ * `customers.attributes.title`. A fixed list: it goes into the AI's prompt as
+ * it is, and it is never worked out from a name.
+ */
+export const CUSTOMER_TITLES = ['Mr.', 'Ms.', 'Mrs.', 'Mx.', 'Dr.'] as const;
+export const customerTitleSchema = z.enum(CUSTOMER_TITLES);
+export type CustomerTitle = (typeof CUSTOMER_TITLES)[number];
 export type IdentityType = z.infer<typeof identityTypeSchema>;
 
 export const CUSTOMER_TYPES = ['standard', 'vip', 'business', 'internal'] as const;

@@ -117,6 +117,8 @@ export interface PhoneCustomer {
   externalId: string;
   email?: string;
   name?: string;
+  /** How the person chose to be addressed; the support AI then uses it with their name. */
+  title?: 'Mr.' | 'Ms.' | 'Mrs.' | 'Mx.' | 'Dr.';
 }
 
 export interface StartPhoneVerification {

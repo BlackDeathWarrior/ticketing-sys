@@ -5,7 +5,7 @@ import { type ChannelTraits, traitsOf } from '../channels/channel-traits';
  * Versioned prompts (ADR 0011). The version is recorded on every AI run, so a
  * change here is traceable in the audit trail; bump it with any edit.
  */
-export const AGENT_PROMPT_VERSION = 'agent-v12';
+export const AGENT_PROMPT_VERSION = 'agent-v13';
 export const CLASSIFIER_PROMPT_VERSION = 'classifier-v1';
 export const SUMMARY_PROMPT_VERSION = 'summary-v1';
 export const HANDOVER_PROMPT_VERSION = 'handover-v1';
@@ -19,6 +19,21 @@ export interface PromptCompany {
 }
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/** The voice of every answer the model writes: a person, not a form letter. Never at the cost of accuracy. */
+const TONE =
+  '- Write the way a helpful person talks: plain everyday words, short sentences, contractions. When it fits, show in a few words that you understood what they asked before you answer. Do not open two replies the same way, and leave out stock phrases such as "I apologize for the inconvenience", "Please be advised" or "I am unable to". Sounding human never means promising or guessing.';
+
+/** How to address the customer by name. A title is only ever one the customer chose. */
+function addressLine(address: { forms: string[]; titled: boolean } | null | undefined): string {
+  if (!address) {
+    return '- Do not address the customer by name: the name on file is not known to be how they are called.';
+  }
+  const forms = address.forms.map((f) => `"${oneLine(f)}"`).join(' or ');
+  return address.titled
+    ? `- Address the customer by name as a person would, in your first reply and now and then after it, not in every message: ${forms}. Vary which form you use.`
+    : `- Address the customer by name as a person would, in your first reply and now and then after it, not in every message: ${forms}. Never add a title such as Mr. or Ms.: you do not know which is right.`;
+}
 
 /** How a reply should read on a channel. Emails are signed with the support team's name. */
 function channelStyle(channel: string, company: PromptCompany): string {
@@ -42,7 +57,12 @@ export interface AgentPromptInput {
   company?: PromptCompany;
   channel: string;
   language: string | null;
-  customer: { name: string; type: string };
+  /** `address`: the ways the customer may be addressed by name (`addressOf`); null when the name is not a person's. */
+  customer: {
+    name: string;
+    type: string;
+    address?: { forms: string[]; titled: boolean } | null;
+  };
   ticket: {
     reference: string;
     subject: string;
@@ -108,6 +128,8 @@ export function agentSystemPrompt(i: AgentPromptInput): string {
     `- If the message has nothing to do with ${oneLine(company.companyName)}, its products, orders or services, do not answer it. Say in one sentence what you can help with here, and set off_topic to true in send_reply.`,
     `- Reply in the customer's language${i.language ? ` (${i.language})` : ''}.`,
     `- ${channelStyle(i.channel, company)}`,
+    TONE,
+    addressLine(i.customer.address),
     '',
     'How to work:',
     '- The results below are already for the latest message. Use search_knowledge only with different words, when they do not cover the question.',
