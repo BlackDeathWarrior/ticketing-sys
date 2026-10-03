@@ -92,6 +92,8 @@ export interface Message {
   attachments: Attachment[];
   /** Product cards shown with the message (WhatsApp carousel); absent when it had none. */
   cards?: MessageCard[];
+  /** Why the cards were not shown and the reply went as text; absent when they were. */
+  cardsDropped?: string;
   /** What the AI recorded with its reply: confidence, rules, knowledge used. */
   ai: { confidence: number | null; rules: string[]; sources: Array<{ label: string }> } | null;
 }

@@ -272,7 +272,42 @@ Other answers:
 
 **What a proof does.** A customer has one proven number, and the latest proof wins. If another customer is known only by that number, the two are merged into the customer who proved it. Any other customer who held the number just loses it.
 
-## 6. Errors and limits
+## 6. Showing items as cards on WhatsApp
+
+Use this when the AI should show items from your app, such as products, as picture cards on WhatsApp. The AI never writes a picture, a price or a link itself: it can only pick items that one of your tools returned in the same turn.
+
+A tool (see ADR 0017 for how a tool is defined) adds `cards` to its result, next to whatever else it returns:
+
+```json
+{
+  "orders": [],
+  "cards": [
+    {
+      "id": "sku-1042",
+      "title": "Block-print cotton kurta",
+      "text": "Indigo, sizes S to XL. Rs 1,499",
+      "imageUrl": "https://shop.example.com/img/1042.jpg",
+      "url": "https://shop.example.com/p/1042"
+    }
+  ]
+}
+```
+
+| Field      | Required | Limit                                                      |
+| ---------- | -------- | ---------------------------------------------------------- |
+| `id`       | yes      | 1 to 100 characters. Your own id for the item.             |
+| `title`    | yes      | 1 to 80 characters.                                        |
+| `text`     | no       | Up to 200 characters.                                      |
+| `imageUrl` | yes      | An `https` address, up to 1,000 characters.                |
+| `url`      | no       | An `https` address, up to 1,000 characters. The item page. |
+
+- TMS reads at most 20 cards from one result. A card that is not valid is dropped, and so is a second card with an id already seen. Addresses that are not `https` are not accepted.
+- The AI shows at most 10 cards in one reply, because a WhatsApp carousel holds 10. One card goes as a single picture message.
+- Each card carries two buttons, "I like this" and "View product". "View product" is there only when every card in the reply has a `url`. A customer who taps it gets the `url` back at once. The AI is not asked.
+- Cards are shown only on WhatsApp. Other channels get the reply text alone.
+- If WhatsApp cannot show the cards (the reply is too long, or Meta refuses them), the reply goes as plain text and the ticket in Orbit Desk says why.
+
+## 7. Errors and limits
 
 | Status | Meaning                                                                       | What to do                                    |
 | ------ | ----------------------------------------------------------------------------- | --------------------------------------------- |
@@ -286,7 +321,7 @@ Other answers:
 
 Never let a support call break your app: use a short timeout, catch the error, and carry on.
 
-## 7. With the SDKs
+## 8. With the SDKs
 
 Node (18 or later):
 
@@ -358,7 +393,7 @@ except TmsError as err:
 
 Both clients are tested against the same fixed signatures (`signature-vectors.json`), and the Node SDK is tested against the real API.
 
-## 8. A checklist before going live
+## 9. A checklist before going live
 
 - [ ] The API key and both secrets are only on your server, and not in your repository.
 - [ ] Calls that create something send an `Idempotency-Key`.

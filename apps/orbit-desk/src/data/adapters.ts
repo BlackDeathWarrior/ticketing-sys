@@ -111,6 +111,8 @@ export interface ApiConversation {
       via?: string;
       /** The product cards shown with the message; checked against `messageCardSchema`. */
       cards?: unknown;
+      /** Why the cards went as plain text, when they did. */
+      cardsDropped?: unknown;
     };
   }>;
 }
@@ -280,6 +282,7 @@ export function toThread(
           : (m.authorName ?? (m.authorType === 'system' ? 'System' : 'Support'));
       const meta = m.metadata?.ai;
       const cards = messageCardSchema.array().safeParse(m.metadata?.cards);
+      const cardsDropped = m.metadata?.cardsDropped;
       messages.push({
         id: m.id,
         kind: fromCustomer
@@ -305,6 +308,7 @@ export function toThread(
           path: `/messages/${m.id}/attachments/${i}`,
         })),
         ...(cards.success ? { cards: cards.data } : {}),
+        ...(typeof cardsDropped === 'string' && cardsDropped ? { cardsDropped } : {}),
         ai:
           byAi && meta
             ? {

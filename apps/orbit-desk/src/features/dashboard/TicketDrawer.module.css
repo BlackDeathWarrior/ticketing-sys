@@ -289,6 +289,56 @@
   opacity: 0.8;
 }
 
+/* The picture cards a WhatsApp reply carried. */
+.cards {
+  display: grid;
+  gap: var(--spacing-8);
+  margin: var(--spacing-8) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-12);
+  min-width: 0;
+}
+
+.cardImage {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-buttons);
+  object-fit: cover;
+}
+
+.cardText {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.cardTitle {
+  font-size: var(--text-ui);
+  font-weight: var(--font-weight-medium);
+}
+
+.cardBody {
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--color-ash);
+}
+
+/* Why the cards went as plain text: words only, like the delivery error. */
+.cardsNote {
+  margin-top: var(--spacing-8);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--color-fog);
+}
+
 .attachments {
   display: flex;
   flex-wrap: wrap;
