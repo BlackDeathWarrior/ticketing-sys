@@ -111,6 +111,40 @@ export interface Identity {
   key: { name: string; prefix: string; scopes: string[]; rateLimitPerMinute: number };
 }
 
+/** The person a phone number belongs to. Only your own id is required. */
+export interface PhoneCustomer {
+  /** Your own id for the person: the same id your other calls use. */
+  externalId: string;
+  email?: string;
+  name?: string;
+}
+
+export interface StartPhoneVerification {
+  customer: PhoneCustomer;
+  /** The full international number; spaces, dashes and a leading + are ignored. */
+  phone: string;
+}
+
+export interface CheckPhoneVerification extends StartPhoneVerification {
+  /** The 6 digits the customer received on WhatsApp. */
+  code: string;
+}
+
+/** `sentVia`: `template` if the customer has not written in the last day, `text` if they have. */
+export interface PhoneVerificationStarted {
+  expiresAt: string;
+  sentVia: 'template' | 'text';
+}
+
+/** `phone` is the number as TMS keeps it: digits only, country code included. */
+export interface PhoneVerificationChecked {
+  verified: true;
+  phone: string;
+}
+
+/** Why a check was refused (`body.reason` of a 400 `TmsApiError`). */
+export type PhoneCodeFailure = 'wrong-code' | 'expired' | 'too-many-attempts' | 'no-code';
+
 export type WebhookEventType =
   | 'ticket.created'
   | 'ticket.updated'

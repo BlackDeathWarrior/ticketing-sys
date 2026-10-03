@@ -24,6 +24,10 @@ _Avoid_: Waiting message, acknowledgement
 What a customer is told when the AI passes their conversation to a person.
 _Avoid_: Handover message, transfer message
 
+**Proven number**:
+A phone number a customer has shown they own, by typing back a code sent to it over WhatsApp (or because staff marked it verified). A customer has one, the latest proof wins, and on WhatsApp the AI acts for a customer only from a proven number.
+_Avoid_: Verified phone, confirmed number
+
 ## Relationships
 
 - Every **Channel** has exactly one set of **Channel traits**

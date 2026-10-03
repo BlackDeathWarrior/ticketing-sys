@@ -451,7 +451,10 @@ async function loadIntegration(admin: string): Promise<Connection | null> {
         ...(rateLimitPerMinute ? { rateLimitPerMinute } : {}),
       })
     ).key;
-  const webKey = await key('Shop server: shopper requests', ['integration:ticket']);
+  const webKey = await key('Shop server: shopper requests', [
+    'integration:ticket',
+    'integration:customer',
+  ]);
   const eventsKey = await key('Shop server: incidents', ['integration:event']);
   // For showing the per-key limit: five calls a minute, then 429.
   const limitedKey = await key('Demo: five calls a minute', ['integration:ticket'], 5);

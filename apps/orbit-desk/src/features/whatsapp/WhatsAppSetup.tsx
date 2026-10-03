@@ -21,6 +21,10 @@ export function WhatsAppSetup() {
   const [busy, setBusy] = useState<'sync' | 'subscribe' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const url = webhookUrl();
+  // The one the desk sends codes with: the first approved authentication template by name.
+  const codeTemplate = [...(templates.data ?? [])]
+    .filter((t) => t.category === 'AUTHENTICATION' && t.status === 'APPROVED')
+    .sort((a, b) => a.name.localeCompare(b.name) || a.language.localeCompare(b.language))[0];
 
   const run = async (what: 'sync' | 'subscribe') => {
     setBusy(what);
@@ -74,6 +78,14 @@ export function WhatsAppSetup() {
           Templates are written and approved in WhatsApp Manager. They are the only messages
           WhatsApp allows more than 24 hours after a customer last wrote.
         </p>
+        {templates.data && (
+          <p className={settings.note}>
+            Verification codes:{' '}
+            {codeTemplate
+              ? `Sent with the template ${codeTemplate.name}.`
+              : 'Until an authentication template is approved and synced, codes only reach numbers that wrote in the last 24 hours.'}
+          </p>
+        )}
       </div>
       <div className={styles.rowActions}>
         <Button onClick={() => void run('sync')} disabled={busy !== null}>
