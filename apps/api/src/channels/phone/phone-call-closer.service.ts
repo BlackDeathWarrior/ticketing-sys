@@ -80,12 +80,8 @@ export class PhoneCallCloser {
     // Who the ticket is filed under. With no hook during the call, the trigger's number is
     // all there is: it files the ticket, and is never used to run a tool. A caller whose
     // number the network withheld is still one person for this call.
-    const phone =
-      call.callerPhone ??
-      internationalCallerNumber(
-        hint.phone,
-        (await this.channels.phone())?.agentPhoneNumber ?? '',
-      );
+    const agentNumber = (await this.channels.phone())?.agentPhoneNumber ?? '';
+    const phone = call.callerPhone ?? internationalCallerNumber(hint.phone, agentNumber);
     const from: MessageEnvelope['from'] = phone
       ? { identity: { type: 'phone', value: phone } }
       : { identity: { type: 'external_id', value: `sarvam-call:${interactionId}` } };
