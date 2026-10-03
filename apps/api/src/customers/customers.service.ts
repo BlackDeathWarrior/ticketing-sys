@@ -24,7 +24,7 @@ import {
   type ResolveCustomerInput,
   type UpdateCustomerInput,
 } from '@tms/shared';
-import { and, desc, eq, gt, ilike, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, gt, ilike, inArray, isNull, ne, or } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import { isUniqueViolation } from '../common/exception.filter';
@@ -32,6 +32,9 @@ import type { RequestCtx } from '../common/request-context';
 import { DB } from '../infra/tokens';
 
 type Customer = typeof customers.$inferSelect;
+
+/** Identity types that say nothing about a person beyond the number they write from. */
+const PHONE_ONLY_TYPES: readonly string[] = ['phone', 'whatsapp', 'whatsapp_bsuid'];
 
 @Injectable()
 export class CustomersService {
@@ -346,12 +349,23 @@ export class CustomersService {
       .set({ primaryEmail: null })
       .where(and(eq(customers.id, owner.customerId), eq(customers.primaryEmail, email)))
       .returning({ id: customers.id });
+    await this.recordIdentityMove(tx, ctx, owner.customerId, customerId, 'email', !!cleared);
+    await this.fillPrimaryEmail(tx, ctx, customerId, email);
+  }
+
+  /** Audits and announces an identity moving between two customers, on both. */
+  private async recordIdentityMove(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    fromId: string,
+    toId: string,
+    type: IdentityType,
+    clearedPrimary: boolean,
+  ) {
+    const primary = type === 'email' ? 'primaryEmail' : 'primaryPhone';
     for (const [id, data] of [
-      [
-        owner.customerId,
-        { identityMovedTo: customerId, type: 'email', ...(cleared ? { primaryEmail: null } : {}) },
-      ],
-      [customerId, { identityMovedFrom: owner.customerId, type: 'email' }],
+      [fromId, { identityMovedTo: toId, type, ...(clearedPrimary ? { [primary]: null } : {}) }],
+      [toId, { identityMovedFrom: fromId, type }],
     ] as const) {
       await this.audit.record(tx, ctx, {
         action: 'customer.updated',
@@ -366,7 +380,6 @@ export class CustomersService {
         payload: { fields: ['identities'] },
       });
     }
-    await this.fillPrimaryEmail(tx, ctx, customerId, email);
   }
 
   /**
@@ -399,54 +412,145 @@ export class CustomersService {
     if (sourceId === targetId) throw new BadRequestException('Cannot merge a customer into itself');
     const source = await this.findActive(this.db, sourceId, false);
     const target = await this.findActive(this.db, targetId, false);
-    await this.db.transaction(async (tx) => {
-      const moved = {
-        identities: (
-          await tx
-            .update(customerIdentities)
-            .set({ customerId: target.id })
-            .where(eq(customerIdentities.customerId, source.id))
-            .returning({ id: customerIdentities.id })
-        ).length,
-        tickets: (
-          await tx
-            .update(tickets)
-            .set({ customerId: target.id })
-            .where(eq(tickets.customerId, source.id))
-            .returning({ id: tickets.id })
-        ).length,
-        conversations: (
-          await tx
-            .update(conversations)
-            .set({ customerId: target.id })
-            .where(eq(conversations.customerId, source.id))
-            .returning({ id: conversations.id })
-        ).length,
-      };
-      await tx
-        .update(customers)
-        .set({ mergedIntoId: target.id })
-        .where(eq(customers.id, source.id));
-      // Earlier merges into the source now point at the target.
-      await tx
-        .update(customers)
-        .set({ mergedIntoId: target.id })
-        .where(eq(customers.mergedIntoId, source.id));
-      const data = { sourceId: source.id, targetId: target.id, moved };
-      await this.audit.record(tx, ctx, {
-        action: 'customer.merged',
-        targetType: 'customer',
-        targetId: target.id,
-        data,
-      });
-      await this.outbox.publish(tx, ctx, {
-        type: 'customer.merged',
-        aggregateType: 'customer',
-        aggregateId: target.id,
-        payload: data,
-      });
-    });
+    await this.db.transaction((tx) => this.mergeInTx(tx, ctx, source, target));
     return this.get(target.id);
+  }
+
+  private async mergeInTx(tx: DbOrTx, ctx: RequestCtx, source: Customer, target: Customer) {
+    const moved = {
+      identities: (
+        await tx
+          .update(customerIdentities)
+          .set({ customerId: target.id })
+          .where(eq(customerIdentities.customerId, source.id))
+          .returning({ id: customerIdentities.id })
+      ).length,
+      tickets: (
+        await tx
+          .update(tickets)
+          .set({ customerId: target.id })
+          .where(eq(tickets.customerId, source.id))
+          .returning({ id: tickets.id })
+      ).length,
+      conversations: (
+        await tx
+          .update(conversations)
+          .set({ customerId: target.id })
+          .where(eq(conversations.customerId, source.id))
+          .returning({ id: conversations.id })
+      ).length,
+    };
+    await tx
+      .update(customers)
+      .set({ mergedIntoId: target.id })
+      .where(eq(customers.id, source.id));
+    // Earlier merges into the source now point at the target.
+    await tx
+      .update(customers)
+      .set({ mergedIntoId: target.id })
+      .where(eq(customers.mergedIntoId, source.id));
+    const data = { sourceId: source.id, targetId: target.id, moved };
+    await this.audit.record(tx, ctx, {
+      action: 'customer.merged',
+      targetType: 'customer',
+      targetId: target.id,
+      data,
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'customer.merged',
+      aggregateType: 'customer',
+      aggregateId: target.id,
+      payload: data,
+    });
+  }
+
+  /** Makes `phone` the customer's one proven number, inside the caller's transaction. */
+  async provePhone(tx: DbOrTx, ctx: RequestCtx, customerId: string, phone: string): Promise<void> {
+    const value = normalizeIdentity('phone', phone);
+    const customer = await this.findActive(tx, customerId);
+
+    // Whoever else holds the number loses it: it is now proven to be this customer's.
+    const holders = await tx
+      .selectDistinct({ customerId: customerIdentities.customerId })
+      .from(customerIdentities)
+      .where(
+        and(
+          ne(customerIdentities.customerId, customer.id),
+          eq(customerIdentities.value, value),
+          inArray(customerIdentities.type, ['phone', 'whatsapp']),
+        ),
+      );
+    for (const holder of holders) {
+      const other = await this.findActive(tx, holder.customerId, false);
+      const theirs = await tx
+        .select({ type: customerIdentities.type })
+        .from(customerIdentities)
+        .where(eq(customerIdentities.customerId, other.id));
+      const phoneOnly =
+        !other.primaryEmail && theirs.every((i) => PHONE_ONLY_TYPES.includes(i.type as IdentityType));
+      if (phoneOnly) {
+        // Nothing but a number identified them: they were this person on another channel.
+        await this.mergeInTx(tx, ctx, other, customer);
+        continue;
+      }
+      await tx
+        .update(customerIdentities)
+        .set({ customerId: customer.id })
+        .where(
+          and(
+            eq(customerIdentities.customerId, other.id),
+            eq(customerIdentities.value, value),
+            inArray(customerIdentities.type, ['phone', 'whatsapp']),
+          ),
+        );
+      const [cleared] = await tx
+        .update(customers)
+        .set({ primaryPhone: null })
+        .where(and(eq(customers.id, other.id), eq(customers.primaryPhone, value)))
+        .returning({ id: customers.id });
+      await this.recordIdentityMove(tx, ctx, other.id, customer.id, 'phone', !!cleared);
+    }
+
+    await this.attachIdentity(tx, ctx, customer.id, { type: 'phone', value, verified: true });
+    await tx.update(customers).set({ primaryPhone: value }).where(eq(customers.id, customer.id));
+
+    // One proven number per customer: the numbers it replaces go, with their WhatsApp twins.
+    const replaced = await tx
+      .delete(customerIdentities)
+      .where(
+        and(
+          eq(customerIdentities.customerId, customer.id),
+          eq(customerIdentities.type, 'phone'),
+          eq(customerIdentities.verified, true),
+          ne(customerIdentities.value, value),
+        ),
+      )
+      .returning({ value: customerIdentities.value });
+    if (replaced.length) {
+      await tx.delete(customerIdentities).where(
+        and(
+          eq(customerIdentities.customerId, customer.id),
+          eq(customerIdentities.type, 'whatsapp'),
+          inArray(
+            customerIdentities.value,
+            replaced.map((r) => r.value),
+          ),
+        ),
+      );
+    }
+
+    await this.audit.record(tx, ctx, {
+      action: 'customer.phone_verified',
+      targetType: 'customer',
+      targetId: customer.id,
+      data: { last4: value.slice(-4), replaced: replaced.length },
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'customer.updated',
+      aggregateType: 'customer',
+      aggregateId: customer.id,
+      payload: { fields: ['identities', 'primaryPhone'] },
+    });
   }
 
   async findActive(db: DbOrTx, id: string, followMerge = true): Promise<Customer> {
