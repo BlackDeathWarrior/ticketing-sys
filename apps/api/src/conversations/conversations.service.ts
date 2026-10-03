@@ -130,7 +130,7 @@ export class ConversationsService {
     return row?.at ?? null;
   }
 
-  /** Adds channel details to a conversation's metadata; undefined values are left alone. */
+  /** Adds channel details to a conversation's metadata; undefined values are left alone, null overwrites. */
   async mergeMetadata(tx: DbOrTx, id: string, patch: Record<string, unknown>) {
     const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
     if (!Object.keys(defined).length) return;
