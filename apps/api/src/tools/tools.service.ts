@@ -7,6 +7,9 @@ import {
 } from '@nestjs/common';
 import { type Database, type DbOrTx, mcpServers, toolCalls, tools, users } from '@tms/db';
 import {
+  type CheckCustomToolInput,
+  type CheckMcpServerInput,
+  type ConnectionCheck,
   type CreateMcpServerInput,
   createMcpServerSchema,
   CUSTOM_TOOLS_SLUG,
@@ -457,6 +460,108 @@ export class ToolsService {
     };
   }
 
+  /**
+   * Whether a custom tool's address answers, for a form that may not be saved
+   * yet. It never changes anything in the other system: a lookup (GET) is sent
+   * with "test" in place of each value, and for anything else the system is
+   * only asked whether the address is there (OPTIONS). A saved tool's key is
+   * sent only while the address is still on the host it was saved for.
+   */
+  async checkCustom(input: CheckCustomToolInput): Promise<ConnectionCheck> {
+    const url = input.url.replace(/\{[^{}]*\}/g, 'test');
+    const started = Date.now();
+    const failed = (summary: string, detail: string | null): ConnectionCheck => ({
+      ok: false,
+      summary,
+      status: null,
+      detail,
+      ms: Date.now() - started,
+    });
+    let host: string;
+    try {
+      host = new URL(url).hostname.toLowerCase();
+      await assertPublicUrl(url, this.env.TOOL_PRIVATE_HOSTS.includes(host));
+    } catch (err) {
+      return failed(
+        err instanceof UnsafeUrlError
+          ? err.message
+          : 'No system was found at that address. Check the spelling of the address.',
+        errorText(err),
+      );
+    }
+    const headers: Record<string, string> = { accept: 'application/json' };
+    if (input.toolId && input.authHeader) {
+      const { tool } = await this.customTool(input.toolId);
+      const saved = tool.http ? new URL(sampleUrl(tool.http.url)).hostname.toLowerCase() : null;
+      const token = saved === host ? await this.customToken(tool) : null;
+      if (token) {
+        headers[input.authHeader] =
+          input.authHeader.toLowerCase() === 'authorization' ? `Bearer ${token}` : token;
+      }
+    }
+    const lookup = input.method === 'GET';
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: lookup ? 'GET' : 'OPTIONS',
+        headers,
+        redirect: 'error',
+        signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+      });
+    } catch (err) {
+      return failed(explainNetworkError(err), errorText(err));
+    }
+    const body = (await response.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 200);
+    const status = response.status;
+    return {
+      ...explainStatus(status, lookup),
+      status,
+      detail: `HTTP ${status}${body ? `: ${body}` : ''}`,
+      ms: Date.now() - started,
+    };
+  }
+
+  /** Whether an MCP server answers and lists its tools. Nothing is stored. */
+  async checkServer(input: CheckMcpServerInput): Promise<ConnectionCheck> {
+    const started = Date.now();
+    let token: string | null = null;
+    if (input.serverId && input.authHeader) {
+      const saved = await this.server(input.serverId);
+      const same = new URL(saved.url).hostname === new URL(input.url).hostname;
+      token = same ? await this.secrets.get(tokenKey(saved.slug)) : null;
+    }
+    try {
+      const listed = await listTools({
+        url: input.url,
+        auth: input.authHeader && token ? { header: input.authHeader, value: token } : null,
+        privateHosts: this.env.TOOL_PRIVATE_HOSTS,
+      });
+      return {
+        ok: true,
+        summary: `The server answered and lists ${listed.length} ${listed.length === 1 ? 'tool' : 'tools'}.`,
+        status: null,
+        detail: null,
+        ms: Date.now() - started,
+        tools: listed.length,
+      };
+    } catch (err) {
+      const detail = errorText(err);
+      const refused = /\b(401|403)\b|unauthori[sz]ed|forbidden/i.test(detail);
+      return {
+        ok: false,
+        summary:
+          err instanceof UnsafeUrlError
+            ? err.message
+            : refused
+              ? 'The server refused us: it wants a key, or the saved key is wrong.'
+              : `The server did not answer as an MCP server. ${explainNetworkError(err)}`,
+        status: null,
+        detail,
+        ms: Date.now() - started,
+      };
+    }
+  }
+
   private async checkUrl(url: string) {
     try {
       const host = new URL(url).hostname.toLowerCase();
@@ -570,6 +675,66 @@ export function guessTier(annotations: Record<string, unknown>): ToolTier {
 export function guessCustomerArg(schema: Record<string, unknown>): string | null {
   const props = schemaProperties(schema);
   return ['customer_email', 'email'].find((p) => p in props) ?? null;
+}
+
+const CHECK_TIMEOUT_MS = 8_000;
+
+/** Why a request got no answer at all, in words for someone who does not run servers. */
+function explainNetworkError(err: unknown): string {
+  const e = err as Error & { cause?: { code?: string } };
+  const code = e.cause?.code ?? '';
+  if (e.name === 'TimeoutError' || e.name === 'AbortError' || /TIMEOUT/.test(code)) {
+    return 'The system did not answer in time. It may be down, or not reachable from here.';
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return 'No system was found at that address. Check the spelling of the address.';
+  }
+  if (code === 'ECONNREFUSED' || code === 'ECONNRESET') {
+    return 'The system is not accepting connections at that address.';
+  }
+  if (/CERT|SSL|TLS/.test(code)) {
+    return "The system's security certificate is not valid, so the connection was refused.";
+  }
+  if (/redirect/i.test(e.message)) {
+    return 'The address sends requests on to another address, which is refused for safety. Use the final address.';
+  }
+  return 'The system could not be reached.';
+}
+
+/** What an answer code means for a check. `lookup`: a GET was sent with made-up values. */
+function explainStatus(status: number, lookup: boolean): { ok: boolean; summary: string } {
+  if (status >= 200 && status < 400) return { ok: true, summary: 'The system answered.' };
+  if (status === 401 || status === 403) {
+    return {
+      ok: false,
+      summary: 'The system refused the request: it wants a key, or the saved key is wrong.',
+    };
+  }
+  if (status === 429) {
+    return {
+      ok: false,
+      summary: 'The system says it is getting too many requests. Try again later.',
+    };
+  }
+  if (status >= 500) return { ok: false, summary: 'The system answered with an error of its own.' };
+  if (lookup && (status === 404 || status === 400 || status === 422)) {
+    return {
+      ok: true,
+      summary:
+        'The system answered. It found nothing for the made-up test value, which is normal; if a real value fails too, check the address.',
+    };
+  }
+  if (!lookup && (status === 404 || status === 405 || status === 501)) {
+    return {
+      ok: true,
+      summary:
+        'The system is reachable. It does not answer a check without data, which is normal for an address that changes something.',
+    };
+  }
+  return {
+    ok: false,
+    summary: `The system answered ${status}, which it uses for a request it cannot accept.`,
+  };
 }
 
 export function errorText(err: unknown): string {

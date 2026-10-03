@@ -5,6 +5,8 @@ import {
   copilotSchema,
   type CustomToolHelperInput,
   customToolHelperSchema,
+  type DiagnoseConnectionInput,
+  diagnoseConnectionSchema,
   type McpServerHelperInput,
   mcpServerHelperSchema,
   type SimulateAiInput,
@@ -58,6 +60,27 @@ export class AiController {
   @RequirePermission('tool:manage')
   helpWithMcpServer(@Body(new ZodPipe(mcpServerHelperSchema)) body: McpServerHelperInput) {
     return this.toolHelper.mcpServer(body);
+  }
+
+  /** Explains a failed connection check of a custom tool and saves it as a bug ticket. */
+  @Post('ai/tool-helper/custom-tool/diagnose')
+  @HttpCode(200)
+  @RequirePermission('tool:create')
+  diagnoseCustomTool(
+    @Ctx() ctx: RequestCtx,
+    @Body(new ZodPipe(diagnoseConnectionSchema)) body: DiagnoseConnectionInput,
+  ) {
+    return this.toolHelper.diagnose(ctx, 'custom_tool', body);
+  }
+
+  @Post('ai/tool-helper/mcp-server/diagnose')
+  @HttpCode(200)
+  @RequirePermission('tool:manage')
+  diagnoseMcpServer(
+    @Ctx() ctx: RequestCtx,
+    @Body(new ZodPipe(diagnoseConnectionSchema)) body: DiagnoseConnectionInput,
+  ) {
+    return this.toolHelper.diagnose(ctx, 'mcp_server', body);
   }
 
   /** Autonomy per channel and the confidence thresholds. */
