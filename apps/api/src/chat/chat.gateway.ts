@@ -158,7 +158,7 @@ export class ChatGateway implements OnGatewayConnection {
           authorType: 'customer',
           createdAt: new Date().toISOString(),
         },
-        assistantReplying: result.answeredByAi === true,
+        assistantReplying: result.aiAnswering === true,
         ...(result.ticketReference
           ? { ticket: { reference: result.ticketReference, created: result.createdTicket } }
           : {}),

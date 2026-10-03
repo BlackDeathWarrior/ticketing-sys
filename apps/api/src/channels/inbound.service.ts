@@ -32,8 +32,10 @@ export interface InboundResult {
   createdTicket: boolean;
   /** The ticket's reference, e.g. TMS-1042. Not set for a duplicate. */
   ticketReference?: string;
-  /** The AI answers this conversation, so a reply is on its way. Not set for a duplicate. */
+  /** The AI holds this conversation. Not set for a duplicate. */
   answeredByAi?: boolean;
+  /** The AI is writing an answer it will send by itself (`aiIsAnswering`). Not set for a duplicate. */
+  aiAnswering?: boolean;
 }
 
 /**
@@ -217,6 +219,7 @@ export class InboundService {
       createdTicket,
       ticketReference: formatTicketNumber(ticket.number),
       answeredByAi: conversation.controller === 'ai',
+      aiAnswering: await this.aiPolicy.answering(conversation.channel, conversation.controller),
     };
   }
 

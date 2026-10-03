@@ -372,6 +372,25 @@ export function sendCardMessage(
   });
 }
 
+/**
+ * Shows "typing…" in the customer's chat until we send a message or about 25
+ * seconds pass. Meta ties it to one of the customer's messages (`messageId`)
+ * and marks that message as read.
+ */
+export async function sendTypingIndicator(
+  args: Credentials & { phoneNumberId: string; messageId: string },
+): Promise<void> {
+  await graphFetch(endpoint(args.graph, `${args.phoneNumberId}/messages`), args.accessToken, {
+    method: 'POST',
+    body: {
+      messaging_product: 'whatsapp',
+      status: 'read',
+      message_id: args.messageId,
+      typing_indicator: { type: 'text' },
+    },
+  });
+}
+
 // ---- Media ----
 
 /**

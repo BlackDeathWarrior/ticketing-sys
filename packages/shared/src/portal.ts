@@ -71,6 +71,8 @@ export interface PortalTicketDetail extends Omit<PortalTicketSummary, 'rating'> 
   messages: PortalMessage[];
   /** Closed tickets can't be answered; the customer opens a new request instead. */
   canReply: boolean;
+  /** The assistant is writing an answer that it will send by itself; false once it arrives. */
+  replying: boolean;
   /** Resolved or closed within the rating window. */
   canRate: boolean;
   rating: CsatView | null;
