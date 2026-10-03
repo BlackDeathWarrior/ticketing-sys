@@ -17,6 +17,7 @@ import { AiToolHelperService } from './ai-tool-helper.service';
 import { AiController } from './ai.controller';
 import { AiFastPathsService } from './fast-paths.service';
 import { LanguageService } from './language.service';
+import { VoiceNotesService } from './voice-notes.service';
 
 /**
  * The AI agent (ADR 0011): turns, classification, run records, settings and
@@ -42,6 +43,7 @@ import { LanguageService } from './language.service';
     AiClassifierService,
     AiCopilotService,
     AiToolHelperService,
+    VoiceNotesService,
     LanguageService,
     AiAutoResolveService,
     AiFastPathsService,

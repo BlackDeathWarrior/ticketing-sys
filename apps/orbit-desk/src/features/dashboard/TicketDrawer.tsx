@@ -603,6 +603,13 @@ function DrawerContent({
                         </p>
                       )}
                       {m.attachments.length > 0 && <AttachmentList files={m.attachments} />}
+                      {m.transcript !== undefined && (
+                        <p className={styles.cardsNote} role="note" data-transcript>
+                          {m.transcript
+                            ? `Voice message, written down by the AI: “${m.transcript}”`
+                            : 'Voice message: the AI could not make out what is said.'}
+                        </p>
+                      )}
                       {m.delivery === 'failed' && m.deliveryError && (
                         <p className={styles.deliveryError} role="note">
                           {m.deliveryError}

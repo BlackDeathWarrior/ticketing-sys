@@ -68,6 +68,7 @@ import {
   ticketContext,
 } from './prompts';
 import { blankResult, type ThinkResult } from './think-result';
+import { VoiceNotesService } from './voice-notes.service';
 import { type Counters, startTurn, turnFacts } from './turn-plan';
 import {
   AGENT_TOOLS,
@@ -258,6 +259,7 @@ export class AiAgentService {
     private readonly learning: LearningService,
     private readonly autoResolve: AiAutoResolveService,
     private readonly fast: AiFastPathsService,
+    private readonly voiceNotes: VoiceNotesService,
   ) {}
 
   /** Answers the conversation's unanswered customer message(s), if the AI still owns it. */
@@ -527,6 +529,9 @@ export class AiAgentService {
     if (aiIsAnswering({ heldBy: conv.controller, mode, customerWroteLast: true })) {
       void this.whatsappTyping.show(conv.channel, lastRow.channelMessageId);
     }
+
+    // A voice message is listened to first: what was said becomes the message's words.
+    await this.voiceNotes.hear(rows);
 
     const language = conv.language ?? (await this.language.detect(lastRow.body));
     // Loaded by the first step after the closing check: a "no, thanks" to the closing

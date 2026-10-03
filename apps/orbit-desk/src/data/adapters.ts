@@ -116,6 +116,8 @@ export interface ApiConversation {
       cards?: unknown;
       /** Why the cards went as plain text, when they did. */
       cardsDropped?: unknown;
+      /** What a voice message says, written down by the AI: `{ text }`, text null when unclear. */
+      transcript?: unknown;
     };
   }>;
 }
@@ -288,6 +290,8 @@ export function toThread(
       const meta = m.metadata?.ai;
       const cards = messageCardSchema.array().safeParse(m.metadata?.cards);
       const cardsDropped = m.metadata?.cardsDropped;
+      // What a voice message says, when the AI has listened to it.
+      const heard = m.metadata?.transcript as { text?: unknown } | undefined;
       messages.push({
         id: m.id,
         kind: fromCustomer
@@ -313,6 +317,7 @@ export function toThread(
           path: `/messages/${m.id}/attachments/${i}`,
         })),
         ...(cards.success ? { cards: cards.data } : {}),
+        ...(heard ? { transcript: typeof heard.text === 'string' ? heard.text : null } : {}),
         ...(typeof cardsDropped === 'string' && cardsDropped ? { cardsDropped } : {}),
         ai:
           byAi && meta
