@@ -242,7 +242,9 @@ export class CustomersService {
           data: {
             type: input.type,
             verified: input.verified,
-            ...(input.type === 'phone' || input.type === 'whatsapp' ? { last4: value.slice(-4) } : {}),
+            ...(input.type === 'phone' || input.type === 'whatsapp'
+              ? { last4: value.slice(-4) }
+              : {}),
           },
         });
       }
