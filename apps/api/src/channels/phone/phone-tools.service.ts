@@ -54,8 +54,7 @@ const LINK_REPEAT_MS = 10 * 60_000;
 
 /** A link a tool answered with (`url` at the top of its result): what a caller cannot be read. */
 function linkIn(result: unknown): string | null {
-  const url =
-    result && typeof result === 'object' ? (result as Record<string, unknown>).url : null;
+  const url = result && typeof result === 'object' ? (result as Record<string, unknown>).url : null;
   return typeof url === 'string' && /^https:\/\/\S+$/.test(url) && url.length <= 1000 ? url : null;
 }
 
