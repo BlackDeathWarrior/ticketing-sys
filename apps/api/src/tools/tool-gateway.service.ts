@@ -9,11 +9,11 @@ import {
 } from '@tms/shared';
 import Ajv, { type ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import Redis from 'ioredis';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
-import type { RequestCtx } from '../common/request-context';
+import { AI_CTX, type RequestCtx } from '../common/request-context';
 import type { Env } from '../config/env';
 import { DB, ENV, REDIS } from '../infra/tokens';
 import { TicketsService } from '../tickets/tickets.service';
@@ -169,6 +169,28 @@ export class ToolGatewayService {
       });
     });
     return { status, result: run.ok ? run.result : null, error: run.ok ? null : run.error };
+  }
+
+  /**
+   * Tool calls made on a phone call, before the call had a ticket (ADR 0039),
+   * now belong to it. Each call was audited when it ran; this adds the link.
+   */
+  async linkCalls(callIds: string[], ticketId: string, conversationId: string): Promise<void> {
+    if (!callIds.length) return;
+    await this.db.transaction(async (tx) => {
+      const linked = await tx
+        .update(toolCalls)
+        .set({ ticketId, conversationId })
+        .where(and(inArray(toolCalls.id, callIds), isNull(toolCalls.ticketId)))
+        .returning({ id: toolCalls.id });
+      if (!linked.length) return;
+      await this.audit.record(tx, AI_CTX, {
+        action: 'tool.calls_linked',
+        targetType: 'ticket',
+        targetId: ticketId,
+        data: { toolCallIds: linked.map((c) => c.id) },
+      });
+    });
   }
 
   async callsForTicket(ticketId: string): Promise<ToolCallView[]> {

@@ -191,6 +191,43 @@ export class AiAutoResolveService {
     });
   }
 
+  /**
+   * A phone call the phone agent answered is over and nobody was asked for
+   * (ADR 0039): the ticket is resolved. No desk model ran and nothing is sent:
+   * the caller has hung up. False when the AI does not own the ticket.
+   */
+  async callEnded(i: { ticketId: string; conversationId: string }): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const moved = await this.tickets.resolveByAiInTx(
+        tx,
+        AI_CTX,
+        i.ticketId,
+        'The phone call ended with nothing left to do.',
+        'phone_call_ended',
+      );
+      if (!moved) return false;
+      await this.runs.record(tx, {
+        kind: 'turn',
+        ticketId: i.ticketId,
+        conversationId: i.conversationId,
+        triggerMessageId: null,
+        decision: 'sent',
+        confidence: 1,
+        promptVersion: AGENT_PROMPT_VERSION,
+        tools: [
+          {
+            name: 'phone_call',
+            summary: 'Answered by the phone agent at Sarvam; no desk model was asked',
+          },
+        ],
+        replyMessageId: null,
+        language: null,
+        intent: null,
+      });
+      return true;
+    });
+  }
+
   async run(now = new Date()): Promise<{ resolved: number; closed: number }> {
     const behaviour = await this.behaviour.get();
 
