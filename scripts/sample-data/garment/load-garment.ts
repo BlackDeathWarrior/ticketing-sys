@@ -278,6 +278,10 @@ async function loadRouting(
 }
 
 async function loadAi(admin: string) {
+  // On a setup that exists, how the AI answers each channel is the owner's choice by now.
+  const set = await call<Array<{ slug: string }>>(admin, 'GET', '/integrations');
+  if (set.some((i) => i.slug === INTEGRATION.slug))
+    return log('AI: channel modes left as they are');
   const current = await call<{ channels: Record<string, string> }>(admin, 'GET', '/settings/ai');
   await call(admin, 'PUT', '/settings/ai', {
     ...current,
@@ -488,11 +492,31 @@ async function loadIntegration(admin: string): Promise<Connection | null> {
   };
 }
 
-/** The AI's tools on the shop's server. `token` is set on first load and on `--rekey`. */
+/** The tool token the shop's .env already holds, for a tool added to an existing setup. Never printed. */
+function keptToolToken(): string | null {
+  if (!existsSync(ENV_OUT)) return null;
+  const line = readFileSync(ENV_OUT, 'utf8')
+    .split(/\r?\n/)
+    .find((l) => /^\s*SUPPORT_TOOL_TOKEN\s*=/.test(l));
+  const value = line
+    ?.slice(line.indexOf('=') + 1)
+    .trim()
+    .replace(/^["']|["']$/g, '');
+  return value || null;
+}
+
+/**
+ * The AI's tools on the shop's server. `token` is new on first load and on
+ * `--rekey`, and is given to every tool. Otherwise the existing tools keep
+ * theirs, and a tool that is new gets the token the shop already checks:
+ * without it the shop would answer every call with 401.
+ */
 async function loadTools(admin: string, token: string | null, teamIds: Map<string, string>) {
   const existing = await call<Array<{ name: string }>>(admin, 'GET', '/tools/custom');
+  const kept = token ? null : keptToolToken();
   for (const { path, approverTeam: _approverTeam, ...definition } of tools) {
-    if (!existing.some((t) => t.name === definition.name)) {
+    const added = !existing.some((t) => t.name === definition.name);
+    if (added) {
       await call(admin, 'POST', '/tools/custom', {
         ...definition,
         url: `${GARMENT_WORKER_URL}/api/support/tools${path}`,
@@ -500,10 +524,15 @@ async function loadTools(admin: string, token: string | null, teamIds: Map<strin
         enabled: true,
       });
     }
-    if (token) {
+    const value = token ?? (added ? kept : null);
+    if (value) {
       await call(admin, 'PUT', `/settings/secrets/tool.custom_${definition.name}.token`, {
-        value: token,
+        value,
       });
+    } else if (added) {
+      log(
+        `tool "${definition.name}" was added without a token (none in ${ENV_OUT}): set it in Orbit Desk, or load again with --rekey`,
+      );
     }
   }
   // Who decides each tool's requests (refunds: Payments).

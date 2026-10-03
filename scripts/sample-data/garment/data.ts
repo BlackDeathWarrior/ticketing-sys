@@ -284,6 +284,8 @@ const customer = {
  * to the customer: TMS fills `customer_email` from the ticket, and the shop
  * answers only about that customer's orders. Looking up is free, cancelling
  * changes data, and a refund is `transactional`: it waits for a supervisor.
+ * The cart tools are bound the same way: the shop keeps a signed-in shopper's
+ * cart, so the AI can fill it on any channel, and nothing here checks out.
  */
 export const tools: GarmentTool[] = [
   {
@@ -412,6 +414,50 @@ export const tools: GarmentTool[] = [
       },
     ],
     tier: 'read',
+  },
+  {
+    name: 'view_cart',
+    title: 'Cart',
+    description:
+      'What is in the customer\'s cart now: each item with its size, quantity and price, and the subtotal. Use it when they ask what is in their cart, and before a change they describe as "one more" or "one less", so you know the current quantity.',
+    method: 'GET',
+    path: '/cart',
+    parameters: [customer],
+    customerArg: 'customer_email',
+    tier: 'read',
+  },
+  {
+    // Quantity is a total, so a call that is repeated changes nothing. There is
+    // no tool that checks out: the customer sees every change before ordering.
+    name: 'update_cart',
+    title: 'Change the cart',
+    description:
+      "Sets how many of one product, in one size, the customer's cart holds. Use it to add an item, change its quantity or remove it (quantity 0). quantity is the total the cart should hold, not how many more. Take product_id from product_search or product_lookup, never from memory. Ask the customer for the size if they have not said one. Use it only when the customer clearly asks for the change. It never places an order: the customer checks out themselves.",
+    method: 'POST',
+    path: '/cart/items',
+    parameters: [
+      {
+        name: 'product_id',
+        type: 'string',
+        description: "The product's id, exactly as product_search or product_lookup returned it",
+        required: true,
+      },
+      {
+        name: 'size',
+        type: 'string',
+        description: 'One of: S, M, L, XL, XXL, Free size. Needed unless quantity is 0',
+        required: false,
+      },
+      {
+        name: 'quantity',
+        type: 'integer',
+        description: 'How many the cart should hold in total, 0 to 5. 0 removes the item',
+        required: true,
+      },
+      customer,
+    ],
+    customerArg: 'customer_email',
+    tier: 'write',
   },
 ];
 
