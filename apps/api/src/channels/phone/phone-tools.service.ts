@@ -25,6 +25,8 @@ const NOT_LINKED =
 const NEEDS_COLLEAGUE =
   'That needs a colleague. Offer the caller a call back and use request_person.';
 const TOO_LONG = 'That took too long. Apologise and offer to try once more.';
+const WENT_WRONG =
+  'Something went wrong on our side. Apologise, and offer to try once more or a call back.';
 
 const ok = (result: string): PhoneToolReply => ({
   ok: true,
@@ -71,7 +73,8 @@ export class PhoneToolsService {
   /** The call begins: who is calling, and what the agent can use. */
   async start(input: PhoneStartInput): Promise<PhoneStartReply> {
     const call = await this.calls.beginPhone(input);
-    const owner = call.callerPhone ? await this.customers.provenPhoneOwner(call.callerPhone) : null;
+    const phone = input.phone ?? call.callerPhone;
+    const owner = phone ? await this.customers.provenPhoneOwner(phone) : null;
     return {
       customer_name: owner?.name ?? '',
       known: !!owner,
@@ -80,12 +83,30 @@ export class PhoneToolsService {
     };
   }
 
+  /**
+   * Always answers, and in time: whatever goes wrong here, the caller is on
+   * the line and the agent needs something to say.
+   */
   async run(tool: PhoneToolName, body: PhoneToolInput): Promise<PhoneToolReply> {
+    const work = this.answer(tool, body).catch((err: Error) => {
+      this.logger.warn(`phone tool ${tool} failed: ${err.message}`);
+      return fail(WENT_WRONG);
+    });
+    return Promise.race([
+      work,
+      new Promise<PhoneToolReply>((resolve) =>
+        setTimeout(() => resolve(fail(TOO_LONG)), TOOL_DEADLINE_MS),
+      ),
+    ]);
+  }
+
+  private async answer(tool: PhoneToolName, body: PhoneToolInput): Promise<PhoneToolReply> {
     // The start hook may never have arrived: any tool call opens the call's record.
     const call = await this.calls.beginPhone(body);
     switch (tool) {
       case 'list_tools':
-        return ok(JSON.stringify(await this.catalogue()));
+        // Not cut short: half a catalogue is not JSON any more.
+        return { ok: true, result: JSON.stringify(await this.catalogue()) };
       case 'search_knowledge':
         return this.searchKnowledge(body.query ?? '');
       case 'request_person':
@@ -127,8 +148,10 @@ export class PhoneToolsService {
     }
     if (found.tool.tier === 'transactional') return fail(NEEDS_COLLEAGUE);
 
-    // The number comes from the call's record, which only the token-protected hooks set.
-    const owner = call.callerPhone ? await this.customers.provenPhoneOwner(call.callerPhone) : null;
+    // The number this token-protected request carries; the call's record (set only by such
+    // requests) when this one has none.
+    const phone = body.phone ?? call.callerPhone;
+    const owner = phone ? await this.customers.provenPhoneOwner(phone) : null;
     const run = this.gateway.invoke(AI_CTX, {
       tool: found.tool,
       server: found.server,
@@ -142,11 +165,7 @@ export class PhoneToolsService {
       .then((r) => (r.callId ? this.calls.noteToolCall(call.id, r.callId) : undefined))
       .catch((err: Error) => this.logger.warn(`tool call on call ${call.id}: ${err.message}`));
 
-    const r = await Promise.race([
-      run,
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), TOOL_DEADLINE_MS)),
-    ]).catch((err: Error) => ({ status: 'error' as const, callId: null, error: err.message }));
-    if (!r) return fail(TOO_LONG);
+    const r = await run;
     switch (r.status) {
       case 'ok':
         return ok(typeof r.result === 'string' ? r.result : JSON.stringify(r.result ?? {}));

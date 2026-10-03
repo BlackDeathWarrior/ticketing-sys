@@ -43,9 +43,14 @@ export class PhoneCallCloser {
     // Sarvam is asked before anything is written: the trigger carries no proof, and an id
     // Sarvam does not know must leave nothing behind.
     const transcript = await this.sarvam.transcript(interactionId);
-    if (!transcript) throw new Error('Sarvam has no transcript for this call (yet)');
+    if (!transcript) {
+      throw new Error(
+        'Sarvam answered 404 for the transcript: not ready yet, or the ids in Settings are not this agent’s',
+      );
+    }
     // No hook reached us during the call (the agent used no tool): the record starts here.
-    const call = known ?? (await this.calls.beginPhone({ interactionId, phone: hint.phone }));
+    // The trigger's number is never stored on it: only token-protected hooks set that.
+    const call = known ?? (await this.calls.beginPhone({ interactionId, phone: null }));
     const seconds =
       hint.seconds ??
       transcript.seconds ??
@@ -60,14 +65,22 @@ export class PhoneCallCloser {
       });
 
     if (!transcript.turns.some((t) => t.role === 'caller')) {
+      // The agent used a tool or asked for a person, so somebody spoke: the transcript is
+      // not complete yet. Try again rather than lose the call.
+      if (call.toolCallIds.length || call.handoverReason) {
+        throw new Error('The transcript has no caller speech yet, but the call was not silent');
+      }
       // Nobody said anything: like a browser call that never spoke, it leaves no ticket.
       await finish(null);
       return 'empty';
     }
 
-    // A caller whose number the network withheld is still one person for this call.
-    const from: MessageEnvelope['from'] = call.callerPhone
-      ? { identity: { type: 'phone', value: call.callerPhone } }
+    // Who the ticket is filed under. With no hook during the call, the trigger's number is
+    // all there is: it files the ticket, and is never used to run a tool. A caller whose
+    // number the network withheld is still one person for this call.
+    const phone = call.callerPhone ?? hint.phone;
+    const from: MessageEnvelope['from'] = phone
+      ? { identity: { type: 'phone', value: phone } }
       : { identity: { type: 'external_id', value: `sarvam-call:${interactionId}` } };
     let ticketId = call.ticketId;
     let conversationId = call.conversationId;

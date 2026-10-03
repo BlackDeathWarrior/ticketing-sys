@@ -2,12 +2,15 @@ import {
   Body,
   Controller,
   HttpCode,
+  Inject,
   NotFoundException,
   Param,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import type { FastifyRequest } from 'fastify';
 import {
   PHONE_TOOL_NAMES,
   type PhoneEndedInput,
@@ -24,10 +27,12 @@ import { RateLimit } from '../../common/rate-limit';
 import { Public } from '../../common/request-context';
 import { ZodBody } from '../../common/zod-openapi';
 import { ZodPipe } from '../../common/zod.pipe';
+import type { Env } from '../../config/env';
+import { ENV } from '../../infra/tokens';
 import { ChannelConfigService } from '../../settings/channel-config.service';
 import { VoiceCallsService } from '../voice/voice-calls.service';
 import { PhoneCallQueue } from './phone-call.queue';
-import { PhoneHookGuard } from './phone-hook.guard';
+import { fromSarvam, PhoneHookGuard } from './phone-hook.guard';
 import { PhoneToolsService } from './phone-tools.service';
 
 /**
@@ -46,6 +51,7 @@ export class PhoneHooksController {
     private readonly queue: PhoneCallQueue,
     private readonly channels: ChannelConfigService,
     private readonly calls: VoiceCallsService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   @Post('start')
@@ -81,9 +87,11 @@ export class PhoneHooksController {
   @RateLimit({ name: 'phone-ended', limit: 60, windowSeconds: 60 })
   @ZodBody(phoneEndedSchema)
   async ended(
+    @Req() req: FastifyRequest,
     @Body(new ZodPipe(phoneEndedSchema)) body: PhoneEndedInput,
   ): Promise<{ received: true }> {
-    if ((await this.channels.phone())?.enabled) {
+    // With Sarvam's addresses set, a trigger from anywhere else is dropped without a word.
+    if (fromSarvam(this.env, req.ip) && (await this.channels.phone())?.enabled) {
       const duration = (body as Record<string, unknown>).duration;
       await this.queue.add(
         body.interaction_id,

@@ -15,13 +15,23 @@ export const PHONE_TOOL_NAMES = [
 ] as const;
 export type PhoneToolName = (typeof PHONE_TOOL_NAMES)[number];
 
-const interactionId = z.string().trim().min(1).max(200);
+/**
+ * These bodies are filled in by Sarvam's platform and by its agent's model, on
+ * a live call. Whatever can be read is read: a number where text was meant, a
+ * null, an over-long sentence. Refusing the request would leave the caller in
+ * silence, so only a missing call id is an error.
+ */
+const loose = z.union([z.string(), z.number()]).nullish();
+const clipped = (max: number) =>
+  loose.transform((v) => (v == null ? undefined : String(v).trim().slice(0, max) || undefined));
+
+const interactionId = z
+  .union([z.string(), z.number()])
+  .transform((v) => String(v).trim())
+  .pipe(z.string().min(1).max(200));
 /** The caller's number as Sarvam sends it; null when the network withheld it. */
-const callerPhone = z
-  .string()
-  .max(40)
-  .optional()
-  .transform((v) => (v ? normalizeIdentity('phone', v) : ''))
+const callerPhone = loose
+  .transform((v) => (v == null ? '' : normalizeIdentity('phone', String(v))))
   .transform((v) => (/^\d{8,15}$/.test(v) ? v : null));
 
 export const phoneStartSchema = z.object({ interactionId, phone: callerPhone });
@@ -30,13 +40,18 @@ export type PhoneStartInput = z.output<typeof phoneStartSchema>;
 export const phoneToolSchema = z.object({
   interactionId,
   phone: callerPhone,
-  /** `desk_tool`: which desk tool, and its arguments as a JSON object in text. */
-  name: z.string().trim().max(200).optional(),
-  arguments: z.string().max(10_000).optional(),
+  /** `desk_tool`: which desk tool, and its arguments: a JSON object, as text or as it is. */
+  name: clipped(200),
+  arguments: z
+    .union([z.string(), z.record(z.unknown())])
+    .nullish()
+    .transform((v) =>
+      v == null ? undefined : typeof v === 'string' ? v.slice(0, 10_000) : JSON.stringify(v),
+    ),
   /** `search_knowledge`. */
-  query: z.string().trim().max(500).optional(),
+  query: clipped(500),
   /** `request_person`: why the caller needs a colleague. */
-  reason: z.string().trim().max(500).optional(),
+  reason: clipped(500),
 });
 export type PhoneToolInput = z.output<typeof phoneToolSchema>;
 

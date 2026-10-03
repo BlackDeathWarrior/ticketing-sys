@@ -7,7 +7,7 @@ import {
   type VoiceEndReason,
   type VoiceState,
 } from '@tms/shared';
-import { and, desc, eq, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNotNull, lt, sql } from 'drizzle-orm';
 import { AuditService } from '../../audit/audit.service';
 import { OutboxService } from '../../audit/outbox.service';
 import { type RequestCtx, SYSTEM_CTX } from '../../common/request-context';
@@ -190,7 +190,11 @@ export class VoiceCallsService {
   }
 
   /** Phone calls still open long after they began: the "ended" trigger never came. */
-  async stalePhoneCalls(olderThanMinutes: number, now = new Date()): Promise<CallRow[]> {
+  async stalePhoneCalls(
+    olderThanMinutes: number,
+    giveUpAfterMinutes: number,
+    now = new Date(),
+  ): Promise<CallRow[]> {
     return this.db
       .select()
       .from(voiceCalls)
@@ -199,6 +203,7 @@ export class VoiceCallsService {
           eq(voiceCalls.status, 'active'),
           eq(voiceCalls.transport, 'phone'),
           lt(voiceCalls.startedAt, new Date(now.getTime() - olderThanMinutes * 60_000)),
+          gt(voiceCalls.startedAt, new Date(now.getTime() - giveUpAfterMinutes * 60_000)),
         ),
       )
       .limit(100);

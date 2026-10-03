@@ -65,6 +65,16 @@ export function parseTranscript(body: unknown): PhoneTranscript {
     // Tool and system lines are not something either side said.
     if (said && role) turns.push({ role, text: said.trim() });
   }
+  if (raw.length && !turns.length) {
+    // Turns we cannot read are not "nobody spoke": say what they look like, never what was said.
+    const first = (raw[0] ?? {}) as Record<string, unknown>;
+    const roles = [
+      ...new Set(raw.map((x) => String((x as Record<string, unknown>)?.role ?? '?'))),
+    ].slice(0, 6);
+    throw new Error(
+      `Unexpected transcript turns: keys ${Object.keys(first).join(', ') || 'none'}; roles ${roles.join(', ')}`,
+    );
+  }
   const seconds = [root.duration, root.duration_in_seconds].find(
     (v): v is number => typeof v === 'number' && v >= 0,
   );
