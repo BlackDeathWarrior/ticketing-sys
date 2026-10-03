@@ -7,11 +7,13 @@ import { TicketsModule } from '../tickets/tickets.module';
 import { WorkflowModule } from '../workflow/workflow.module';
 import { IncidentsService } from './incidents.service';
 import { IntegrationApiController } from './integration-api.controller';
+import { IntegrationCustomersController } from './integration-customers.controller';
 import {
   IntegrationEventsController,
   TicketIncidentsController,
 } from './integration-events.controller';
 import { IntegrationTicketsService } from './integration-tickets.service';
+import { PhoneVerificationService } from './phone-verification.service';
 
 /**
  * What integrations call with their API key (ADR 0023). Kept apart from
@@ -19,8 +21,13 @@ import { IntegrationTicketsService } from './integration-tickets.service';
  */
 @Module({
   imports: [ChannelsModule, TicketsModule, CustomersModule, WorkflowModule, OrgModule, CsatModule],
-  controllers: [IntegrationApiController, IntegrationEventsController, TicketIncidentsController],
-  providers: [IntegrationTicketsService, IncidentsService],
-  exports: [IntegrationTicketsService, IncidentsService],
+  controllers: [
+    IntegrationApiController,
+    IntegrationCustomersController,
+    IntegrationEventsController,
+    TicketIncidentsController,
+  ],
+  providers: [IntegrationTicketsService, IncidentsService, PhoneVerificationService],
+  exports: [IntegrationTicketsService, IncidentsService, PhoneVerificationService],
 })
 export class IntegrationApiModule {}

@@ -33,6 +33,7 @@ export interface RetentionCounts {
   signInLinks: number;
   recordings: number;
   webhookDeliveries: number;
+  phoneCodes: number;
 }
 
 export interface RetentionView {

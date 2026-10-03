@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Module, Param, Post, Put } fro
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ChannelsModule } from '../channels/channels.module';
 import { Ctx, type RequestCtx, RequirePermission } from '../common/request-context';
+import { IntegrationApiModule } from '../integration-api/integration-api.module';
 import { LlmModule } from '../llm/llm.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PortalModule } from '../portal/portal.module';
@@ -62,7 +63,14 @@ export class SystemController {
 }
 
 @Module({
-  imports: [LlmModule, NotificationsModule, PortalModule, ChannelsModule, WebhooksModule],
+  imports: [
+    LlmModule,
+    NotificationsModule,
+    PortalModule,
+    ChannelsModule,
+    WebhooksModule,
+    IntegrationApiModule,
+  ],
   controllers: [SystemController],
   // RetentionWorker is registered by the worker process only (worker.module.ts).
   providers: [RetentionService, SystemJobsService],
