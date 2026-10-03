@@ -38,6 +38,12 @@ export interface ChatStrings {
   disconnected?: string;
   /** Under the email field when what was typed is not an email address. */
   emailError?: string;
+  /** Above the name and email fields when both are required (`anonymous: 'fresh'`). */
+  detailsRequired?: string;
+  /** Under the name field when it is required and empty. */
+  nameError?: string;
+  /** Under the email field when it is required and empty or not an email address. */
+  emailRequired?: string;
 }
 
 /** What a page can react to. Callbacks never receive the visitor's session token. */
@@ -64,6 +70,14 @@ export interface ChatOptions {
   identityToken?: string;
   /** Ask anonymous visitors for name and email before the first message. */
   askForDetails?: boolean;
+  /**
+   * Visitors without an identity token. `'resume'` (the default) keeps their
+   * conversation in this browser and picks it up on the next visit. `'fresh'`
+   * starts a new conversation every time the widget starts and asks for name
+   * and email (both required) before it; neither is kept in the browser, so
+   * the next person at a shared computer starts from nothing.
+   */
+  anonymous?: 'resume' | 'fresh';
   /** What you already know about the visitor. Unverified: it only saves them typing it. */
   visitor?: { name?: string; email?: string };
   /** What the visitor is looking at (a product, an order): kept on the ticket they open. */
@@ -119,6 +133,9 @@ const DEFAULT_STRINGS: Required<ChatStrings> = {
   retry: 'Try again',
   disconnected: 'The chat was disconnected.',
   emailError: 'That does not look like an email address. Correct it, or leave it empty.',
+  detailsRequired: 'Tell us your name and email so we can follow up.',
+  nameError: 'Please enter your name.',
+  emailRequired: 'Please enter your email address, for example name@example.com.',
 };
 
 /** How long the typing dots may show without an answer arriving. */
@@ -178,6 +195,8 @@ export function init(options: ChatOptions = {}): ChatHandle {
   // One conversation per site: two integrations on one TMS don't share a session.
   const storageKey = `tms-chat:${server}${options.integration ? `:${options.integration}` : ''}`;
   const stored = readStore(storageKey);
+  // Anonymous visitors start a new conversation each time and always say who they are.
+  const fresh = options.anonymous === 'fresh';
   const text = { ...DEFAULT_STRINGS, ...(options.title ? { title: options.title } : {}) };
   for (const [k, v] of Object.entries(options.strings ?? {})) {
     if (typeof v === 'string' && v.trim()) text[k as keyof ChatStrings] = v;
@@ -195,9 +214,10 @@ export function init(options: ChatOptions = {}): ChatHandle {
         <button type="button" class="close" aria-label="Close chat">×</button></header>
       <div class="status" aria-live="polite" hidden></div>
       <div class="details" hidden>
-        <p>${escapeHtml(text.details)}</p>
-        <label for="tms-name">Name</label><input id="tms-name" autocomplete="name" />
-        <label for="tms-email">Email</label><input id="tms-email" type="email" autocomplete="email" aria-describedby="tms-email-error" />
+        <p>${escapeHtml(fresh ? text.detailsRequired : text.details)}</p>
+        <label for="tms-name">Name</label><input id="tms-name" autocomplete="name" aria-describedby="tms-name-error"${fresh ? ' required' : ''} />
+        <p class="error" id="tms-name-error" role="alert" hidden></p>
+        <label for="tms-email">Email</label><input id="tms-email" type="email" autocomplete="email" aria-describedby="tms-email-error"${fresh ? ' required' : ''} />
         <p class="error" id="tms-email-error" role="alert" hidden></p>
         <button type="button" class="start">${escapeHtml(text.start)}</button>
       </div>
@@ -222,15 +242,22 @@ export function init(options: ChatOptions = {}): ChatHandle {
   // signing out must not leave the next visitor in the previous person's conversation.
   const sessions: Record<string, string> = { ...(stored.sessions ?? {}) };
   if (stored.token && !sessions.anon) sessions.anon = stored.token;
-  let token: string | undefined = sessions[visitorKey(identityToken)];
+  // A fresh anonymous chat is never kept, so none is picked up either.
+  if (fresh) delete sessions.anon;
+  /** The stored session for whoever is here now (none for a fresh anonymous chat). */
+  const storedSession = () =>
+    fresh && !identityToken ? undefined : sessions[visitorKey(identityToken)];
+  let token: string | undefined = storedSession();
   let sessionId: string | undefined;
   /** Why the server refused the chat, when it said so. */
   let refusal: string | null = null;
   let context = options.context;
-  let visitor = {
-    name: stored.name ?? options.visitor?.name,
-    email: stored.email ?? options.visitor?.email,
-  };
+  let visitor = fresh
+    ? { name: options.visitor?.name, email: options.visitor?.email }
+    : {
+        name: stored.name ?? options.visitor?.name,
+        email: stored.email ?? options.visitor?.email,
+      };
   const seen = new Set<string>();
   const asked = new Set<string>();
   let typing: HTMLElement | null = null;
@@ -249,24 +276,36 @@ export function init(options: ChatOptions = {}): ChatHandle {
   }
 
   // The site already knows who this is (even unverified): no need to ask again.
+  // A fresh anonymous chat always asks, once, before it starts.
   const needsDetails = () =>
-    options.askForDetails !== false &&
-    !token &&
-    !identityToken &&
-    !options.visitor?.name &&
-    !options.visitor?.email;
+    fresh
+      ? !token && !identityToken && !socket
+      : options.askForDetails !== false &&
+        !token &&
+        !identityToken &&
+        !options.visitor?.name &&
+        !options.visitor?.email;
+
+  /** The name and email form, or the conversation. */
+  function showStart() {
+    if (needsDetails()) {
+      details.hidden = false;
+      form.hidden = true;
+      $<HTMLInputElement>('#tms-name').value = visitor.name ?? '';
+      $<HTMLInputElement>('#tms-email').value = visitor.email ?? '';
+      $<HTMLInputElement>('#tms-name').focus();
+    } else {
+      details.hidden = true;
+      form.hidden = false;
+      connect();
+      input.focus();
+    }
+  }
 
   function open() {
     panel.hidden = false;
     launcher.setAttribute('aria-expanded', 'true');
-    if (needsDetails()) {
-      details.hidden = false;
-      form.hidden = true;
-      $<HTMLInputElement>('#tms-name').focus();
-    } else {
-      connect();
-      input.focus();
-    }
+    showStart();
     notify('open');
   }
 
@@ -318,8 +357,9 @@ export function init(options: ChatOptions = {}): ChatHandle {
       if (sessionId && s.sessionId && s.sessionId !== sessionId) resetLog();
       sessionId = s.sessionId;
       token = s.token;
-      sessions[visitorKey(identityToken)] = token;
-      writeStore(storageKey, { sessions, ...visitor });
+      if (!fresh || identityToken) sessions[visitorKey(identityToken)] = token;
+      // Who a fresh anonymous visitor said they were is not kept either.
+      writeStore(storageKey, fresh ? { sessions } : { sessions, ...visitor });
       const res = (await socket!.emitWithAck('history')) as Ack<{
         messages: ChatMessage[];
         rate?: RatingPrompt | null;
@@ -497,20 +537,22 @@ export function init(options: ChatOptions = {}): ChatHandle {
     if ((e as KeyboardEvent).key === 'Escape' && !panel.hidden) close();
   });
   const emailError = $<HTMLElement>('#tms-email-error');
+  const nameError = $<HTMLElement>('#tms-name-error');
   function start() {
+    const name = $<HTMLInputElement>('#tms-name').value.trim();
     const email = $<HTMLInputElement>('#tms-email').value.trim();
-    // Both fields are optional, but a mistyped address would be no use to anyone.
-    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      emailError.textContent = text.emailError;
-      emailError.hidden = false;
-      $<HTMLInputElement>('#tms-email').focus();
+    // Optional unless the chat is fresh, but a mistyped address would be no use to anyone.
+    const noName = fresh && !name;
+    const badEmail = (fresh || !!email) && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+    nameError.textContent = text.nameError;
+    nameError.hidden = !noName;
+    emailError.textContent = fresh ? text.emailRequired : text.emailError;
+    emailError.hidden = !badEmail;
+    if (noName || badEmail) {
+      $<HTMLInputElement>(noName ? '#tms-name' : '#tms-email').focus();
       return;
     }
-    emailError.hidden = true;
-    visitor = {
-      name: $<HTMLInputElement>('#tms-name').value.trim() || undefined,
-      email: email || undefined,
-    };
+    visitor = { name: name || undefined, email: email || undefined };
     details.hidden = true;
     form.hidden = false;
     connect();
@@ -552,12 +594,20 @@ export function init(options: ChatOptions = {}): ChatHandle {
       identityToken = nextToken ?? undefined;
       // That person's own conversation if this browser has one, otherwise a new one.
       // The server checks it too: a session is resumed only by whoever it belongs to.
-      token = sessions[visitorKey(identityToken)];
+      token = storedSession();
       sessionId = undefined;
       resetLog();
       const reconnect = !!socket;
       disconnect();
-      if (reconnect || !panel.hidden) connect();
+      if (fresh && !identityToken) {
+        // Signed out: whoever is here now says who they are before a new chat starts.
+        visitor = { name: undefined, email: undefined };
+        if (!panel.hidden) showStart();
+      } else if (reconnect || !panel.hidden) {
+        details.hidden = true;
+        form.hidden = false;
+        connect();
+      }
     },
     destroy() {
       disconnect();
