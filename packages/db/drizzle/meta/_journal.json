@@ -176,6 +176,13 @@
       "when": 1790981186929,
       "tag": "0024_guardrails",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790995765826,
+      "tag": "0025_team_roles",
+      "breakpoints": true
     }
   ]
 }

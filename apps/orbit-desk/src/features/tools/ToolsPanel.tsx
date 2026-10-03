@@ -180,6 +180,7 @@ function ServerCard({
 }
 
 function ToolRow({ tool, onChanged }: { tool: ToolView; onChanged: () => void }) {
+  const teams = useGet<Array<{ id: string; name: string }>>('/teams');
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const args = schemaArgs(tool.inputSchema);
@@ -224,6 +225,18 @@ function ToolRow({ tool, onChanged }: { tool: ToolView; onChanged: () => void })
           onChange={(e) => void update({ tier: e.target.value as ToolTier })}
           options={TOOL_TIERS.map((t) => ({ value: t, label: tierLabel(t) }))}
         />
+        {tool.tier === 'transactional' && (
+          <Select
+            id={`${id}-approver`}
+            label="Approved by"
+            value={tool.approverTeamId ?? ''}
+            onChange={(e) => void update({ approverTeamId: e.target.value || null })}
+            options={[
+              { value: '', label: 'The ticket’s own team' },
+              ...(teams.data ?? []).map((t) => ({ value: t.id, label: t.name })),
+            ]}
+          />
+        )}
         <Select
           id={`${id}-customer`}
           label="Customer email goes in"

@@ -18,6 +18,7 @@ export * from './routing';
 export * from './sla';
 export * from './notifications';
 export * from './preferences';
+export * from './priority';
 export * from './whatsapp';
 export * from './channel-health';
 export * from './voice';

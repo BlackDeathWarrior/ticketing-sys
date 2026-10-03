@@ -1,13 +1,14 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { categories, type Database, teamMembers, teams, users } from '@tms/db';
-import type { UpdateCategoryInput, UpdateTeamInput } from '@tms/shared';
-import { asc, eq, inArray } from 'drizzle-orm';
+import { isTeamAdmin, type UpdateCategoryInput, type UpdateTeamInput } from '@tms/shared';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import type { RequestCtx } from '../common/request-context';
@@ -30,13 +31,20 @@ export class OrgService {
     const [rows, members] = await Promise.all([
       this.db.select().from(teams).orderBy(asc(teams.name)),
       this.db
-        .select({ teamId: teamMembers.teamId, id: users.id, name: users.name })
+        .select({
+          teamId: teamMembers.teamId,
+          id: users.id,
+          name: users.name,
+          role: teamMembers.role,
+        })
         .from(teamMembers)
         .innerJoin(users, eq(users.id, teamMembers.userId)),
     ]);
     return rows.map((t) => ({
       ...t,
-      members: members.filter((m) => m.teamId === t.id).map(({ id, name }) => ({ id, name })),
+      members: members
+        .filter((m) => m.teamId === t.id)
+        .map(({ id, name, role }) => ({ id, name, role: role === 'admin' ? 'admin' : 'member' })),
     }));
   }
 
@@ -59,9 +67,22 @@ export class OrgService {
     });
   }
 
-  /** Renames a team, changes its description, or replaces its members. */
+  /**
+   * Renames a team, changes its description, or replaces its members and
+   * admins. Someone with `team:manage` may do all of it; a team's own admin
+   * may change who is on the team and who else is its admin (ADR 0031).
+   */
   async updateTeam(ctx: RequestCtx, id: string, input: UpdateTeamInput) {
-    const { memberIds, ...fields } = input;
+    const { memberIds, adminIds, ...fields } = input;
+    const manager = !!ctx.user?.permissions.includes('team:manage');
+    if (!manager) {
+      if (!ctx.user || !isTeamAdmin(ctx.user, id)) {
+        throw new ForbiddenException('Only an admin of this team, or a super admin, can change it');
+      }
+      if (Object.keys(fields).length) {
+        throw new ForbiddenException('Renaming a team needs a super admin');
+      }
+    }
     await this.db.transaction(async (tx) => {
       const [team] = await tx.select().from(teams).where(eq(teams.id, id)).for('update');
       if (!team) throw new NotFoundException('Team not found');
@@ -76,12 +97,50 @@ export class OrgService {
           ? await tx.select({ id: users.id }).from(users).where(inArray(users.id, unique))
           : [];
         if (known.length !== unique.length) throw new BadRequestException('Unknown user');
-        await tx.delete(teamMembers).where(eq(teamMembers.teamId, id));
-        if (unique.length) {
-          await tx.insert(teamMembers).values(unique.map((userId) => ({ teamId: id, userId })));
+        // Members who stay keep their role; only those who leave or join change.
+        const current = await tx
+          .select({ userId: teamMembers.userId })
+          .from(teamMembers)
+          .where(eq(teamMembers.teamId, id));
+        const leaving = current.map((c) => c.userId).filter((u) => !unique.includes(u));
+        if (leaving.length) {
+          await tx
+            .delete(teamMembers)
+            .where(and(eq(teamMembers.teamId, id), inArray(teamMembers.userId, leaving)));
+        }
+        const joining = unique.filter((u) => !current.some((c) => c.userId === u));
+        if (joining.length) {
+          await tx.insert(teamMembers).values(joining.map((userId) => ({ teamId: id, userId })));
         }
       }
-      const data = { ...fields, ...(memberIds ? { members: memberIds.length } : {}) };
+      if (adminIds) {
+        const members = (
+          await tx
+            .select({ userId: teamMembers.userId })
+            .from(teamMembers)
+            .where(eq(teamMembers.teamId, id))
+        ).map((m) => m.userId);
+        const admins = [...new Set(adminIds)];
+        if (admins.some((a) => !members.includes(a))) {
+          throw new BadRequestException('A team admin must be a member of the team');
+        }
+        // A team admin cannot leave the team without one: someone has to look after it.
+        if (!manager && !admins.length) {
+          throw new BadRequestException('Keep at least one admin on the team');
+        }
+        await tx.update(teamMembers).set({ role: 'member' }).where(eq(teamMembers.teamId, id));
+        if (admins.length) {
+          await tx
+            .update(teamMembers)
+            .set({ role: 'admin' })
+            .where(and(eq(teamMembers.teamId, id), inArray(teamMembers.userId, admins)));
+        }
+      }
+      const data = {
+        ...fields,
+        ...(memberIds ? { members: memberIds.length } : {}),
+        ...(adminIds ? { admins: adminIds.length } : {}),
+      };
       await this.audit.record(tx, ctx, {
         action: 'team.updated',
         targetType: 'team',

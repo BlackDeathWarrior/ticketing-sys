@@ -81,7 +81,11 @@ export class NotificationsHandler implements DomainEventHandler {
         return;
       }
       case 'approval.requested': {
-        const approvers = await this.users.withPermission('approval:approve');
+        // The deciding team's members; with no team, the people who may approve any request.
+        const teamId = (p.teamId as string | null | undefined) ?? null;
+        const approvers = teamId
+          ? await this.users.withPermission('ticket:read', teamId)
+          : await this.users.withPermission('approval:approve');
         await this.notifications.notify(
           approvers.map((u) => u.id),
           {

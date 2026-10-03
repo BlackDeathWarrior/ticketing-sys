@@ -1,4 +1,10 @@
-import { type CopilotSuggestion, PRIORITIES, waWindow } from '@tms/shared';
+import {
+  canActOnTeam,
+  type CopilotSuggestion,
+  type Permission,
+  PRIORITIES,
+  waWindow,
+} from '@tms/shared';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, downloadFile } from '../../api/client';
 import {
@@ -200,7 +206,10 @@ function DrawerContent({
   onClose: () => void;
   onChanged: () => Promise<void>;
 }) {
-  const { user, workflow, can } = useSession();
+  const { user, workflow, can: canAnywhere } = useSession();
+  // Another team's ticket (ADR 0031): read it and add notes; its team does the rest.
+  const ownTeam = canActOnTeam(user, ticket.team?.id);
+  const can = (p: Permission) => canAnywhere(p) && (ownTeam || p === 'ticket:note');
   const thread = useMemo(
     () => toThread(ticket, conversations, notes),
     [ticket, conversations, notes],
@@ -250,6 +259,7 @@ function DrawerContent({
   const users = useGet<Array<ApiRef & { isActive: boolean }>>(
     can('ticket:assign') && can('user:read') ? '/users' : null,
   );
+  const teams = useGet<ApiRef[]>(can('ticket:assign') ? '/teams' : null);
 
   const allowed = workflow ? nextStatuses(workflow, ticket.status.key) : [];
   const statusOptions = [ticket.status, ...allowed];
@@ -310,6 +320,12 @@ function DrawerContent({
           {ticket.subject}
         </h2>
         <ControlBar ticket={ticket} target={target} onChanged={() => void onChanged()} />
+        {!ownTeam && (
+          <p className={styles.otherTeam} role="note">
+            This ticket belongs to the {ticket.team?.name} team. You can read it and add internal
+            notes; only that team can reply, change or take it over.
+          </p>
+        )}
         {ticket.tags.length > 0 && (
           <div className={styles.tags}>
             {ticket.tags.map((tag) => (
@@ -418,7 +434,30 @@ function DrawerContent({
             </div>
             <div>
               <dt>Team</dt>
-              <dd>{ticket.team?.name ?? '—'}</dd>
+              <dd>
+                {teams.data ? (
+                  <Select
+                    id="drawer-team"
+                    label="Team"
+                    hideLabel
+                    value={ticket.team?.id ?? ''}
+                    disabled={busy}
+                    onChange={(e) =>
+                      void run(() =>
+                        api('POST', `/tickets/${ticket.id}/assign`, {
+                          teamId: e.target.value,
+                        }),
+                      )
+                    }
+                    options={[
+                      ...(ticket.team ? [] : [{ value: '', label: 'No team yet' }]),
+                      ...teams.data.map((t) => ({ value: t.id, label: t.name })),
+                    ]}
+                  />
+                ) : (
+                  (ticket.team?.name ?? '—')
+                )}
+              </dd>
             </div>
             <div>
               <dt>Email</dt>

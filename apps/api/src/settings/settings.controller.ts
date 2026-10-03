@@ -10,12 +10,61 @@ import {
   Put,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { CHANNEL_KINDS, type ChannelKind, secretKeySchema, setSecretSchema } from '@tms/shared';
+import {
+  CHANNEL_KINDS,
+  type ChannelKind,
+  secretKeySchema,
+  setSecretSchema,
+  type TestPriorityInput,
+  testPrioritySchema,
+} from '@tms/shared';
 import { Ctx, type RequestCtx, RequirePermission } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
 import { BrandingService } from './branding.service';
 import { ChannelConfigService } from './channel-config.service';
+import { PriorityRulesService } from './priority-rules.service';
 import { SecretsService } from './secrets.service';
+
+/** Settings → Priority (ADR 0032): what makes a ticket urgent, high, normal or low. */
+@ApiTags('settings')
+@ApiBearerAuth()
+@Controller('settings/priority-rules')
+export class PriorityRulesController {
+  constructor(private readonly rules: PriorityRulesService) {}
+
+  @Get()
+  @RequirePermission('settings:priority')
+  get() {
+    return this.rules.get();
+  }
+
+  /** Replaces the whole ordered list. */
+  @Put()
+  @RequirePermission('settings:priority')
+  save(@Ctx() ctx: RequestCtx, @Body() body: unknown) {
+    return this.rules.save(ctx, body);
+  }
+
+  /** Which rule a made-up message would match, with the rules as saved. */
+  @Post('test')
+  @HttpCode(200)
+  @RequirePermission('settings:priority')
+  async test(@Body(new ZodPipe(testPrioritySchema)) body: TestPriorityInput) {
+    return (
+      (await this.rules.evaluate({
+        channel: body.channel,
+        categoryId: null,
+        subcategoryId: null,
+        customerType: null,
+        tags: [],
+        text: body.text,
+        intent: body.intent ?? null,
+        sentiment: body.sentiment ?? null,
+        metadata: {},
+      })) ?? { priority: null, rule: null }
+    );
+  }
+}
 
 const channelKind = new ParseEnumPipe(Object.fromEntries(CHANNEL_KINDS.map((k) => [k, k])));
 const secretKey = new ZodPipe(secretKeySchema);

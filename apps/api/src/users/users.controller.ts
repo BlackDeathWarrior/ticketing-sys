@@ -34,6 +34,13 @@ export class UsersController {
     return this.users.list();
   }
 
+  /** Names of the people who can sign in, for choosing team members (team admins need it). */
+  @Get('directory')
+  @RequirePermission('ticket:read')
+  directory() {
+    return this.users.directory();
+  }
+
   @Get(':id')
   @RequirePermission('user:read')
   get(@Param('id', ParseUUIDPipe) id: string) {

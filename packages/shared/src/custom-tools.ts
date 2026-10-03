@@ -174,10 +174,48 @@ export interface CustomToolDetails extends CustomToolHttp {
 // ---- Who may create custom tools ----
 
 /**
- * Permissions an admin may hand to other roles. Everything else stays fixed
- * to the system roles in code.
+ * Permissions an admin may hand to other roles (Settings → People → Roles).
+ * A role keeps its built-in permissions; these can be added on top. Keys,
+ * people, teams, integrations, models and the system stay admin-only.
  */
-export const DELEGABLE_PERMISSIONS = ['tool:create'] as const satisfies readonly Permission[];
+export const DELEGABLE_PERMISSIONS = [
+  'tool:create',
+  'approval:approve',
+  'ticket:assign',
+  'ticket:escalate',
+  'ticket:any_team',
+  'kb:manage',
+  'report:read',
+  'report:export',
+  'learning:manage',
+  'customer:merge',
+  'audit:read',
+  'voice:recording_read',
+  'settings:priority',
+  'settings:routing',
+  'settings:sla',
+  'settings:categories',
+] as const satisfies readonly Permission[];
+
+/** What each delegable permission lets someone do, for the roles table. */
+export const DELEGABLE_LABELS: Record<DelegablePermission, string> = {
+  'tool:create': 'Create custom tools',
+  'approval:approve': 'Approve requests on any team',
+  'ticket:assign': 'Assign tickets',
+  'ticket:escalate': 'Escalate tickets',
+  'ticket:any_team': "Act on other teams' tickets",
+  'kb:manage': 'Manage the knowledge base',
+  'report:read': 'See reports',
+  'report:export': 'Export reports',
+  'learning:manage': 'Review ratings and write lessons',
+  'customer:merge': 'Merge customers',
+  'audit:read': 'Read the audit trail',
+  'voice:recording_read': 'Listen to call recordings',
+  'settings:priority': 'Edit priority rules',
+  'settings:routing': 'Edit routing',
+  'settings:sla': 'Edit SLA policies',
+  'settings:categories': 'Edit categories',
+};
 export type DelegablePermission = (typeof DELEGABLE_PERMISSIONS)[number];
 
 export const isDelegable = (p: string): p is DelegablePermission =>
@@ -188,6 +226,8 @@ export interface RoleView {
   name: string;
   description: string | null;
   permissions: string[];
+  /** The permissions an admin granted on top of the role's built-in ones. */
+  grants?: string[];
   /** Roles whose permissions can't be changed (administrators always have everything). */
   locked: boolean;
 }

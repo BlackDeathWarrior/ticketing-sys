@@ -192,21 +192,26 @@ export class ApprovalsController {
     private readonly tickets: TicketsService,
   ) {}
 
+  /** The requests the caller may decide: their teams', and with `approval:approve` the rest (ADR 0031). */
   @Get('approvals')
-  @RequirePermission('approval:approve')
-  list(@Query(new ZodPipe(listApprovalsQuerySchema)) q: z.output<typeof listApprovalsQuerySchema>) {
-    return this.approvals.list(q);
+  @RequirePermission('ticket:read')
+  list(
+    @Ctx() ctx: RequestCtx,
+    @Query(new ZodPipe(listApprovalsQuerySchema)) q: z.output<typeof listApprovalsQuerySchema>,
+  ) {
+    return this.approvals.list(ctx.user!, q);
   }
 
   @Get('approvals/:id')
-  @RequirePermission('approval:approve')
-  get(@Param('id', ParseUUIDPipe) id: string) {
-    return this.approvals.get(id);
+  @RequirePermission('ticket:read')
+  get(@Ctx() ctx: RequestCtx, @Param('id', ParseUUIDPipe) id: string) {
+    return this.approvals.get(ctx.user!, id);
   }
 
+  /** Any member of the deciding team, or a super admin; the service checks which (ADR 0031). */
   @Post('approvals/:id/decide')
   @HttpCode(200)
-  @RequirePermission('approval:approve')
+  @RequirePermission('ticket:read')
   decide(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,

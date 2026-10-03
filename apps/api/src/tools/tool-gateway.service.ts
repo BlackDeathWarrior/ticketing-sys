@@ -16,6 +16,7 @@ import { OutboxService } from '../audit/outbox.service';
 import type { RequestCtx } from '../common/request-context';
 import type { Env } from '../config/env';
 import { DB, ENV, REDIS } from '../infra/tokens';
+import { TicketsService } from '../tickets/tickets.service';
 import { callHttpTool, HttpToolError } from './http-tool';
 import { callTool, McpCallError, RESULT_PREVIEW_CHARS } from './mcp-client';
 import { errorText, type ServerRow, type ToolRow, ToolsService } from './tools.service';
@@ -65,6 +66,7 @@ export class ToolGatewayService {
     private readonly registry: ToolsService,
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
+    private readonly tickets: TicketsService,
   ) {}
 
   async invoke(ctx: RequestCtx, i: InvokeInput): Promise<InvokeResult> {
@@ -202,6 +204,7 @@ export class ToolGatewayService {
               id: approval.id,
               status: approval.status as ApprovalStatus,
               expiresAt: approval.expiresAt.toISOString(),
+              teamId: approval.teamId,
             }
           : null,
       };
@@ -220,6 +223,11 @@ export class ToolGatewayService {
         0,
         300,
       );
+    // The tool's own approving team (refunds: Payments), else the ticket's team (ADR 0031).
+    const teamId =
+      i.tool.approverTeamId ??
+      (await this.tickets.get(i.ticketId).catch(() => null))?.team?.id ??
+      null;
     return this.db.transaction(async (tx) => {
       const [call] = await tx
         .insert(toolCalls)
@@ -239,6 +247,7 @@ export class ToolGatewayService {
           toolCallId: call!.id,
           ticketId: i.ticketId!,
           conversationId: i.conversationId,
+          teamId,
           summary,
           reasoning: i.reasoning?.slice(0, 2000) ?? null,
           evidence: i.evidence?.slice(0, 2000) ?? null,
@@ -251,6 +260,7 @@ export class ToolGatewayService {
         tool: i.tool.name,
         server: i.server.slug,
         summary,
+        teamId,
         expiresAt: expiresAt.toISOString(),
       };
       await this.audit.record(tx, ctx, {

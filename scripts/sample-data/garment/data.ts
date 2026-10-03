@@ -32,6 +32,8 @@ export interface GarmentUser {
   email: string;
   roles: string[];
   teams: string[];
+  /** Teams they are an admin of: they manage its members (ADR 0031). */
+  admins?: string[];
   /** Whether routing may hand them tickets right away. */
   online: boolean;
 }
@@ -43,6 +45,7 @@ export const users: GarmentUser[] = [
     email: 'meera.iyer@ethnicthreads.example',
     roles: ['team_lead'],
     teams: ['Customer Care'],
+    admins: ['Customer Care'],
     online: true,
   },
   {
@@ -59,6 +62,7 @@ export const users: GarmentUser[] = [
     email: 'kavya.nair@ethnicthreads.example',
     roles: ['agent'],
     teams: ['Orders and Delivery'],
+    admins: ['Orders and Delivery'],
     online: true,
   },
   {
@@ -75,15 +79,17 @@ export const users: GarmentUser[] = [
     email: 'dev.malhotra@ethnicthreads.example',
     roles: ['agent'],
     teams: ['Operations'],
+    admins: ['Operations'],
     online: true,
   },
-  // Approves what the AI may not do by itself (refunds).
+  // Admin of Payments, the team that decides refunds (any of its members may).
   {
     key: 'farah',
     name: 'Farah Khan',
     email: 'farah.khan@ethnicthreads.example',
     roles: ['supervisor'],
     teams: ['Payments', 'Customer Care'],
+    admins: ['Payments'],
     online: false,
   },
 ];
@@ -182,6 +188,43 @@ export const routing: Array<{
 export const aiChannels = { webchat: 'auto', api: 'draft' } as const;
 
 export const kb = {
+  /**
+   * Questions shoppers ask in these words, with the answer from the
+   * documents below. Answered without a model when a question matches one
+   * closely (ADR 0030); they say only what the documents say.
+   */
+  faqs: [
+    {
+      question: 'How much does delivery cost?',
+      answer:
+        'Standard delivery takes about 4 days and costs ₹49; it is free on orders of ₹499 or more. Express delivery takes about 2 days and costs ₹99 on every order.',
+    },
+    {
+      question: 'How long does a refund take?',
+      answer:
+        'A refund is always for the full amount you paid, to the payment method you used. It reaches you in 5 to 7 business days, and the order page shows its reference, which starts with "RF-".',
+    },
+    {
+      question: 'How do I return an order?',
+      answer:
+        'You can return an order within 7 days of delivery: open it under "Your Orders", choose "Return items" and say what is wrong. The return is reviewed, and the refund follows once it is approved.',
+    },
+    {
+      question: 'Can I cancel my order?',
+      answer:
+        'Yes, until it ships, that is while it is "Order placed" or "Packed": open the order under "Your Orders" and choose "Cancel order". If you had already paid, the full amount is refunded at once. An order that has shipped cannot be cancelled; return it once it arrives.',
+    },
+    {
+      question: 'Which payment methods can I use?',
+      answer:
+        'Cash on delivery, UPI or card. With cash on delivery you pay when the order arrives; with UPI or card the order is paid when you place it.',
+    },
+    {
+      question: 'Can I change my delivery address?',
+      answer:
+        'The address cannot be changed after the order is placed. If the order has not shipped yet, cancel it and order again with the right address.',
+    },
+  ],
   files: [
     'about-the-shop.md',
     'delivery.md',
@@ -225,6 +268,8 @@ export interface GarmentTool {
   /** Filled by TMS with the ticket customer's email, never by the model. */
   customerArg?: string;
   tier: 'read' | 'write' | 'transactional';
+  /** The team that decides its requests, by name (ADR 0031). */
+  approverTeam?: string;
 }
 
 const customer = {
@@ -272,6 +317,17 @@ export const tools: GarmentTool[] = [
     tier: 'read',
   },
   {
+    name: 'payment_status',
+    title: 'Payments',
+    description:
+      "The customer's failed checkouts (no order was made and nothing was charged) and how each recent order was paid or refunded. Use it first when they report a failed payment, a double charge or money taken without an order.",
+    method: 'GET',
+    path: '/payments',
+    parameters: [customer],
+    customerArg: 'customer_email',
+    tier: 'read',
+  },
+  {
     name: 'cancel_order',
     title: 'Cancel an order',
     description:
@@ -295,7 +351,7 @@ export const tools: GarmentTool[] = [
     name: 'issue_refund',
     title: 'Refund an order',
     description:
-      "Refunds one of the customer's delivered orders in full. Needs a supervisor to approve it. Use it when the customer asks for their money back for an order that was delivered.",
+      "Refunds one of the customer's delivered orders in full. Our Payments team decides each request. Use it when the customer asks for their money back for an order that was delivered and paid; for an order that has not shipped, cancel it instead, which refunds at once.",
     method: 'POST',
     path: '/refunds',
     parameters: [
@@ -310,6 +366,8 @@ export const tools: GarmentTool[] = [
     ],
     customerArg: 'customer_email',
     tier: 'transactional',
+    // Refunds are decided by the Payments team (ADR 0031).
+    approverTeam: 'Payments',
   },
   {
     name: 'shop_status',

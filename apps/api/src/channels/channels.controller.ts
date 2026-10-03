@@ -25,6 +25,7 @@ import {
 import type { FastifyReply } from 'fastify';
 import { Ctx, type RequestCtx, RequirePermission } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
+import { ActsOnTicket } from '../tickets/ticket-access';
 import { ConversationsService } from '../conversations/conversations.service';
 import { StorageService } from '../storage/storage.service';
 import { TicketsService } from '../tickets/tickets.service';
@@ -51,6 +52,7 @@ export class ChannelsController {
   /** Starts a new conversation on a ticket: an email, or a WhatsApp template. */
   @Post('tickets/:id/conversations')
   @RequirePermission('message:send')
+  @ActsOnTicket('ticket')
   start(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,
@@ -64,6 +66,7 @@ export class ChannelsController {
   /** Sends an approved WhatsApp template on a conversation (needed once the 24-hour window closes). */
   @Post('conversations/:id/whatsapp-template')
   @RequirePermission('message:send')
+  @ActsOnTicket('conversation')
   template(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,
@@ -75,6 +78,7 @@ export class ChannelsController {
   /** Replies on the conversation's own channel. */
   @Post('conversations/:id/messages')
   @RequirePermission('message:send')
+  @ActsOnTicket('conversation')
   reply(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,
@@ -87,6 +91,7 @@ export class ChannelsController {
   @Post('messages/:id/approve')
   @HttpCode(200)
   @RequirePermission('message:approve_draft')
+  @ActsOnTicket('message')
   approve(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,
@@ -99,6 +104,7 @@ export class ChannelsController {
   @Post('messages/:id/discard')
   @HttpCode(200)
   @RequirePermission('message:approve_draft')
+  @ActsOnTicket('message')
   discard(@Ctx() ctx: RequestCtx, @Param('id', ParseUUIDPipe) id: string) {
     return this.outbound.discardDraft(ctx, id);
   }

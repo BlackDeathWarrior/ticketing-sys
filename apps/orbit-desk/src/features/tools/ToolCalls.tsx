@@ -1,4 +1,4 @@
-import { APPROVAL_REASON_MIN, type ToolCallView } from '@tms/shared';
+import { APPROVAL_REASON_MIN, canDecideApproval, type ToolCallView } from '@tms/shared';
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { Button, Icon, type IconName, Textarea } from '../../components/ui';
@@ -22,7 +22,7 @@ const STATUS_ICON: Partial<Record<ToolCallView['status'], IconName>> = {
 
 /** The drawer's "Company actions": what the AI looked up or asked to do, with approvals inline. */
 export function ToolCalls({ ticketId, liveTick }: { ticketId: string; liveTick: number }) {
-  const { can } = useSession();
+  const { user } = useSession();
   const calls = useGet<ToolCallView[]>(`/tickets/${ticketId}/tool-calls`);
   const reload = calls.reload;
   useEffect(() => {
@@ -86,7 +86,7 @@ export function ToolCalls({ ticketId, liveTick }: { ticketId: string; liveTick: 
                 </p>
               )}
               {pending &&
-                can('approval:approve') &&
+                canDecideApproval(user, c.approval!.teamId) &&
                 (deciding?.approvalId === c.approval!.id ? (
                   <div className={styles.decide}>
                     <Textarea

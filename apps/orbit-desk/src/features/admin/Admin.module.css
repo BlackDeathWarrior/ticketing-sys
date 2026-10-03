@@ -85,3 +85,12 @@
   color: var(--color-fog);
   overflow-wrap: anywhere;
 }
+
+/* A team member with their "admin" box beside them. */
+.memberRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-16);
+  width: 100%;
+}

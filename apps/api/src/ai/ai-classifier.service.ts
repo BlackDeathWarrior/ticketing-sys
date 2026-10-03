@@ -8,6 +8,7 @@ import { DB } from '../infra/tokens';
 import { LlmClientService, LlmUnavailableError } from '../llm/llm-client.service';
 import { OrgService } from '../org/org.service';
 import { AiBehaviourService } from '../settings/ai-behaviour.service';
+import { PriorityRulesService } from '../settings/priority-rules.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { AiRunsService } from './ai-runs.service';
 import { CLASSIFIER_PROMPT_VERSION, classifierSystemPrompt } from './prompts';
@@ -46,6 +47,7 @@ export class AiClassifierService {
     private readonly org: OrgService,
     private readonly behaviour: AiBehaviourService,
     private readonly runs: AiRunsService,
+    private readonly priorityRules: PriorityRulesService,
   ) {}
 
   async classify(ticketId: string): Promise<AiClassification | null> {
@@ -134,6 +136,23 @@ export class AiClassifierService {
       RANK[classification.priority] > RANK[current]
     ) {
       patch.priority = classification.priority;
+    }
+    // The company's rules know the intent and the mood now (ADR 0032); they only ever raise.
+    const ruled = await this.priorityRules
+      .evaluate({
+        channel: ticket.channel,
+        categoryId: patch.categoryId ?? ticket.categoryId,
+        subcategoryId: patch.subcategoryId ?? ticket.subcategoryId,
+        customerType: ticket.customer.customerType ?? null,
+        tags: ticket.tags,
+        text: `${ticket.subject}\n${ticket.description ?? ''}`,
+        intent: classification.intent,
+        sentiment: classification.sentiment,
+        metadata: ticket.metadata ?? {},
+      })
+      .catch(() => null);
+    if (ruled && RANK[ruled.priority] > RANK[patch.priority ?? current]) {
+      patch.priority = ruled.priority;
     }
 
     await this.db.transaction(async (tx) => {

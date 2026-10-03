@@ -10,7 +10,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import type { CustomToolHttp } from '@tms/shared';
-import { users } from './auth';
+import { teams, users } from './auth';
 import { conversations } from './conversations';
 import { tickets } from './tickets';
 
@@ -58,6 +58,8 @@ export const tools = pgTable(
     missing: boolean('missing').notNull().default(false),
     /** Custom tools only: the HTTP request to make (method, URL, token header, parameters). */
     http: jsonb('http').$type<CustomToolHttp>(),
+    /** The team that decides requests to this tool (ADR 0031); null: the ticket's team. */
+    approverTeamId: uuid('approver_team_id').references(() => teams.id, { onDelete: 'set null' }),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -110,6 +112,8 @@ export const approvals = pgTable(
     }),
     /** pending | approved | rejected | expired */
     status: text('status').notNull().default('pending'),
+    /** Who decides (ADR 0031): any member of this team, or with none, holders of `approval:approve`. */
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'set null' }),
     summary: text('summary').notNull(),
     reasoning: text('reasoning'),
     evidence: text('evidence'),

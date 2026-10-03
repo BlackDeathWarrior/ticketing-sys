@@ -4,6 +4,7 @@ import { type RequestHandoverInput, requestHandoverSchema } from '@tms/shared';
 import { z } from 'zod';
 import { Ctx, type RequestCtx, RequirePermission } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
+import { ActsOnTicket } from '../tickets/ticket-access';
 import { TicketsService } from '../tickets/tickets.service';
 import { HandoverService } from './handover.service';
 
@@ -23,6 +24,7 @@ export class HandoverController {
   @Post('conversations/:id/take-over')
   @HttpCode(200)
   @RequirePermission('conversation:takeover')
+  @ActsOnTicket('conversation')
   takeOver(@Ctx() ctx: RequestCtx, @Param('id', ParseUUIDPipe) id: string) {
     return this.handover.takeOver(ctx, id);
   }
@@ -30,6 +32,7 @@ export class HandoverController {
   @Post('conversations/:id/hand-back')
   @HttpCode(200)
   @RequirePermission('conversation:takeover')
+  @ActsOnTicket('conversation')
   handBack(@Ctx() ctx: RequestCtx, @Param('id', ParseUUIDPipe) id: string) {
     return this.handover.handBack(ctx, id);
   }
@@ -37,6 +40,7 @@ export class HandoverController {
   /** Pass the ticket on: to the queue (routing decides) or to a team. */
   @Post('tickets/:id/handover')
   @RequirePermission('conversation:takeover')
+  @ActsOnTicket('ticket')
   requestHandover(
     @Ctx() ctx: RequestCtx,
     @Param('id') id: string,

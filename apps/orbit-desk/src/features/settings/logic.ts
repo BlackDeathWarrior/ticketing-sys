@@ -9,6 +9,8 @@ import type {
 
 export type SettingsTab =
   | 'me'
+  | 'teams'
+  | 'priority'
   | 'providers'
   | 'models'
   | 'ai'
@@ -32,6 +34,9 @@ export const SETTINGS_TABS: Array<{
 }> = [
   // A person's own settings (notification sound): every role has these.
   { value: 'me', label: 'My settings', needs: [] },
+  // Everyone sees the teams; their admins (and super admins) change them.
+  { value: 'teams', label: 'Teams', needs: [] },
+  { value: 'priority', label: 'Priority', needs: ['settings:priority'] },
   { value: 'providers', label: 'AI providers', needs: ['settings:llm'] },
   { value: 'models', label: 'Models & roles', needs: ['settings:llm'] },
   { value: 'ai', label: 'AI behaviour', needs: ['settings:ai'] },
