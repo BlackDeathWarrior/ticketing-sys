@@ -35,7 +35,19 @@ const ok = (result: string): PhoneToolReply => ({
   ok: true,
   result: result.slice(0, PHONE_TOOL_RESULT_MAX),
 });
-const fail = (result: string): PhoneToolReply => ({ ok: false, result });
+/**
+ * On the third real call the agent got an empty order list and told the caller about an
+ * order, an item and a price that do not exist. Every answer now says what it is and that
+ * nothing may be added to it: the agent's model is not ours to constrain any other way.
+ */
+const NEVER_INVENT =
+  'Never make up an order, a product, a price, a date or a policy: say only what is written here.';
+const FROM_SYSTEM = `Answer from the shop's system. If a list in it is empty or a count is 0, tell the caller that nothing was found. ${NEVER_INVENT}\n`;
+const FROM_ARTICLES = `From the shop's help articles. Answer only from this text. ${NEVER_INVENT}\n`;
+const fail = (result: string): PhoneToolReply => ({
+  ok: false,
+  result: `Error: ${result} Tell the caller you could not find or do that. ${NEVER_INVENT}`,
+});
 
 /**
  * What the phone agent at Sarvam can ask this desk for during a call
@@ -154,9 +166,12 @@ export class PhoneToolsService {
       {},
       { q, limit: KB_HITS, audience: 'customer', includeDrafts: false },
     );
-    if (!hits.length) return ok('Nothing in the knowledge base matches.');
+    if (!hits.length) return fail('Nothing in the help articles matches.');
     return ok(
-      hits.map((h) => `${h.title}${h.section ? ` › ${h.section}` : ''}: ${h.snippet}`).join('\n\n'),
+      FROM_ARTICLES +
+        hits
+          .map((h) => `${h.title}${h.section ? ` › ${h.section}` : ''}: ${h.snippet}`)
+          .join('\n\n'),
     );
   }
 
@@ -194,7 +209,9 @@ export class PhoneToolsService {
     const r = await run;
     switch (r.status) {
       case 'ok':
-        return ok(typeof r.result === 'string' ? r.result : JSON.stringify(r.result ?? {}));
+        return ok(
+          FROM_SYSTEM + (typeof r.result === 'string' ? r.result : JSON.stringify(r.result ?? {})),
+        );
       case 'denied':
         return fail(found.tool.customerArg && !owner?.email ? NOT_LINKED : r.error);
       case 'error':
