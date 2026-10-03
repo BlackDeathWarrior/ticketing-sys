@@ -662,6 +662,40 @@ export class CustomersService {
     return this.findByIdentity(db, type, normalizeIdentity(type, value));
   }
 
+  /**
+   * The customer who proved this number is theirs (a code sent to it), if
+   * anyone did. A number a customer only ever wrote or called from is not proof.
+   */
+  async provenPhoneOwner(
+    phone: string,
+    db: DbOrTx = this.db,
+  ): Promise<{ id: string; name: string; email: string | null } | null> {
+    const [row] = await db
+      .select({ customerId: customerIdentities.customerId })
+      .from(customerIdentities)
+      .where(
+        and(
+          eq(customerIdentities.type, 'phone'),
+          eq(customerIdentities.value, normalizeIdentity('phone', phone)),
+          eq(customerIdentities.verified, true),
+        ),
+      );
+    if (!row) return null;
+    const customer = await this.findActive(db, row.customerId);
+    let email = customer.primaryEmail;
+    if (!email) {
+      const [identity] = await db
+        .select({ value: customerIdentities.value })
+        .from(customerIdentities)
+        .where(
+          and(eq(customerIdentities.customerId, customer.id), eq(customerIdentities.type, 'email')),
+        )
+        .limit(1);
+      email = identity?.value ?? null;
+    }
+    return { id: customer.id, name: customer.displayName, email };
+  }
+
   private async findByIdentity(db: DbOrTx, type: IdentityType, value: string) {
     const [row] = await db
       .select({ customerId: customerIdentities.customerId })
