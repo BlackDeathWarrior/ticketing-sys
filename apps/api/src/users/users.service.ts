@@ -15,6 +15,8 @@ import {
   DEFAULT_USER_PREFERENCES,
   isDelegable,
   type RoleView,
+  SYSTEM_ROLES,
+  type SystemRoleKey,
   type UpdateUserInput,
   type UserPreferences,
   userPreferencesSchema,
@@ -62,6 +64,10 @@ export class UsersService {
         .innerJoin(roles, eq(roles.id, userRoles.roleId))
         .leftJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
         .where(eq(userRoles.userId, userId));
+      const memberships = await this.db
+        .select({ id: teamMembers.teamId, role: teamMembers.role })
+        .from(teamMembers)
+        .where(eq(teamMembers.userId, userId));
       value = {
         id: u.id,
         email: u.email,
@@ -70,6 +76,10 @@ export class UsersService {
         permissions: [
           ...new Set(rows.map((r) => r.permission).filter((p): p is string => !!p)),
         ].sort(),
+        teams: memberships.map((m) => ({
+          id: m.id,
+          role: m.role === 'admin' ? 'admin' : 'member',
+        })),
       };
     }
     this.authCache.set(userId, { at: Date.now(), value });
@@ -138,9 +148,16 @@ export class UsersService {
         name: role.name,
         description: role.description,
         permissions: [],
+        grants: [],
         locked: role.key === 'admin',
       };
-      if (permission) view.permissions.push(permission);
+      if (permission) {
+        view.permissions.push(permission);
+        // Beyond what the role is built with: granted by an admin, and theirs to take back.
+        const builtIn = SYSTEM_ROLES[role.key as SystemRoleKey]?.permissions as
+          readonly string[] | undefined;
+        if (!builtIn?.includes(permission)) view.grants!.push(permission);
+      }
       byKey.set(role.key, view);
     }
     // Least to most powerful, so "who else may do this" reads naturally.
@@ -166,7 +183,14 @@ export class UsersService {
     const [role] = await this.db.select().from(roles).where(eq(roles.key, roleKey));
     if (!role) throw new NotFoundException('Role not found');
     if (role.key === 'admin') {
-      throw new BadRequestException('Administrators always have every permission');
+      throw new BadRequestException('Super admins always have every permission');
+    }
+    const builtIn = SYSTEM_ROLES[role.key as SystemRoleKey]?.permissions as
+      readonly string[] | undefined;
+    if (!granted && builtIn?.includes(permission)) {
+      throw new BadRequestException(
+        `${permission} is part of the ${role.name} role and stays with it`,
+      );
     }
     await this.db.transaction(async (tx) => {
       const changed = granted
@@ -234,10 +258,37 @@ export class UsersService {
     return this.get(id);
   }
 
+  /** Active people's ids and names, nothing else. */
+  async directory(): Promise<Array<{ id: string; name: string }>> {
+    return this.db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(eq(users.isActive, true))
+      .orderBy(asc(users.name));
+  }
+
   async update(ctx: RequestCtx, id: string, input: UpdateUserInput) {
-    await this.get(id);
+    const before = await this.get(id);
     if (ctx.user?.id === id && input.isActive === false) {
       throw new BadRequestException('You cannot deactivate your own account');
+    }
+    if (
+      ctx.user?.id === id &&
+      input.roles &&
+      before.roles.includes('admin') &&
+      !input.roles.includes('admin')
+    ) {
+      throw new BadRequestException('You cannot remove your own super admin role');
+    }
+    // Someone must always be able to manage everything.
+    const losesAdmin =
+      before.roles.includes('admin') &&
+      ((input.roles && !input.roles.includes('admin')) || input.isActive === false);
+    if (losesAdmin) {
+      const admins = (await this.list()).filter((u) => u.isActive && u.roles.includes('admin'));
+      if (admins.length <= 1) {
+        throw new BadRequestException('This is the last super admin. Make someone else one first.');
+      }
     }
     await this.db.transaction(async (tx) => {
       const set: Partial<typeof users.$inferInsert> = {};
@@ -320,10 +371,22 @@ export class UsersService {
     await tx.insert(userRoles).values(found.map((r) => ({ userId, roleId: r.id })));
   }
 
+  /** Joins and leaves teams; a membership that stays keeps its role (admin or member). */
   private async setTeams(tx: DbOrTx, userId: string, teamIds: string[]) {
-    await tx.delete(teamMembers).where(eq(teamMembers.userId, userId));
-    if (teamIds.length) {
-      await tx.insert(teamMembers).values(teamIds.map((teamId) => ({ teamId, userId })));
+    const wanted = [...new Set(teamIds)];
+    const current = await tx
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .where(eq(teamMembers.userId, userId));
+    const leaving = current.map((c) => c.teamId).filter((t) => !wanted.includes(t));
+    if (leaving.length) {
+      await tx
+        .delete(teamMembers)
+        .where(and(eq(teamMembers.userId, userId), inArray(teamMembers.teamId, leaving)));
+    }
+    const joining = wanted.filter((t) => !current.some((c) => c.teamId === t));
+    if (joining.length) {
+      await tx.insert(teamMembers).values(joining.map((teamId) => ({ teamId, userId })));
     }
   }
 

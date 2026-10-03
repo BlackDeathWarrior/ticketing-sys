@@ -6,12 +6,17 @@ export const createTeamSchema = z.object({
   description: z.string().trim().max(500).optional(),
 });
 
-/** Any of the fields; `memberIds` replaces the whole member list. */
+/**
+ * Any of the fields; `memberIds` replaces the whole member list and
+ * `adminIds` says which of them are the team's admins (ADR 0031). A team's
+ * own admins may change those two; renaming needs `team:manage`.
+ */
 export const updateTeamSchema = z
   .object({
     name: z.string().trim().min(1).max(100),
     description: z.string().trim().max(500).nullable(),
     memberIds: z.array(z.string().uuid()).max(500),
+    adminIds: z.array(z.string().uuid()).max(100),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, { message: 'Provide at least one field to update' });

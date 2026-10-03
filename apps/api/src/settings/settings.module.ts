@@ -5,15 +5,17 @@ import { BrandingService } from './branding.service';
 import { ChannelConfigService } from './channel-config.service';
 import { ChannelSignalsService } from './channel-signals.service';
 import { CustomerExperienceService } from './customer-experience.service';
+import { PriorityRulesService } from './priority-rules.service';
 import { SecretsService } from './secrets.service';
-import { SettingsController } from './settings.controller';
+import { PriorityRulesController, SettingsController } from './settings.controller';
 import { SystemMailer } from './system-mailer.service';
 
 /** Secrets, typed app settings and channel configuration; used by the API and the worker. */
 @Global()
 @Module({
-  controllers: [SettingsController],
+  controllers: [SettingsController, PriorityRulesController],
   providers: [
+    PriorityRulesService,
     SecretsService,
     AppSettingsService,
     ChannelConfigService,
@@ -24,6 +26,7 @@ import { SystemMailer } from './system-mailer.service';
     SystemMailer,
   ],
   exports: [
+    PriorityRulesService,
     SecretsService,
     AppSettingsService,
     ChannelConfigService,

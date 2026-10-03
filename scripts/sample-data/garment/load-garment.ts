@@ -34,6 +34,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { EXAMPLE_PRIORITY_RULES } from '@tms/shared';
 import { llm } from '../data';
 import {
   aiChannels,
@@ -129,6 +130,7 @@ async function main() {
 
   const teamIds = await loadTeams(admin);
   await loadUsers(admin, teamIds);
+  await loadTeamAdmins(admin, teamIds);
   const categoryIds = await loadCategories(admin);
   await loadSla(admin);
   await loadRouting(admin, teamIds, categoryIds);
@@ -138,7 +140,8 @@ async function main() {
   const kbLoaded = await loadKb(admin);
 
   const connection = await loadIntegration(admin);
-  await loadTools(admin, connection?.toolToken ?? null);
+  await loadTools(admin, connection?.toolToken ?? null, teamIds);
+  await loadPriorityRules(admin);
   if (connection) writeEnv(connection);
 
   console.log('');
@@ -184,6 +187,37 @@ async function loadUsers(admin: string, teamIds: Map<string, string>) {
     });
   }
   log(`${users.length} staff accounts`);
+}
+
+/** Each team's admins, who manage its members (ADR 0031). Members who stay keep their place. */
+async function loadTeamAdmins(admin: string, teamIds: Map<string, string>) {
+  const known = await call<Array<Ref & { email: string }>>(admin, 'GET', '/users');
+  const current = await call<Array<Ref & { members: Ref[] }>>(admin, 'GET', '/teams');
+  for (const [name, id] of teamIds) {
+    const adminIds = users
+      .filter((u) => u.admins?.includes(name))
+      .map((u) => known.find((k) => k.email === u.email)?.id)
+      .filter((x): x is string => !!x);
+    if (!adminIds.length) continue;
+    const members = current.find((t) => t.id === id)?.members.map((m) => m.id) ?? [];
+    await call(admin, 'PATCH', `/teams/${id}`, {
+      memberIds: [...new Set([...members, ...adminIds])],
+      adminIds,
+    });
+  }
+  log('team admins: one per team');
+}
+
+/** Priority rules a shop starts from (ADR 0032): payment problems first, price questions last. */
+async function loadPriorityRules(admin: string) {
+  const current = await call<{ rules: unknown[] }>(admin, 'GET', '/settings/priority-rules');
+  if (current.rules.length) return log('priority rules already set');
+  await call(admin, 'PUT', '/settings/priority-rules', {
+    rules: EXAMPLE_PRIORITY_RULES.map((r) => ({ ...r, id: 'new' })),
+  });
+  log(
+    `${EXAMPLE_PRIORITY_RULES.length} priority rules (payment problems are high, price questions low)`,
+  );
 }
 
 interface Category extends Ref {
@@ -323,6 +357,19 @@ async function loadKb(admin: string): Promise<boolean> {
     if (!res.ok) throw new Error(`upload ${file} → ${res.status}: ${await res.text()}`);
     ids.push(((await res.json()) as { id: string }).id);
   }
+  for (const faq of kb.faqs) {
+    if (titles.has(faq.question)) continue;
+    ids.push(
+      (
+        await call<{ id: string }>(admin, 'POST', '/kb/documents', {
+          source: 'faq',
+          visibility: 'public',
+          title: faq.question,
+          content: faq.answer,
+        })
+      ).id,
+    );
+  }
   if (!titles.has(kb.internal.title)) {
     ids.push(
       (
@@ -442,9 +489,9 @@ async function loadIntegration(admin: string): Promise<Connection | null> {
 }
 
 /** The AI's tools on the shop's server. `token` is set on first load and on `--rekey`. */
-async function loadTools(admin: string, token: string | null) {
+async function loadTools(admin: string, token: string | null, teamIds: Map<string, string>) {
   const existing = await call<Array<{ name: string }>>(admin, 'GET', '/tools/custom');
-  for (const { path, ...definition } of tools) {
+  for (const { path, approverTeam: _approverTeam, ...definition } of tools) {
     if (!existing.some((t) => t.name === definition.name)) {
       await call(admin, 'POST', '/tools/custom', {
         ...definition,
@@ -458,6 +505,13 @@ async function loadTools(admin: string, token: string | null) {
         value: token,
       });
     }
+  }
+  // Who decides each tool's requests (refunds: Payments).
+  const loaded = await call<Array<Ref & { name: string }>>(admin, 'GET', '/tools/custom');
+  for (const t of tools.filter((x) => x.approverTeam)) {
+    const id = loaded.find((l) => l.name === t.name)?.id;
+    const teamId = teamIds.get(t.approverTeam!);
+    if (id && teamId) await call(admin, 'PATCH', `/tools/${id}`, { approverTeamId: teamId });
   }
   const gated = tools.filter((t) => t.tier === 'transactional').map((t) => t.name);
   log(`${tools.length} tools for the AI on the shop's server (${gated.join(', ')} needs approval)`);

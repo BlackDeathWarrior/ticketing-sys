@@ -133,10 +133,13 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
     ready ? `/tickets${qs({ status: openStatuses.join(','), limit: PAGE })}` : null,
   );
   const overview = useGet<OverviewReport>(can('report:read') ? '/reports/overview' : null);
+  // Approvals are decided by the request's team (ADR 0031): anyone on a team may have some.
+  const mayApprove =
+    can('approval:approve') || can('ticket:any_team') || (user.teams?.length ?? 0) > 0;
   const approvals = useGet<Array<{ status: string }>>(
-    can('approval:approve') ? '/approvals?status=pending&limit=200' : null,
+    mayApprove ? '/approvals?status=pending&limit=200' : null,
   );
-  const pendingApprovals = can('approval:approve') ? approvals.data?.length : undefined;
+  const pendingApprovals = mayApprove ? approvals.data?.length : undefined;
   const teams =
     useGet<Array<{ id: string; name: string; members: Array<{ id: string }> }>>('/teams');
   const countAll = useGet<{ total: number }>(pathFor('all', { limit: 1 }));

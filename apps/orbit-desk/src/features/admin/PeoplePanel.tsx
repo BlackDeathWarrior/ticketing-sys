@@ -1,7 +1,13 @@
-import type { RoleView } from '@tms/shared';
+import {
+  DELEGABLE_LABELS,
+  DELEGABLE_PERMISSIONS,
+  type DelegablePermission,
+  type RoleView,
+} from '@tms/shared';
 import { type FormEvent, useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import { Button, Card, CardHeader, Dialog, Input, Select, Textarea } from '../../components/ui';
+import { Button, Card, CardHeader, Dialog, Input, Select } from '../../components/ui';
+import { cx } from '../../lib/format';
 import { useSession } from '../../lib/session';
 import { useGet } from '../../lib/useGet';
 import settings from '../settings/Settings.module.css';
@@ -16,32 +22,22 @@ import {
   type UserForm,
 } from './logic';
 
-/** Settings → People: who can sign in, what they may do, and the teams they belong to. */
+/**
+ * Settings → People: who can sign in, what they may do, and the teams they
+ * belong to. Teams themselves, with their admins, are under Settings → Teams.
+ */
 export function PeoplePanel() {
-  const { can, user: me } = useSession();
+  const { user: me } = useSession();
   const users = useGet<AdminUser[]>('/users');
   const roles = useGet<RoleView[]>('/roles');
   const teams = useGet<AdminTeam[]>('/teams');
   const [editingUser, setEditingUser] = useState<AdminUser | 'new' | null>(null);
-  const [editingTeam, setEditingTeam] = useState<AdminTeam | 'new' | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const reload = () => {
     void users.reload();
     void teams.reload();
   };
   const roleName = (key: string) => roles.data?.find((r) => r.key === key)?.name ?? key;
-
-  const removeTeam = async (team: AdminTeam) => {
-    if (!window.confirm(`Delete the team “${team.name}”? Its members stay as users.`)) return;
-    setError(null);
-    try {
-      await api('DELETE', `/teams/${team.id}`);
-    } catch (err) {
-      setError((err as Error).message);
-    }
-    reload();
-  };
 
   return (
     <div className={settings.stack}>
@@ -95,46 +91,7 @@ export function PeoplePanel() {
         </div>
       </Card>
 
-      <Card padding="md" aria-labelledby="teams-title">
-        <CardHeader
-          id="teams-title"
-          title="Teams"
-          subtitle="Routing rules send tickets to a team; its members share the queue."
-          actions={
-            can('team:manage') ? (
-              <Button onClick={() => setEditingTeam('new')}>Add team</Button>
-            ) : null
-          }
-        />
-        {error && (
-          <p className={settings.error} role="alert">
-            {error}
-          </p>
-        )}
-        <ul className={settings.ruleList}>
-          {(teams.data ?? []).map((t) => (
-            <li key={t.id} className={settings.ruleRow} data-team={t.name}>
-              <div>
-                <p className={settings.ruleName}>{t.name}</p>
-                <p className={settings.muted}>
-                  {t.description ? `${t.description} · ` : ''}
-                  {t.members.length ? t.members.map((m) => m.name).join(', ') : 'No members yet'}
-                </p>
-              </div>
-              {can('team:manage') && (
-                <div className={settings.actions}>
-                  <Button size="sm" onClick={() => setEditingTeam(t)}>
-                    Edit
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => void removeTeam(t)}>
-                    Delete
-                  </Button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      </Card>
+      <RolesCard roles={roles.data ?? []} onChanged={() => void roles.reload()} />
 
       <UserDialog
         user={editingUser}
@@ -144,15 +101,6 @@ export function PeoplePanel() {
         onClose={() => setEditingUser(null)}
         onSaved={() => {
           setEditingUser(null);
-          reload();
-        }}
-      />
-      <TeamDialog
-        team={editingTeam}
-        users={(users.data ?? []).filter((u) => u.isActive)}
-        onClose={() => setEditingTeam(null)}
-        onSaved={() => {
-          setEditingTeam(null);
           reload();
         }}
       />
@@ -294,111 +242,78 @@ function UserDialog({
   );
 }
 
-function TeamDialog({
-  team,
-  users,
-  onClose,
-  onSaved,
-}: {
-  team: AdminTeam | 'new' | null;
-  users: AdminUser[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const existing = team && team !== 'new' ? team : undefined;
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [memberIds, setMemberIds] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
+/**
+ * What each role may do beyond its built-in permissions (ADR 0031). A role
+ * keeps what it was built with; these can be added on top. Super admins have
+ * everything, and keys, people, teams, integrations and the system stay
+ * theirs alone.
+ */
+function RolesCard({ roles, onChanged }: { roles: RoleView[]; onChanged: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const shown = roles.filter((r) => r.key !== 'admin');
 
-  useEffect(() => {
-    setName(existing?.name ?? '');
-    setDescription(existing?.description ?? '');
-    setMemberIds(existing?.members.map((m) => m.id) ?? []);
-    setError(null);
-  }, [team]);
-
-  const save = async (e: FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
+  const flip = async (role: RoleView, permission: DelegablePermission, on: boolean) => {
+    setBusy(`${role.key}:${permission}`);
     setError(null);
     try {
-      const id =
-        existing?.id ??
-        (
-          await api<{ id: string }>('POST', '/teams', {
-            name: name.trim(),
-            ...(description.trim() ? { description: description.trim() } : {}),
-          })
-        ).id;
-      if (existing || memberIds.length) {
-        await api('PATCH', `/teams/${id}`, {
-          ...(existing ? { name: name.trim(), description: description.trim() || null } : {}),
-          memberIds,
-        });
-      }
-      onSaved();
+      await api(on ? 'PUT' : 'DELETE', `/roles/${role.key}/permissions/${permission}`);
+      onChanged();
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setSaving(false);
+      setBusy(null);
     }
   };
 
   return (
-    <Dialog open={team !== null} onClose={onClose} labelledBy="team-dialog-title">
-      <form
-        className={settings.form}
-        onSubmit={save}
-        aria-label={existing ? 'Edit team' : 'Add team'}
-      >
-        <h2 id="team-dialog-title" className={settings.dialogTitle}>
-          {existing ? `Edit ${existing.name}` : 'Add a team'}
-        </h2>
-        <Input
-          id="team-name"
-          label="Team name"
-          value={name}
-          maxLength={100}
-          onChange={(e) => setName(e.target.value)}
-          required
-        />
-        <Textarea
-          id="team-description"
-          label="What the team handles (optional)"
-          rows={2}
-          maxLength={500}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-        <fieldset className={styles.checks}>
-          <legend>Members</legend>
-          {users.map((u) => (
-            <label key={u.id} className={settings.check}>
-              <input
-                type="checkbox"
-                checked={memberIds.includes(u.id)}
-                onChange={() => setMemberIds(toggle(memberIds, u.id))}
-              />
-              {u.name}
-            </label>
-          ))}
-        </fieldset>
-        {error && (
-          <p className={settings.error} role="alert">
-            {error}
-          </p>
-        )}
-        <div className={settings.formActions}>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={saving}>
-            {existing ? 'Save team' : 'Add team'}
-          </Button>
-        </div>
-      </form>
-    </Dialog>
+    <Card padding="md" aria-labelledby="roles-title">
+      <CardHeader
+        id="roles-title"
+        title="Roles"
+        subtitle="What each role may do. A ticked box that cannot be changed is part of the role; the others can be granted. Super admins can do everything."
+      />
+      {error && (
+        <p className={settings.error} role="alert">
+          {error}
+        </p>
+      )}
+      <div className={settings.scroller}>
+        <table className={cx(settings.table, styles.matrix)}>
+          <thead>
+            <tr>
+              <th scope="col">Permission</th>
+              {shown.map((r) => (
+                <th key={r.key} scope="col">
+                  {r.name}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {DELEGABLE_PERMISSIONS.map((perm) => (
+              <tr key={perm}>
+                <th scope="row">{DELEGABLE_LABELS[perm]}</th>
+                {shown.map((r) => {
+                  const has = r.permissions.includes(perm);
+                  const builtIn = has && !(r.grants ?? []).includes(perm);
+                  return (
+                    <td key={r.key}>
+                      <input
+                        type="checkbox"
+                        aria-label={`${r.name}: ${DELEGABLE_LABELS[perm]}`}
+                        checked={has}
+                        disabled={builtIn || busy === `${r.key}:${perm}`}
+                        onChange={(e) => void flip(r, perm, e.target.checked)}
+                      />
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }

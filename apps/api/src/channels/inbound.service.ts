@@ -7,6 +7,7 @@ import {
   messageEnvelopeSchema,
   normalizeIdentity,
   type ParsedEnvelope,
+  raisesPriority,
 } from '@tms/shared';
 import { sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
@@ -17,6 +18,7 @@ import { CustomersService } from '../customers/customers.service';
 import { DB } from '../infra/tokens';
 import { type Ticket, TicketsService } from '../tickets/tickets.service';
 import { WorkflowService } from '../workflow/workflow.service';
+import { PriorityRulesService } from '../settings/priority-rules.service';
 import { AiPolicyService } from './ai-policy.service';
 import { extractTicketNumber } from './email/email.util';
 
@@ -51,6 +53,7 @@ export class InboundService {
     private readonly tickets: TicketsService,
     private readonly workflow: WorkflowService,
     private readonly aiPolicy: AiPolicyService,
+    private readonly priorityRules: PriorityRulesService,
   ) {}
 
   async handle(input: MessageEnvelope): Promise<InboundResult> {
@@ -104,15 +107,36 @@ export class InboundService {
       ticket = null;
     }
 
+    // The company's priority rules (ADR 0032): a ticket is born with the priority they give.
+    const ruled = await this.priorityRules
+      .evaluate({
+        channel: env.channel,
+        categoryId: ticket?.categoryId ?? env.ticket?.categoryId ?? null,
+        subcategoryId: ticket?.subcategoryId ?? null,
+        customerType: customer.customerType,
+        tags: ticket?.tags ?? env.ticket?.tags ?? [],
+        text: `${env.subject ?? ''}\n${env.text}`,
+        intent: null,
+        sentiment: null,
+        metadata:
+          (ticket?.metadata as Record<string, unknown> | null) ?? env.ticket?.metadata ?? {},
+      })
+      .catch(() => null);
+
     let createdTicket = false;
     if (!ticket) {
+      const asked = env.ticket?.priority;
       ticket = await this.tickets.createInTx(tx, ctx, {
         customerId: customer.id,
         channel: env.channel,
         subject: subjectFor(env),
         description: env.text,
         categoryId: env.ticket?.categoryId,
-        priority: env.ticket?.priority ?? 'normal',
+        // What the app asked for, raised by a rule if a rule says more.
+        priority:
+          ruled && (!asked || raisesPriority(asked, ruled.priority))
+            ? ruled.priority
+            : (asked ?? 'normal'),
         tags: env.ticket?.tags ?? [],
         externalRef: env.ticket?.externalRef,
         metadata: env.ticket?.metadata,
@@ -123,6 +147,10 @@ export class InboundService {
       await this.tickets.reopenOnCustomerReply(tx, ctx, ticket, {
         aiControlled: conversation?.controller === 'ai' && conversation.ticketId === ticket.id,
       });
+      // "It still has not arrived and I was charged twice": what they add can make it more urgent.
+      if (ruled) {
+        await this.tickets.raisePriorityInTx(tx, ctx, ticket.id, ruled.priority, ruled.rule);
+      }
     }
 
     if (!conversation || conversation.ticketId !== ticket.id) {

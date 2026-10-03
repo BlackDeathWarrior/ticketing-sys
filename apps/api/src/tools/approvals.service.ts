@@ -1,13 +1,21 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { approvals, type Database, type DbOrTx, mcpServers, toolCalls, tools } from '@tms/db';
 import {
   type ApprovalStatus,
   type ApprovalView,
+  canDecideApproval,
+  type CurrentUser,
   type DecideApprovalInput,
   qualifiedToolName,
   type ToolTier,
 } from '@tms/shared';
-import { and, desc, eq, inArray, lte } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lte, or, type SQL } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import { type RequestCtx, SYSTEM_CTX } from '../common/request-context';
@@ -37,15 +45,39 @@ export class ApprovalsService {
     private readonly users: UsersService,
   ) {}
 
-  async list(q: { status?: ApprovalStatus; limit: number }): Promise<ApprovalView[]> {
+  /** The requests this person may decide (ADR 0031): their teams', and with no team, approvers'. */
+  async list(
+    user: CurrentUser,
+    q: { status?: ApprovalStatus; limit: number },
+  ): Promise<ApprovalView[]> {
+    const where: SQL[] = [];
+    if (q.status) where.push(eq(approvals.status, q.status));
+    if (!user.permissions.includes('ticket:any_team')) {
+      const teamIds = (user.teams ?? []).map((t) => t.id);
+      const mine = teamIds.length ? [inArray(approvals.teamId, teamIds)] : [];
+      const unteamed = user.permissions.includes('approval:approve')
+        ? [isNull(approvals.teamId)]
+        : [];
+      if (!mine.length && !unteamed.length) return [];
+      where.push(or(...mine, ...unteamed)!);
+    }
     const rows = await this.query()
-      .where(q.status ? eq(approvals.status, q.status) : undefined)
+      .where(where.length ? and(...where) : undefined)
       .orderBy(desc(approvals.createdAt))
       .limit(q.limit);
     return Promise.all(rows.map((r) => this.view(r)));
   }
 
-  async get(id: string): Promise<ApprovalView> {
+  async get(user: CurrentUser, id: string): Promise<ApprovalView> {
+    const r = await this.row(id);
+    // Someone else's request is as absent as one that does not exist.
+    if (!canDecideApproval(user, r.approval.teamId))
+      throw new NotFoundException('Approval not found');
+    return this.view(r);
+  }
+
+  /** For the AI follow-up and webhooks, which act for nobody in particular. */
+  async getAny(id: string): Promise<ApprovalView> {
     return this.view(await this.row(id));
   }
 
@@ -78,6 +110,11 @@ export class ApprovalsService {
     const expired = await this.db.transaction(async (tx) => {
       const [a] = await tx.select().from(approvals).where(eq(approvals.id, id)).for('update');
       if (!a) throw new NotFoundException('Approval not found');
+      if (ctx.user && !canDecideApproval(ctx.user, a.teamId)) {
+        throw new ForbiddenException(
+          'This request is decided by another team. Its members, or a super admin, can approve or reject it.',
+        );
+      }
       if (a.status !== 'pending') {
         throw new ConflictException(`This request was already ${a.status}`);
       }
@@ -125,7 +162,7 @@ export class ApprovalsService {
       return false;
     });
     if (expired) throw new ConflictException('This request expired before it was decided');
-    return this.get(id);
+    return this.getAny(id);
   }
 
   /** Expires a request nobody decided in time. Safe to call early or twice. */
@@ -210,6 +247,7 @@ export class ApprovalsService {
         customerArg: r.tool.customerArg,
       },
       args: r.call.args,
+      teamId: r.approval.teamId,
       summary: r.approval.summary,
       reasoning: r.approval.reasoning,
       evidence: r.approval.evidence,

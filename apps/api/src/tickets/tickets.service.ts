@@ -20,6 +20,8 @@ import {
 import {
   type AiClosure,
   type AssignTicketInput,
+  type Priority,
+  raisesPriority,
   type CreateTicketInput,
   formatTicketNumber,
   type ListTicketsQuery,
@@ -718,6 +720,36 @@ export class TicketsService {
     s: { slaPolicyId: string | null; slaState: string | null; slaDueAt: Date | null },
   ) {
     await tx.update(tickets).set(s).where(eq(tickets.id, id));
+  }
+
+  /**
+   * A priority rule raised the ticket (ADR 0032). Raise only: a rule never
+   * lowers what a person or an earlier message set.
+   */
+  async raisePriorityInTx(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    ticketId: string,
+    priority: Priority,
+    rule: string,
+  ): Promise<boolean> {
+    const current = await this.lock(tx, ticketId);
+    if (!raisesPriority(current.priority, priority)) return false;
+    await tx.update(tickets).set({ priority }).where(eq(tickets.id, ticketId));
+    const data = { changes: { priority: { from: current.priority, to: priority } }, rule };
+    await this.audit.record(tx, ctx, {
+      action: 'ticket.updated',
+      targetType: 'ticket',
+      targetId: ticketId,
+      data,
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'ticket.updated',
+      aggregateType: 'ticket',
+      aggregateId: ticketId,
+      payload: { fields: ['priority'], rule },
+    });
+    return true;
   }
 
   /** A ticket's priority alone, for ordering work on it. */

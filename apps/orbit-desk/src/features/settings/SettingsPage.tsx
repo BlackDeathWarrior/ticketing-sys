@@ -11,6 +11,8 @@ import { ChannelsPanel } from './ChannelsPanel';
 import { type SettingsTab, visibleTabs } from './logic';
 import { ModelsPanel } from './ModelsPanel';
 import { MySettingsPanel } from './MySettingsPanel';
+import { PriorityPanel } from './PriorityPanel';
+import { TeamsPanel } from '../admin/TeamsPanel';
 import { ToolsPanel } from '../tools/ToolsPanel';
 import { ProvidersPanel } from './ProvidersPanel';
 import { RoutingPanel } from './RoutingPanel';
@@ -29,7 +31,7 @@ export function SettingsPage() {
   const pick = (value: string | undefined): SettingsTab =>
     // Without a tab in the address: the first workspace tab the person manages, else their own.
     (tabs.find((t) => t.value === value)?.value ??
-      tabs.find((t) => t.value !== 'me')?.value ??
+      tabs.find((t) => t.value !== 'me' && t.value !== 'teams')?.value ??
       'me') as SettingsTab;
   const [tab, setTab] = useState<SettingsTab>(() => pick(tabFromHash()));
 
@@ -54,9 +56,9 @@ export function SettingsPage() {
     <div className={styles.page}>
       <header className={styles.hero}>
         <p className={styles.eyebrow}>Settings</p>
-        <h1 className={styles.heading}>{tabs.length > 1 ? 'Workspace settings' : 'My settings'}</h1>
+        <h1 className={styles.heading}>{tabs.length > 2 ? 'Workspace settings' : 'My settings'}</h1>
         <p className={styles.lede}>
-          {tabs.length > 1
+          {tabs.length > 2
             ? 'The AI agent and its models, channels, tools and integrations, routing and SLA, ticket setup and people, and your own settings. Keys are write-only: after saving, only their last four characters are shown.'
             : 'How Orbit Desk behaves for you. These follow you to any browser you sign in on.'}
         </p>
@@ -73,6 +75,8 @@ export function SettingsPage() {
       />
       <div role="tabpanel" aria-label={tabs.find((t) => t.value === tab)?.label}>
         {tab === 'me' && <MySettingsPanel />}
+        {tab === 'teams' && <TeamsPanel />}
+        {tab === 'priority' && <PriorityPanel />}
         {tab === 'providers' && <ProvidersPanel />}
         {tab === 'models' && <ModelsPanel />}
         {tab === 'ai' && <AiPanel />}

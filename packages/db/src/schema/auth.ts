@@ -100,6 +100,8 @@ export const teamMembers = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** member | admin: an admin manages the team's members (ADR 0031). */
+    role: text('role').notNull().default('member'),
   },
   (t) => [
     primaryKey({ columns: [t.teamId, t.userId] }),

@@ -45,7 +45,7 @@ export class OrgController {
   }
 
   @Patch('teams/:id')
-  @RequirePermission('team:manage')
+  @RequirePermission('ticket:read')
   updateTeam(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,

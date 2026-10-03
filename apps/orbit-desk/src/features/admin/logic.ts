@@ -13,7 +13,7 @@ export interface AdminTeam {
   id: string;
   name: string;
   description: string | null;
-  members: Array<{ id: string; name: string }>;
+  members: Array<{ id: string; name: string; role?: 'member' | 'admin' }>;
 }
 
 export interface AdminCategory {

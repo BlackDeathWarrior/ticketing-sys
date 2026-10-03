@@ -528,6 +528,7 @@ export function toolView(t: ToolRow, s: ServerRow): ToolView {
     tier: t.tier as ToolTier,
     timeoutMs: t.timeoutMs,
     customerArg: t.customerArg,
+    approverTeamId: t.approverTeamId,
     missing: t.missing,
     custom: null,
   };

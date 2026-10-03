@@ -60,7 +60,7 @@ export class WebhookPayloadService {
       case 'approval.requested':
       case 'approval.decided': {
         const approval = refs.approvalId
-          ? await this.approvals.get(refs.approvalId).catch(() => null)
+          ? await this.approvals.getAny(refs.approvalId).catch(() => null)
           : null;
         if (!approval) return null;
         return {

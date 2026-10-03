@@ -23,7 +23,7 @@ interface SidebarProps {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  admin: 'Administrator',
+  admin: 'Super admin',
   supervisor: 'Supervisor',
   team_lead: 'Team lead',
   agent: 'Agent',
@@ -87,7 +87,8 @@ export function Sidebar({
           <div className={styles.group}>
             {link('dashboard', 'grid', 'Overview')}
             {can('kb:read') && link('kb', 'book', 'Knowledge base')}
-            {can('approval:approve') && link('approvals', 'check', 'Approvals', pendingApprovals)}
+            {pendingApprovals !== undefined &&
+              link('approvals', 'check', 'Approvals', pendingApprovals)}
             {can('report:read') && link('reports', 'chart', 'Reports')}
             {can('learning:manage') && link('learning', 'target', 'Learning')}
           </div>

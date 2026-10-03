@@ -222,6 +222,36 @@ export class RoutingService {
    * otherwise applies the first matching rule and its strategy. Records the
    * decision (audit + `ticket.routed`) and returns it.
    */
+  /**
+   * Gives a ticket its team without giving it to anyone (ADR 0031): the team
+   * of the first routing rule it matches. For tickets the AI is answering,
+   * which routing never saw: their team decides who may act on them and who
+   * decides their approvals. Nothing happens to a ticket that has a team.
+   */
+  async assignTeam(ticketId: string): Promise<string | null> {
+    const t = await this.tickets.get(ticketId);
+    if (t.team) return t.team.id;
+    const customer = await this.customers.get(t.customerId).catch(() => null);
+    const language = (t.aiClassification as { language?: string } | null)?.language ?? null;
+    const rule = (await this.listRules())
+      .filter((r) => r.enabled)
+      .find((r) =>
+        ruleMatches(r.conditions, {
+          channel: t.channel,
+          priority: t.priority,
+          categoryId: t.categoryId,
+          subcategoryId: t.subcategoryId,
+          language,
+          customerType: customer?.customerType ?? null,
+          tags: t.tags,
+        }),
+      );
+    // A rule with no conditions catches everything; it only sets a team once the ticket has a category.
+    if (!rule || (!Object.keys(rule.conditions).length && !t.categoryId)) return null;
+    await this.tickets.assign(SYSTEM_CTX, t.id, { teamId: rule.team.id });
+    return rule.team.id;
+  }
+
   async route(
     ticketId: string,
     opts: { teamId?: string | null; reason: string },

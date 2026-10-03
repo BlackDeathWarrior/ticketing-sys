@@ -53,4 +53,48 @@ export interface CurrentUser {
   name: string;
   roles: string[];
   permissions: string[];
+  /** The teams the person is on, and whether they are an admin of each (ADR 0031). */
+  teams?: Array<{ id: string; role: TeamRole }>;
+}
+
+/** A team member is a `member` or an `admin` of the team; a team can have several admins. */
+export const TEAM_ROLES = ['member', 'admin'] as const;
+export type TeamRole = (typeof TEAM_ROLES)[number];
+
+/**
+ * Whether a person may act on a ticket (ADR 0031): every team's tickets with
+ * `ticket:any_team` (super admins), a ticket with no team yet, or one of
+ * their own team's. Everyone with `ticket:read` may still read and add notes.
+ */
+export function canActOnTeam(
+  user: Pick<CurrentUser, 'permissions' | 'teams'>,
+  teamId: string | null | undefined,
+): boolean {
+  if (!teamId) return true;
+  if (user.permissions.includes('ticket:any_team')) return true;
+  return !!user.teams?.some((t) => t.id === teamId);
+}
+
+/**
+ * Whether a person may approve or reject a request (ADR 0031): a request
+ * that belongs to a team (the tool's approving team, else the ticket's) is
+ * decided by any member of that team; one without a team by holders of
+ * `approval:approve`. Super admins (`ticket:any_team`) decide any.
+ */
+export function canDecideApproval(
+  user: Pick<CurrentUser, 'permissions' | 'teams'>,
+  teamId: string | null | undefined,
+): boolean {
+  if (user.permissions.includes('ticket:any_team')) return true;
+  if (!teamId) return user.permissions.includes('approval:approve');
+  return !!user.teams?.some((t) => t.id === teamId);
+}
+
+/** Whether a person is an admin of the team (or may manage every team). */
+export function isTeamAdmin(
+  user: Pick<CurrentUser, 'permissions' | 'teams'>,
+  teamId: string,
+): boolean {
+  if (user.permissions.includes('team:manage')) return true;
+  return !!user.teams?.some((t) => t.id === teamId && t.role === 'admin');
 }

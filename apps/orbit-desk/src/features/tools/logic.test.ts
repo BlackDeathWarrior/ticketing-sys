@@ -58,6 +58,7 @@ describe('custom tool form', () => {
     tier: 'read',
     timeoutMs: 8000,
     customerArg: 'email',
+    approverTeamId: null,
     missing: false,
     custom: {
       method: 'GET',

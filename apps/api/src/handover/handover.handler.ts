@@ -118,13 +118,19 @@ export class RoutingHandler implements DomainEventHandler {
   ) {}
 
   handles(type: DomainEventType): boolean {
-    return type === 'ticket.created';
+    return type === 'ticket.created' || type === 'ticket.classified' || type === 'ticket.updated';
   }
 
   async handle(event: DomainEvent): Promise<void> {
+    const t = await this.tickets.get(event.aggregateId);
+    // A ticket the AI answers still belongs to a team (ADR 0031): once it has a category.
+    if (t.handling === 'ai') {
+      if (!t.team) await this.routing.assignTeam(t.id);
+      return;
+    }
+    if (event.type !== 'ticket.created') return;
     // Agents who log a ticket decide where it goes themselves.
     if (event.actor.type !== 'customer') return;
-    const t = await this.tickets.get(event.aggregateId);
     if (t.assignee || t.handling !== 'none') return;
     await this.routing.route(t.id, { reason: 'new ticket' });
   }

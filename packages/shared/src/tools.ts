@@ -86,6 +86,11 @@ export const updateToolSchema = z
     timeoutMs: z.number().int().min(1000).max(60_000),
     /** Argument filled with the ticket customer's email; hidden from the model. */
     customerArg: z.string().trim().min(1).max(60).nullable(),
+    /**
+     * The team that decides this tool's requests (for refunds: Payments). Null:
+     * the ticket's own team, or holders of `approval:approve` when it has none.
+     */
+    approverTeamId: z.string().uuid().nullable(),
   })
   .partial();
 export type UpdateToolInput = z.infer<typeof updateToolSchema>;
@@ -150,6 +155,8 @@ export interface ToolView {
   tier: ToolTier;
   timeoutMs: number;
   customerArg: string | null;
+  /** The team that decides its requests, when it is not the ticket's own team. */
+  approverTeamId: string | null;
   /** The tool disappeared from the server at the last sync. */
   missing: boolean;
   /** Set for custom (HTTP) tools; null for tools listed by an MCP server. */
@@ -172,6 +179,8 @@ export interface ApprovalView {
     customerArg: string | null;
   };
   args: Record<string, unknown>;
+  /** The team that decides it (ADR 0031); null: holders of `approval:approve`. */
+  teamId: string | null;
   /** One line for the inbox, e.g. "issue_refund: order DS-10388, 59.90". */
   summary: string;
   /** What the AI said about why it asked. */
@@ -208,7 +217,13 @@ export interface ToolCallView {
   error: string | null;
   latencyMs: number | null;
   createdAt: string;
-  approval: { id: string; status: ApprovalStatus; expiresAt: string } | null;
+  approval: {
+    id: string;
+    status: ApprovalStatus;
+    expiresAt: string;
+    /** The team that decides it; null for holders of `approval:approve`. */
+    teamId: string | null;
+  } | null;
 }
 
 /** One line describing a call's arguments, for inboxes and activity lists. */

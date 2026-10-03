@@ -66,6 +66,13 @@ export const PERMISSIONS = [
    */
   'integration:ticket',
   'integration:event',
+  /**
+   * Act on any team's tickets (ADR 0031). Without it a ticket that belongs to
+   * a team can be read and noted by anyone, but only its team acts on it.
+   */
+  'ticket:any_team',
+  /** Priority rules: what makes a ticket urgent, high, normal or low (ADR 0032). */
+  'settings:priority',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -125,8 +132,8 @@ export const SYSTEM_ROLES = {
     permissions: SUPERVISOR,
   },
   admin: {
-    name: 'Administrator',
-    description: 'Full access including settings',
+    name: 'Super admin',
+    description: 'Every permission, on every team’s tickets, including settings',
     permissions: [...PERMISSIONS],
   },
 } as const satisfies Record<
