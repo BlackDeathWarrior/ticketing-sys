@@ -403,6 +403,13 @@ function AddServer({ onAdded }: { onAdded: () => void }) {
           if (draft.authHeader !== undefined) setAuthHeader(keyHeaderChoice(draft.authHeader));
         }}
         placeholder="Connect our order system. Its documentation says the MCP address is https://orders.example.com/mcp and it needs a key."
+        connection={{
+          checkPath: '/tools/servers/check',
+          diagnosePath: '/ai/tool-helper/mcp-server/diagnose',
+          name: name.trim(),
+          url: url.trim(),
+          body: { url: url.trim(), authHeader: authHeader || null },
+        }}
       />
       <form className={settings.form} onSubmit={add} aria-label="Add an MCP server">
         <div className={settings.formRow}>

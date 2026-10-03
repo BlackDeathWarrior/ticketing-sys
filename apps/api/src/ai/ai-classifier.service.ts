@@ -1,6 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Database } from '@tms/db';
-import { type AiClassification, INCIDENT_TICKET_KIND, SENTIMENTS, smallTalk } from '@tms/shared';
+import {
+  type AiClassification,
+  INCIDENT_TICKET_KIND,
+  SENTIMENTS,
+  smallTalk,
+  TOOL_PROBLEM_TICKET_KIND,
+} from '@tms/shared';
 import { z } from 'zod';
 import { AI_CTX } from '../common/request-context';
 import { CustomersService } from '../customers/customers.service';
@@ -56,6 +62,8 @@ export class AiClassifierService {
     if (!ticket || ticket.aiClassification) return null;
     // An incident an app reported about itself: its severity and source are facts, not guesses.
     if (ticket.metadata.kind === INCIDENT_TICKET_KIND) return null;
+    // A connection that failed in Settings: logged by the desk itself, not written by a customer.
+    if (ticket.metadata.kind === TOOL_PROBLEM_TICKET_KIND) return null;
 
     const tree = await this.org.activeCategories();
     const labels = tree.flatMap((c) =>

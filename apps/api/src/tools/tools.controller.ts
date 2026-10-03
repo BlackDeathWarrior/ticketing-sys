@@ -14,6 +14,10 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
+  type CheckCustomToolInput,
+  checkCustomToolSchema,
+  type CheckMcpServerInput,
+  checkMcpServerSchema,
   createCustomToolSchema,
   type CreateMcpServerInput,
   createMcpServerSchema,
@@ -125,6 +129,22 @@ export class ToolsController {
   @RequirePermission('tool:create')
   async deleteCustom(@Ctx() ctx: RequestCtx, @Param('id', ParseUUIDPipe) id: string) {
     await this.tools.deleteCustom(ctx, id);
+  }
+
+  /** Whether the address in the custom tool form answers. Changes nothing, stores nothing. */
+  @Post('custom/check')
+  @HttpCode(200)
+  @RequirePermission('tool:create')
+  checkCustom(@Body(new ZodPipe(checkCustomToolSchema)) body: CheckCustomToolInput) {
+    return this.tools.checkCustom(body);
+  }
+
+  /** Whether the MCP server in the form answers and lists tools. Stores nothing. */
+  @Post('servers/check')
+  @HttpCode(200)
+  @RequirePermission('tool:manage')
+  checkServer(@Body(new ZodPipe(checkMcpServerSchema)) body: CheckMcpServerInput) {
+    return this.tools.checkServer(body);
   }
 
   /** Runs a custom read or write tool once, recorded like any call. */

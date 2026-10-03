@@ -1,20 +1,31 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import {
+  type ConnectionDiagnosis,
   type CustomToolDraft,
   customToolDraftSchema,
   type CustomToolHelperInput,
+  type DiagnoseConnectionInput,
   type McpServerDraft,
   mcpServerDraftSchema,
   type McpServerHelperInput,
+  TOOL_PROBLEM_TAG,
+  TOOL_PROBLEM_TICKET_KIND,
   type ToolHelperAnswer,
   type ToolHelperTurn,
 } from '@tms/shared';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import { InboundService } from '../channels/inbound.service';
+import type { RequestCtx } from '../common/request-context';
 import { LlmClientService } from '../llm/llm-client.service';
 import { ToolsService } from '../tools/tools.service';
 import { extractJson } from './json';
 import { leaksInternals } from './policy';
-import { customToolHelperPrompt, mcpServerHelperPrompt } from './prompts';
+import {
+  connectionDiagnosisPrompt,
+  customToolHelperPrompt,
+  mcpServerHelperPrompt,
+} from './prompts';
 
 const NOT_UNDERSTOOD =
   'I could not work that out. Please describe it again in other words: what should be looked up or changed, and in which system.';
@@ -32,6 +43,7 @@ export class AiToolHelperService {
   constructor(
     private readonly llm: LlmClientService,
     private readonly tools: ToolsService,
+    private readonly inbound: InboundService,
   ) {}
 
   async customTool(input: CustomToolHelperInput): Promise<ToolHelperAnswer<CustomToolDraft>> {
@@ -57,6 +69,105 @@ export class AiToolHelperService {
       missing: said.missing,
       model: said.model,
     };
+  }
+
+  /**
+   * Explains a failed connection check in plain words and saves it as a bug: a
+   * ticket a person can pick up, tagged `tool-bug`. The same address goes to
+   * the same ticket while it is open, so repeated tries add to it. The failure
+   * is saved even when no model is available to explain it.
+   */
+  async diagnose(
+    ctx: RequestCtx,
+    kind: 'custom_tool' | 'mcp_server',
+    input: DiagnoseConnectionInput,
+  ): Promise<ConnectionDiagnosis> {
+    const what = kind === 'mcp_server' ? 'MCP server' : 'custom tool';
+    const tried = {
+      what,
+      name: input.name || null,
+      address: `${input.method ? `${input.method} ` : ''}${input.url}`,
+      answerCode: input.check.status,
+      result: input.check.summary,
+      detail: input.check.detail,
+    };
+    let cause = input.check.summary;
+    let steps: string[] = [];
+    let model: string | null = null;
+    try {
+      const r = await this.llm.chat({
+        role: 'copilot',
+        messages: [
+          { role: 'system', content: connectionDiagnosisPrompt(kind) },
+          { role: 'user', content: `<check>\n${JSON.stringify(tried)}\n</check>` },
+        ],
+        responseFormat: { type: 'json_object' },
+        // Room for a model that reasons before it answers.
+        maxTokens: 1500,
+        temperature: 0.2,
+      });
+      const said = (extractJson(r.completion.choices[0]?.message.content ?? '') ?? {}) as {
+        cause?: unknown;
+        steps?: unknown;
+      };
+      const text = typeof said.cause === 'string' ? said.cause.trim().slice(0, 800) : '';
+      if (text && !leaksInternals(text)) cause = text;
+      if (Array.isArray(said.steps)) {
+        steps = said.steps
+          .filter(
+            (s): s is string => typeof s === 'string' && s.trim() !== '' && !leaksInternals(s),
+          )
+          .slice(0, 5)
+          .map((s) => s.trim().slice(0, 300));
+      }
+      model = r.model;
+    } catch (err) {
+      // Without a model the failure is still worth a ticket; the check's own words stand in.
+      this.logger.warn(`connection diagnosis: ${(err as Error).message.slice(0, 200)}`);
+    }
+
+    const label = input.name || input.url;
+    const lines = [
+      `A connection check failed for the ${what} "${label}".`,
+      '',
+      `Address: ${tried.address}`,
+      `What came back: ${input.check.status ?? 'no answer'}. ${input.check.summary}`,
+      ...(input.check.detail ? [`Detail: ${input.check.detail}`] : []),
+      '',
+      `Likely cause${model ? ' (worked out by the AI helper)' : ''}: ${cause}`,
+      ...(steps.length ? ['What to try:', ...steps.map((s) => `- ${s}`)] : []),
+      '',
+      `Checked by ${ctx.user?.name ?? 'a colleague'} in Settings, Tools.`,
+    ];
+    let bug: ConnectionDiagnosis['bug'] = null;
+    try {
+      const saved = await this.inbound.handle({
+        channel: 'agent',
+        // The address is the thread: another failed try joins the ticket while it is open.
+        threadKey: `tool-problem:${kind}:${createHash('sha256').update(input.url).digest('hex').slice(0, 32)}`,
+        channelMessageId: `tool-problem:${randomUUID()}`,
+        from: {
+          identity: { type: 'external_id', value: 'desk:tool-checks' },
+          displayName: 'Tool checks (automatic reports)',
+        },
+        subject: `Tool problem: ${label}`.slice(0, 300),
+        text: lines.join('\n'),
+        receivedAt: new Date().toISOString(),
+        metadata: { via: 'tool-helper', reportedBy: ctx.user?.id ?? null },
+        ticket: {
+          tags: [TOOL_PROBLEM_TAG],
+          metadata: { kind: TOOL_PROBLEM_TICKET_KIND, what, address: tried.address },
+        },
+        // A person fixes a connection; there is no customer to answer.
+        ai: 'off',
+      });
+      if (saved.ticketReference) {
+        bug = { reference: saved.ticketReference, created: saved.createdTicket };
+      }
+    } catch (err) {
+      this.logger.error(`connection diagnosis: the bug was not saved: ${(err as Error).message}`);
+    }
+    return { cause, steps, bug, model };
   }
 
   private async ask(system: string, turns: ToolHelperTurn[], draft: object | undefined) {

@@ -234,6 +234,19 @@ function CustomToolDialog({
           draft={helperDraftOf(form)}
           onDraft={(draft) => setForm((f) => withHelperDraft(f, draft, !!tool))}
           placeholder="Look up how many of a product we have in stock, from our warehouse system at https://warehouse.example.com"
+          connection={{
+            checkPath: '/tools/custom/check',
+            diagnosePath: '/ai/tool-helper/custom-tool/diagnose',
+            name: form.title.trim() || form.name.trim(),
+            method: form.method,
+            url: form.url.trim(),
+            body: {
+              method: form.method,
+              url: form.url.trim(),
+              authHeader: form.authHeader || null,
+              ...(tool ? { toolId: tool.id } : {}),
+            },
+          }}
         />
         <div className={settings.formRow}>
           <Input

@@ -274,6 +274,33 @@
   color: var(--color-ash);
 }
 
+.helperCheck {
+  display: grid;
+  gap: var(--spacing-8);
+  padding-top: var(--spacing-12);
+  border-top: 1px solid var(--line-subtle);
+  font-size: var(--text-ui);
+  overflow-wrap: anywhere;
+}
+
+.helperCheck p {
+  margin: 0;
+}
+
+.helperSteps {
+  display: grid;
+  gap: var(--spacing-4);
+  margin: 0;
+  padding-left: var(--spacing-20);
+}
+
+.helperActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
 /* Custom tools */
 .request {
   display: flex;
