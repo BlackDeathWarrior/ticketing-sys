@@ -196,7 +196,9 @@ export class PhoneVerificationService {
 
   /** Keyed with the server's secret and bound to the row, so a leaked table cannot be brute-forced offline. */
   private hash(id: string, code: string): string {
-    return createHmac('sha256', this.env.JWT_SECRET).update(`phone-code:${id}:${code}`).digest('hex');
+    return createHmac('sha256', this.env.JWT_SECRET)
+      .update(`phone-code:${id}:${code}`)
+      .digest('hex');
   }
 
   private matches(stored: string, given: string): boolean {
