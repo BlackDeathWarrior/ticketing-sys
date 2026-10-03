@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { baseLanguage } from '@tms/shared';
+import { baseLanguage, VOICE_LANGUAGES } from '@tms/shared';
 import { ChannelConfigService } from '../../settings/channel-config.service';
 
 const TIMEOUT_MS = 10_000;
+const RECORDING_TIMEOUT_MS = 60_000;
+/** About an hour and a half of the audio Sarvam returns; anything larger is not a call. */
+const RECORDING_MAX_BYTES = 120 * 1024 * 1024;
 
 export interface PhoneTranscript {
   turns: Array<{ role: 'caller' | 'agent'; text: string }>;
@@ -26,16 +29,42 @@ export class SarvamAgentsClient {
   async transcript(interactionId: string): Promise<PhoneTranscript | null> {
     const c = await this.channels.phone();
     if (!c?.apiKey) throw new Error('The Voice Agents API key is not set');
-    const path = ['api/analytics/v1', c.orgId, c.workspaceId, c.appId, 'transcripts', interactionId]
-      .map((part, i) => (i === 0 ? part : encodeURIComponent(part)))
-      .join('/');
-    const res = await fetch(new URL(`/${path}`, this.channels.sarvamAgentsUrl), {
+    const res = await fetch(this.url(c, 'transcripts', interactionId), {
       headers: { 'X-API-Key': c.apiKey },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`Sarvam answered HTTP ${res.status} for the transcript`);
     return parseTranscript(await res.json());
+  }
+
+  /**
+   * The call's recording as Sarvam keeps it (a WAV file, seen on the first
+   * real call), or null when there is none, it is not ready, or it is not a
+   * WAV of a sensible size.
+   */
+  async recording(interactionId: string): Promise<Buffer | null> {
+    const c = await this.channels.phone();
+    if (!c?.apiKey) return null;
+    const res = await fetch(this.url(c, 'recordings', interactionId), {
+      headers: { 'X-API-Key': c.apiKey },
+      signal: AbortSignal.timeout(RECORDING_TIMEOUT_MS),
+    });
+    if (!res.ok || !(res.headers.get('content-type') ?? '').startsWith('audio/')) return null;
+    const wav = Buffer.from(await res.arrayBuffer());
+    const isWav = wav.subarray(0, 4).toString('latin1') === 'RIFF';
+    return isWav && wav.length <= RECORDING_MAX_BYTES ? wav : null;
+  }
+
+  private url(
+    c: { orgId: string; workspaceId: string; appId: string },
+    kind: 'transcripts' | 'recordings',
+    interactionId: string,
+  ): URL {
+    const path = [c.orgId, c.workspaceId, c.appId, kind, interactionId]
+      .map(encodeURIComponent)
+      .join('/');
+    return new URL(`/api/analytics/v1/${path}`, this.channels.sarvamAgentsUrl);
   }
 }
 
@@ -78,14 +107,33 @@ export function parseTranscript(body: unknown): PhoneTranscript {
   const seconds = [root.duration, root.duration_in_seconds].find(
     (v): v is number => typeof v === 'number' && v >= 0,
   );
-  const language = [root.language, root.language_code, root.language_name].find(
-    (v): v is string => typeof v === 'string',
-  );
+  // Sarvam names the language on each turn ("Hindi"): the call's is the caller's first.
+  const firstCaller = raw.find((x) =>
+    CALLER_ROLES.includes(String((x as Record<string, unknown>)?.role ?? '').toLowerCase()),
+  ) as Record<string, unknown> | undefined;
+  const language = [
+    root.language,
+    root.language_code,
+    root.language_name,
+    firstCaller?.language_name,
+    firstCaller?.language,
+  ].find((v): v is string => typeof v === 'string' && v.length > 0);
   return {
     turns,
     seconds: seconds === undefined ? null : Math.round(seconds),
-    language: baseLanguage(language),
+    language: languageCode(language),
   };
+}
+
+/** `Hindi` or `hi-IN` → `hi`; a language we have no name for is left out. */
+function languageCode(value: string | undefined): string | null {
+  if (!value) return null;
+  const byName = Object.entries(VOICE_LANGUAGES).find(
+    ([, l]) => l.name.toLowerCase() === value.trim().toLowerCase(),
+  );
+  if (byName) return byName[0];
+  const base = baseLanguage(value);
+  return base && base in VOICE_LANGUAGES ? base : null;
 }
 
 function turnsOf(x: unknown): unknown[] | null {

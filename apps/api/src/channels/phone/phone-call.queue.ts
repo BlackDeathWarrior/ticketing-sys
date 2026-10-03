@@ -129,7 +129,10 @@ export class PhoneCallWorker implements OnApplicationBootstrap, BeforeApplicatio
       return;
     }
     return withSpan('phone call close', { parent: d.trace, kind: SpanKind.CONSUMER }, async () => {
-      const outcome = await this.closer.close(d.interactionId, d.hint);
+      // The first try waits for the recording; after that the ticket is written without it.
+      const outcome = await this.closer.close(d.interactionId, d.hint, {
+        waitForRecording: job.attemptsMade === 0,
+      });
       this.logger.debug(`phone call ${job.id}: ${outcome}`);
     });
   }
