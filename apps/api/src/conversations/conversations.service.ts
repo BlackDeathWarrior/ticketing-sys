@@ -7,12 +7,13 @@ import {
   messages,
   users,
 } from '@tms/db';
-import type {
-  Channel,
-  ChatMessageView,
-  ConversationController,
-  DeliveryStatus,
-  MessageAuthor,
+import {
+  type Channel,
+  type ChatMessageView,
+  type ConversationController,
+  type DeliveryStatus,
+  type MessageAuthor,
+  messageCardSchema,
 } from '@tms/shared';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
@@ -451,7 +452,8 @@ export class ConversationsService {
 
   /**
    * Records the outcome of a delivery attempt. `channelMessageId` is the id
-   * the provider gave the message, so later status reports can find it.
+   * the provider gave the message, so later status reports can find it;
+   * `metadata` is merged into the message's own in the same write.
    */
   async markDelivery(
     ctx: RequestCtx,
@@ -460,6 +462,7 @@ export class ConversationsService {
     status: DeliveryStatus,
     error?: string,
     channelMessageId?: string,
+    metadata?: Record<string, unknown>,
   ) {
     await this.db.transaction(async (tx) => {
       await tx
@@ -469,6 +472,9 @@ export class ConversationsService {
           deliveryError: error ?? null,
           ...(status === 'sent' ? { sentAt: new Date() } : {}),
           ...(channelMessageId ? { channelMessageId } : {}),
+          ...(metadata && Object.keys(metadata).length
+            ? { metadata: sql`${messages.metadata} || ${JSON.stringify(metadata)}::jsonb` }
+            : {}),
         })
         .where(eq(messages.id, messageId));
       await this.recordDelivery(tx, ctx, messageId, ticketId, status, error);
@@ -522,6 +528,57 @@ export class ConversationsService {
         status === 'failed' ? opts.error : undefined,
       );
       return 'applied';
+    });
+  }
+
+  /**
+   * Puts a failed message whose cards Meta accepted but could not deliver back
+   * to the state a new outbound message has, and queues it again; the sender
+   * then sends it as plain text. This is the one deliberate exception to
+   * "statuses only move forward" (`applyProviderStatus`), and it happens once
+   * per message: `cardsDropped` marks it, and a message that has it, has no
+   * valid cards or is not failed is left alone. Returns whether it requeued.
+   */
+  async requeueWithoutCards(messageId: string, reason: string): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const message = await this.lockMessage(tx, messageId);
+      if (
+        message.direction !== 'outbound' ||
+        message.deliveryStatus !== 'failed' ||
+        message.metadata.cardsDropped !== undefined ||
+        !(messageCardSchema.array().min(1).safeParse(message.metadata.cards).success)
+      ) {
+        return false;
+      }
+      const conversation = await this.lock(tx, message.conversationId);
+      await tx
+        .update(messages)
+        .set({
+          deliveryStatus: 'pending',
+          deliveryError: null,
+          channelMessageId: null,
+          sentAt: null,
+          metadata: { ...message.metadata, cardsDropped: reason },
+        })
+        .where(eq(messages.id, messageId));
+      await this.audit.record(tx, SYSTEM_CTX, {
+        action: 'message.requeued_without_cards',
+        targetType: 'message',
+        targetId: messageId,
+        data: { reason },
+      });
+      // The event a new outbound message publishes (OutboundService.replyInTx).
+      await this.outbox.publish(tx, SYSTEM_CTX, {
+        type: 'message.outbound',
+        aggregateType: 'ticket',
+        aggregateId: conversation.ticketId,
+        payload: {
+          conversationId: conversation.id,
+          messageId,
+          channel: conversation.channel,
+        },
+      });
+      return true;
     });
   }
 

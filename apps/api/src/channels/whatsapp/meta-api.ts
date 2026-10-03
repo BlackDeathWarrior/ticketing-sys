@@ -7,6 +7,15 @@
  * original pinned v21.0), every call has a timeout, template components are
  * built by the caller, and only the calls a helpdesk needs are kept.
  */
+import {
+  CARD_LIKE,
+  CARD_VIEW,
+  cardBody,
+  cardButtonId,
+  MAX_CARDS,
+  type MessageCard,
+  WA_CAROUSEL_BODY_MAX,
+} from '@tms/shared';
 import { isBusinessScopedUserId } from './wa-identity';
 
 /** Where the Graph API lives and which version to call. */
@@ -248,7 +257,7 @@ function recipientFields(to: string): Record<string, unknown> {
     : { recipient_type: 'individual', to };
 }
 
-interface SendArgs extends Credentials {
+export interface SendArgs extends Credentials {
   phoneNumberId: string;
   to: string;
   /** Meta's id of the message being replied to; WhatsApp shows a quote. */
@@ -291,6 +300,76 @@ export function sendTemplateMessage(
   };
   if (args.components.length > 0) template.components = args.components;
   return postMessage(args, { type: 'template', template });
+}
+
+/**
+ * The `type` Meta wants on a carousel card. "cta_url" on a card that carries
+ * quick-reply buttons is what Meta's own quick-reply example showed; it looks
+ * odd and no real send has proven it yet. If Meta refuses it, this is the one
+ * line to change (its error names the field).
+ */
+const CAROUSEL_CARD_TYPE = 'cta_url';
+
+/**
+ * The buttons a card carries: "I like this", and "View product" when it can
+ * open a link. Meta wants the same buttons on every card of a carousel, so
+ * the caller says whether all of them have a link. The two kinds of message
+ * wrap a button differently: `quick_reply` on a card, `reply` on a single card.
+ */
+function cardButtons(card: MessageCard, withView: boolean, shape: 'quick_reply' | 'reply') {
+  const buttons = [{ id: cardButtonId('like', card.id), title: CARD_LIKE }];
+  if (withView) buttons.push({ id: cardButtonId('view', card.id), title: CARD_VIEW });
+  return buttons.map((button) => ({ type: shape, [shape]: button }));
+}
+
+/**
+ * Sends the reply with 2 to 10 picture cards under it as one carousel. A
+ * service message: it only works inside the 24-hour customer service window.
+ */
+export function sendCarouselMessage(
+  args: SendArgs & { body: string; cards: MessageCard[] },
+): Promise<MetaSendResult> {
+  if (args.cards.length < 2 || args.cards.length > MAX_CARDS) {
+    throw new RangeError(`A carousel holds 2 to ${MAX_CARDS} cards`);
+  }
+  const withView = args.cards.every((card) => !!card.url);
+  return postMessage(args, {
+    type: 'interactive',
+    interactive: {
+      type: 'carousel',
+      body: { text: args.body },
+      action: {
+        cards: args.cards.map((card, index) => ({
+          card_index: index,
+          type: CAROUSEL_CARD_TYPE,
+          header: { type: 'image', image: { link: card.imageUrl } },
+          body: { text: cardBody(card) },
+          action: { buttons: cardButtons(card, withView, 'quick_reply') },
+        })),
+      },
+    },
+  });
+}
+
+/**
+ * Sends the reply with one picture card, as Meta's ordinary reply-button
+ * message (a carousel needs two cards). The card's text follows the reply.
+ */
+export function sendCardMessage(
+  args: SendArgs & { body: string; card: MessageCard },
+): Promise<MetaSendResult> {
+  let text = `${args.body}\n\n${cardBody(args.card)}`.slice(0, WA_CAROUSEL_BODY_MAX);
+  // Do not leave half of an emoji behind.
+  if (/[\ud800-\udbff]$/.test(text)) text = text.slice(0, -1);
+  return postMessage(args, {
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      header: { type: 'image', image: { link: args.card.imageUrl } },
+      body: { text },
+      action: { buttons: cardButtons(args.card, !!args.card.url, 'reply') },
+    },
+  });
 }
 
 // ---- Media ----

@@ -78,6 +78,7 @@ export class DeliveryHandler implements DomainEventHandler {
       'sent',
       undefined,
       receipt?.channelMessageId,
+      receipt?.metadata,
     );
   }
 }
