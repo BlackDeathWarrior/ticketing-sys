@@ -116,8 +116,7 @@ export function withCardsField(tools: ChatCompletionTool[]): ChatCompletionTool[
             cards: {
               type: 'array',
               items: { type: 'string' },
-              description:
-                `Ids of the items to show as picture cards (up to ${MAX_CARDS}), from the \`cards\` a tool returned this turn`,
+              description: `Ids of the items to show as picture cards (up to ${MAX_CARDS}), from the \`cards\` a tool returned this turn`,
             },
           },
         },
