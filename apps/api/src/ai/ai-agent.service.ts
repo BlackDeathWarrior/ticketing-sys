@@ -12,6 +12,10 @@ import {
   type SimulateAiResult,
   describeArgs,
   normalizeIdentity,
+  cardsFromToolResult,
+  MAX_CARDS,
+  messageCardSchema,
+  type MessageCard,
 } from '@tms/shared';
 import Redis from 'ioredis';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
@@ -63,6 +67,7 @@ import { blankResult, type ThinkResult } from './think-result';
 import { type Counters, startTurn, turnFacts } from './turn-plan';
 import {
   AGENT_TOOLS,
+  withCardsField,
   parseArgs,
   requestHumanArgs,
   searchArgs,
@@ -84,6 +89,22 @@ export class ConversationBusyError extends Error {
 }
 
 type Line = { author: 'customer' | 'ai' | 'agent'; body: string };
+
+/**
+ * A stored message as the model reads it. An answer that showed cards says which,
+ * so a later "the second one" can be matched to an id. Titles and ids come from an
+ * outside app: they sit in the line as data, like a tool result.
+ */
+function lineOf(m: { authorType: string; body: string; metadata: unknown }): Line {
+  const author = m.authorType as Line['author'];
+  if (author === 'customer') return { author, body: m.body };
+  const shown = messageCardSchema
+    .array()
+    .safeParse((m.metadata as { cards?: unknown } | null)?.cards);
+  if (!shown.success || !shown.data.length) return { author, body: m.body };
+  const list = shown.data.map((c) => `${c.title} (${c.id})`).join('; ');
+  return { author, body: `${m.body}\n[Cards shown: ${list}]` };
+}
 
 interface ThinkInput {
   channel: string;
@@ -292,7 +313,7 @@ export class AiAgentService {
           transcript: rows
             .filter((m) => m.authorType !== 'system')
             .slice(-HISTORY_TAIL)
-            .map((m) => ({ author: m.authorType as Line['author'], body: m.body })),
+            .map(lineOf),
           summary: conv.summary,
           ticket: {
             id: ticket.id,
@@ -503,7 +524,7 @@ export class AiAgentService {
           const { ticket, customer, summary } = await rest();
           const transcript: Line[] = rows
             .filter((m) => m.authorType !== 'system')
-            .map((m) => ({ author: m.authorType as Line['author'], body: m.body }));
+            .map(lineOf);
           const unconfidentBefore = await this.runs.unconfidentTurns(
             conv.id,
             behaviour.sendAt,
@@ -652,6 +673,8 @@ export class AiAgentService {
                 ...(asks ? { closingQuestion: true } : {}),
                 ...(r.rules.includes('person_offered') ? { personOffer: true } : {}),
               },
+              // A draft keeps its cards too: a person who sends it sends them.
+              ...(r.cards.length ? { cards: r.cards } : {}),
             },
           },
           tx,
@@ -817,6 +840,10 @@ export class AiAgentService {
     const builtIn = AGENT_TOOLS.filter(
       (t) => !(t.type === 'function' && t.function.name === 'update_ticket') || !i.ticket.category,
     );
+    // Only WhatsApp shows cards, and only items a company tool returned can be shown.
+    const cardsOffered = i.channel === 'whatsapp' && companyTools.length > 0;
+    /** The cards company tools returned this turn, by id: the only ones the reply may show. */
+    const cardsSeen = new Map<string, MessageCard>();
     let usedCompanyTool = false;
     /** A company system answered this turn: what it said may be passed on. */
     let readByTool = false;
@@ -838,6 +865,7 @@ export class AiAgentService {
           knowledge: knowledge.map((k) => ({ id: k.id, label: k.source, text: k.text })),
           categories,
           companyTools: companyTools.length > 0,
+          cards: cardsOffered,
           unverified:
             allTools.length > companyTools.length
               ? i.channel === 'whatsapp'
@@ -882,7 +910,10 @@ export class AiAgentService {
         const r = await this.llm.chat({
           role: i.channel === 'voice' ? 'chat_agent_voice' : 'chat_agent',
           messages,
-          tools: [...builtIn, ...companyTools.map((t) => t.definition)],
+          tools: [
+            ...(cardsOffered ? withCardsField(builtIn) : builtIn),
+            ...companyTools.map((t) => t.definition),
+          ],
           // The reply is short; the rest is room for models that reason before they answer.
           maxTokens: 1200,
           temperature: 0.2,
@@ -983,7 +1014,10 @@ export class AiAgentService {
               });
             }
             if (res.status === 'ok' && ct.tool.tier !== 'read') confirmed = true;
-            if (res.status === 'ok') readByTool = true;
+            if (res.status === 'ok') {
+              readByTool = true;
+              for (const card of cardsFromToolResult(res.result)) cardsSeen.set(card.id, card);
+            }
             usedCompanyTool = true;
           }
         }
@@ -1039,6 +1073,12 @@ export class AiAgentService {
     out.resolves = !!a.resolves_issue;
     out.offTopic = !!a.off_topic;
     out.sources = [...cited.map((id) => ({ chunkId: id, label: labels.get(id)! })), ...toolSources];
+    // Ids from an earlier turn or made up are dropped; the model's order stays, repeats go.
+    if (cardsOffered) {
+      out.cards = [...new Set(a.cards)]
+        .flatMap((id) => cardsSeen.get(id) ?? [])
+        .slice(0, MAX_CARDS);
+    }
     if (fast) {
       if (!i.dryRun) await this.fast.count(fast.route);
     } else if (

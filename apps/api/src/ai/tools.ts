@@ -1,4 +1,5 @@
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
+import { MAX_CARDS } from '@tms/shared';
 import { z } from 'zod';
 
 /**
@@ -96,6 +97,35 @@ export const AGENT_TOOLS: ChatCompletionTool[] = [
   },
 ];
 
+/**
+ * The tools for a turn that may show cards: `send_reply` also takes the ids of the
+ * cards to show. A copy; the shared list stays as it is for every other turn.
+ */
+export function withCardsField(tools: ChatCompletionTool[]): ChatCompletionTool[] {
+  return tools.map((t) => {
+    if (t.type !== 'function' || t.function.name !== 'send_reply') return t;
+    const parameters = t.function.parameters as { properties: Record<string, unknown> };
+    return {
+      ...t,
+      function: {
+        ...t.function,
+        parameters: {
+          ...parameters,
+          properties: {
+            ...parameters.properties,
+            cards: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'Ids of the items to show as picture cards, from the `cards` a tool returned this turn',
+            },
+          },
+        },
+      },
+    };
+  });
+}
+
 export const searchArgs = z.object({ query: z.string().trim().min(1).max(500) });
 export const updateTicketArgs = z.object({
   category: z.string().trim().max(200).optional(),
@@ -111,6 +141,8 @@ export const sendReplyArgs = z.object({
   intent: z.string().trim().max(60).optional(),
   resolves_issue: z.boolean().optional(),
   off_topic: z.boolean().optional().catch(undefined),
+  // Ids of cards a tool returned this turn; think() keeps only those and only on WhatsApp.
+  cards: z.array(z.string().trim().max(100)).max(MAX_CARDS).default([]).catch([]),
 });
 
 /** Parses a tool call's JSON arguments; returns the zod error message on failure. */
