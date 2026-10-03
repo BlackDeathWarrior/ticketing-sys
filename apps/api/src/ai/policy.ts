@@ -127,7 +127,8 @@ export function waitingMessage(language: string | null): string {
   return 'Thanks for your message. I want to be sure you get the right answer, so a member of our team will reply here shortly.';
 }
 
-const byEmail = (channel: string) => channel === 'email' || channel === 'web_form';
+/** Channels answered by email: no fixed one-liners, no warnings or closing by the AI alone. */
+export const byEmail = (channel: string) => channel === 'email' || channel === 'web_form';
 
 /**
  * "Is there anything else?", added to an answer that settles the request.
