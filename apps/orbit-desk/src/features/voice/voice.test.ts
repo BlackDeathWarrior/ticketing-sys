@@ -8,6 +8,8 @@ const call = (over: Partial<VoiceCallView> = {}): VoiceCallView => ({
   ticketId: 't1',
   conversationId: 'v1',
   status: 'ended',
+  transport: 'browser',
+  direction: 'inbound',
   state: null,
   startedAt: '2026-10-01T14:05:00Z',
   endedAt: '2026-10-01T14:08:20Z',

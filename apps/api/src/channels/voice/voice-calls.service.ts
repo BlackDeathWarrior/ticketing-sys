@@ -7,14 +7,14 @@ import {
   type VoiceEndReason,
   type VoiceState,
 } from '@tms/shared';
-import { and, desc, eq, isNotNull, lt } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, lt, sql } from 'drizzle-orm';
 import { AuditService } from '../../audit/audit.service';
 import { OutboxService } from '../../audit/outbox.service';
 import { type RequestCtx, SYSTEM_CTX } from '../../common/request-context';
 import { DB } from '../../infra/tokens';
 import { StorageService } from '../../storage/storage.service';
 
-type CallRow = typeof voiceCalls.$inferSelect;
+export type CallRow = typeof voiceCalls.$inferSelect;
 const DAY_MS = 86_400_000;
 
 /**
@@ -111,12 +111,108 @@ export class VoiceCallsService {
     });
   }
 
-  /** Calls left "active" by a server that stopped without ending them. */
+  // ---- Phone calls (ADR 0039): the call happens at Sarvam, we hear about it through hooks ----
+
+  /**
+   * The phone agent told us about a call (its start hook, or the first tool
+   * it used). Asked again for the same call, this returns the same row, and
+   * fills in the caller's number if it was not known yet.
+   */
+  async beginPhone(i: { interactionId: string; phone: string | null }): Promise<CallRow> {
+    return this.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(voiceCalls)
+        .values({
+          transport: 'phone',
+          providerCallId: i.interactionId,
+          callerPhone: i.phone,
+          // The phone agent's greeting says the call is transcribed.
+          consentAt: new Date(),
+        })
+        .onConflictDoNothing({ target: voiceCalls.providerCallId })
+        .returning();
+      if (created) {
+        await this.changed(tx, SYSTEM_CTX, 'voice.call_started', created, { transport: 'phone' });
+        return created;
+      }
+      const [existing] = await tx
+        .select()
+        .from(voiceCalls)
+        .where(eq(voiceCalls.providerCallId, i.interactionId));
+      if (i.phone && !existing!.callerPhone) {
+        const [row] = await tx
+          .update(voiceCalls)
+          .set({ callerPhone: i.phone })
+          .where(eq(voiceCalls.id, existing!.id))
+          .returning();
+        return row!;
+      }
+      return existing!;
+    });
+  }
+
+  async byProvider(interactionId: string): Promise<CallRow | null> {
+    const [row] = await this.db
+      .select()
+      .from(voiceCalls)
+      .where(eq(voiceCalls.providerCallId, interactionId));
+    return row ?? null;
+  }
+
+  /**
+   * A tool call made before the call has a ticket; linked to it when the call
+   * ends. Bookkeeping for that link, so it is not audited (the tool call is).
+   */
+  async noteToolCall(id: string, toolCallId: string): Promise<void> {
+    await this.db
+      .update(voiceCalls)
+      .set({
+        toolCallIds: sql`${voiceCalls.toolCallIds} || ${JSON.stringify([toolCallId])}::jsonb`,
+      })
+      .where(eq(voiceCalls.id, id));
+  }
+
+  /** The phone agent asked for a person; the handover is made when the call ends. */
+  async markHandover(id: string, reason: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(voiceCalls)
+        .set({ handoverReason: reason.slice(0, 500) })
+        .where(eq(voiceCalls.id, id))
+        .returning();
+      if (row) await this.changed(tx, SYSTEM_CTX, 'voice.call_updated', row, { handover: true });
+    });
+  }
+
+  /** How far the transcript has been written to the ticket. A counter: not audited. */
+  async importedUpTo(id: string, turns: number): Promise<void> {
+    await this.db.update(voiceCalls).set({ importedTurns: turns }).where(eq(voiceCalls.id, id));
+  }
+
+  /** Phone calls still open long after they began: the "ended" trigger never came. */
+  async stalePhoneCalls(olderThanMinutes: number, now = new Date()): Promise<CallRow[]> {
+    return this.db
+      .select()
+      .from(voiceCalls)
+      .where(
+        and(
+          eq(voiceCalls.status, 'active'),
+          eq(voiceCalls.transport, 'phone'),
+          lt(voiceCalls.startedAt, new Date(now.getTime() - olderThanMinutes * 60_000)),
+        ),
+      )
+      .limit(100);
+  }
+
+  /**
+   * Calls left "active" by a server that stopped without ending them. Phone
+   * calls are not ours to end: they live at Sarvam and are closed by their own job.
+   */
   async closeAbandoned(): Promise<number> {
     const rows = await this.db
       .select({ id: voiceCalls.id, startedAt: voiceCalls.startedAt })
       .from(voiceCalls)
-      .where(eq(voiceCalls.status, 'active'));
+      .where(and(eq(voiceCalls.status, 'active'), eq(voiceCalls.transport, 'browser')));
     for (const row of rows) {
       await this.finish(row.id, {
         reason: 'server_shutdown',
@@ -151,6 +247,8 @@ export class VoiceCallsService {
       ticketId: call.ticketId,
       conversationId: call.conversationId,
       status: call.status as 'active' | 'ended',
+      transport: call.transport as VoiceCallView['transport'],
+      direction: call.direction as VoiceCallView['direction'],
       state: call.status === 'active' ? live(call.id) : null,
       startedAt: call.startedAt.toISOString(),
       endedAt: call.endedAt?.toISOString() ?? null,
