@@ -168,6 +168,7 @@ export class PhoneVerificationService {
         });
       }
       await this.customers.provePhone(tx, ctx, person.id, phone);
+      if (customer.title) await this.customers.setTitleInTx(tx, ctx, person.id, customer.title);
     });
     return { verified: true, phone };
   }

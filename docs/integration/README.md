@@ -243,7 +243,7 @@ Both answer `200`. The first returns when the code expires and how it was sent, 
 { "verified": true, "phone": "919830012345" }
 ```
 
-- `customer.externalId` is your own id for the person, the same one your ticket calls use. `email` and `name` are optional. Only the check call uses them: the send call accepts them and does nothing with them. In the check call, an `email` is stored as a verified email for the customer, as it is when you raise a ticket.
+- `customer.externalId` is your own id for the person, the same one your ticket calls use. `email` and `name` are optional. Only the check call uses them: the send call accepts them and does nothing with them. In the check call, an `email` is stored as a verified email for the customer, as it is when you raise a ticket, and a `title` (`Mr.`, `Ms.`, `Mrs.`, `Mx.` or `Dr.`: how the person chose to be addressed) is kept so the AI can address them by it. Send a title only when the person chose it; the AI never works one out from a name.
 - `phone` is the full international number, 8 to 15 digits. Spaces, dashes and a leading `+` are ignored. Use the same number in both calls.
 - `sentVia` is `template` when TMS used an approved WhatsApp authentication template (it works at any time) and `text` when it sent plain text, which WhatsApp allows only to a number that wrote in the last 24 hours.
 - The code is sent inside the request. If Meta refuses it, the call fails with the reason, so your app can tell the user at once. Nothing is stored when the send fails.

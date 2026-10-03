@@ -46,6 +46,7 @@ import { TemplateComposer } from '../whatsapp/TemplateComposer';
 import kbStyles from '../kb/Kb.module.css';
 import { useGet } from '../../lib/useGet';
 import { CustomerFlags } from './CustomerFlags';
+import { CustomerPhone } from './CustomerPhone';
 import {
   Avatar,
   Badge,
@@ -453,6 +454,11 @@ function DrawerContent({
                 {ticket.customer.name}
               </dd>
             </div>
+            <CustomerPhone
+              customerId={ticket.customer.id}
+              phone={ticket.customer.phone}
+              liveTick={liveTick}
+            />
             <div>
               <dt>Company</dt>
               <dd>

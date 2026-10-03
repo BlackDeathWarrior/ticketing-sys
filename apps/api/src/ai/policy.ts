@@ -200,12 +200,19 @@ export function approvalOutcomeMessage(
 export function smallTalkReply(
   kind: 'greeting' | 'thanks' | 'help',
   language: string | null,
+  /** How to address the customer ("Ms. Verma", "Asha"), when their name is known. */
+  name?: string | null,
 ): string {
   const hi = language === 'hi';
   if (kind === 'greeting') {
+    if (name) {
+      return hi
+        ? `नमस्ते ${name}! मैं आपकी कैसे मदद कर सकता हूँ?`
+        : `Hello ${name}! How can I help you today?`;
+    }
     return hi ? 'नमस्ते! मैं आपकी कैसे मदद कर सकता हूँ?' : 'Hello! How can I help you today?';
   }
-  if (kind === 'thanks') return hi ? 'आपका स्वागत है।' : 'You are welcome.';
+  if (kind === 'thanks') return hi ? 'आपका स्वागत है।' : "You're welcome!";
   return hi
     ? 'मैं यहाँ हूँ और मदद के लिए तैयार हूँ। कृपया थोड़ा और बताएँ कि आपको क्या चाहिए: जैसे आपका ऑर्डर नंबर, या बात किस बारे में है।'
     : 'I am here and happy to help. Could you tell me a little more about what you need? For example your order number, or what it is about.';

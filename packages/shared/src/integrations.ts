@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { normalizeIdentity } from './customers';
+import { customerTitleSchema, normalizeIdentity } from './customers';
 import type { Permission } from './permissions';
 import {
   externalRefSchema,
@@ -342,6 +342,8 @@ const phoneCustomerSchema = z.object({
   externalId: z.string().trim().min(1).max(200),
   email: z.string().trim().email().max(320).optional(),
   name: z.string().trim().min(1).max(200).optional(),
+  /** How the person chose to be addressed; the AI then uses it with their name. */
+  title: customerTitleSchema.optional(),
 });
 
 /** Digits only, country code included: "+91 98300-12345" and "919830012345" are the same number. */
