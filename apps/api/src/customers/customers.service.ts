@@ -669,7 +669,12 @@ export class CustomersService {
   async provenPhoneOwner(
     phone: string,
     db: DbOrTx = this.db,
-  ): Promise<{ id: string; name: string; email: string | null } | null> {
+  ): Promise<{
+    id: string;
+    name: string;
+    email: string | null;
+    attributes: Record<string, unknown>;
+  } | null> {
     const [row] = await db
       .select({ customerId: customerIdentities.customerId })
       .from(customerIdentities)
@@ -693,7 +698,7 @@ export class CustomersService {
         .limit(1);
       email = identity?.value ?? null;
     }
-    return { id: customer.id, name: customer.displayName, email };
+    return { id: customer.id, name: customer.displayName, email, attributes: customer.attributes };
   }
 
   private async findByIdentity(db: DbOrTx, type: IdentityType, value: string) {
