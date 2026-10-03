@@ -80,7 +80,11 @@ export class WhatsAppLinkSender {
     try {
       ({
         send: { components },
-      } = await this.templates.prepare({ templateId: template.id, body: [i.link], buttonParams: {} }));
+      } = await this.templates.prepare({
+        templateId: template.id,
+        body: [i.link],
+        buttonParams: {},
+      }));
     } catch (err) {
       // The template does not have exactly one body variable.
       return { sent: false, reason: (err as Error).message };
