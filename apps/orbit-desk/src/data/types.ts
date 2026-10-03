@@ -1,5 +1,6 @@
 import type {
   AiClassification,
+  AiClosure,
   Channel,
   MessageCard,
   Priority,
@@ -56,6 +57,8 @@ export interface Ticket {
   aiClassification: AiClassification | null;
   /** Who is answering: none | ai | human | handed_over. */
   handling: TicketHandling;
+  /** Why the AI resolved or closed the ticket by itself; null when a person did, or it is open. */
+  aiClosure: AiClosure | null;
   /** The most urgent SLA timer; null when no policy applies. */
   sla: { state: SlaState; minutes: number | null; label?: string; raw: string } | null;
   /** The outside app that raised the ticket through the API, by name. */

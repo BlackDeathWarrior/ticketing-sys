@@ -1,4 +1,5 @@
 import {
+  AI_CLOSURE_LABELS,
   canActOnTeam,
   type CopilotSuggestion,
   type MessageCard,
@@ -467,6 +468,12 @@ function DrawerContent({
               <dt>Category</dt>
               <dd>{ticket.categoryLabel ?? '—'}</dd>
             </div>
+            {ticket.aiClosure && (
+              <div data-ai-closure={ticket.aiClosure}>
+                <dt>Closure</dt>
+                <dd>{AI_CLOSURE_LABELS[ticket.aiClosure]}</dd>
+              </div>
+            )}
             <div>
               <dt>Team</dt>
               <dd>

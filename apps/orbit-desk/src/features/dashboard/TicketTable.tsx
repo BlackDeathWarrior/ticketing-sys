@@ -1,4 +1,5 @@
 import {
+  AI_CLOSURE_LABELS,
   CHANNELS,
   type Channel,
   HANDLING_LABELS,
@@ -298,6 +299,15 @@ export function TicketTable({
                           state={t.sla.state}
                           label={t.sla.label}
                         />
+                      </span>
+                    )}
+                    {t.aiClosure && (
+                      <span
+                        className={styles.handling}
+                        data-ai-closure={t.aiClosure}
+                        title={AI_CLOSURE_LABELS[t.aiClosure]}
+                      >
+                        <AiMark label="Closed by AI" />
                       </span>
                     )}
                   </td>
