@@ -125,7 +125,7 @@ export const sarvamChannelConfigSchema = z.object({
 export type SarvamChannelConfig = z.infer<typeof sarvamChannelConfigSchema>;
 
 /**
- * Phone calls on a number rented from Sarvam (ADR 0034). A Sarvam Voice Agent
+ * Phone calls on a number rented from Sarvam (ADR 0039). A Sarvam Voice Agent
  * answers; these are the ids of that agent and its number in Sarvam's dashboard.
  */
 export const phoneChannelConfigSchema = z.object({

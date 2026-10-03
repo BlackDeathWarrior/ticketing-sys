@@ -39,17 +39,29 @@ export class ChannelHealthService {
     opts: { visitors?: number | null; lines?: { active: number; max: number } | null } = {},
   ): Promise<ChannelHealth[]> {
     const now = new Date();
-    const [email, whatsapp, sarvam, activity, workerUp, emailSignals, waSignals, voiceSignals] =
-      await Promise.all([
-        this.channels.email(),
-        this.channels.whatsapp(),
-        this.channels.sarvam(),
-        this.conversations.channelActivity(),
-        this.workerUp(now),
-        this.signals.get('email'),
-        this.signals.get('whatsapp'),
-        this.signals.get('sarvam'),
-      ]);
+    const [
+      email,
+      whatsapp,
+      sarvam,
+      activity,
+      workerUp,
+      emailSignals,
+      waSignals,
+      voiceSignals,
+      phone,
+      phoneSignals,
+    ] = await Promise.all([
+      this.channels.email(),
+      this.channels.whatsapp(),
+      this.channels.sarvam(),
+      this.conversations.channelActivity(),
+      this.workerUp(now),
+      this.signals.get('email'),
+      this.signals.get('whatsapp'),
+      this.signals.get('sarvam'),
+      this.channels.phone(),
+      this.signals.get('phone'),
+    ]);
     const has = async (key: string) => (await this.secrets.has(key)).set;
     const [accessToken, appSecret, verifyToken, sarvamKey] = await Promise.all([
       has('whatsapp.access_token'),
@@ -108,6 +120,15 @@ export class ChannelHealthService {
         keySaved: sarvamKey,
         probe: voiceSignals.probe,
         lines: opts.lines ?? null,
+        phone: phone
+          ? {
+              enabled: phone.enabled,
+              keySaved: !!phone.apiKey,
+              tokenSaved: !!phone.hookToken,
+              probe: phoneSignals.probe,
+              lastHookAt: phoneSignals.webhookAt ?? null,
+            }
+          : null,
         activity: activity.voice ?? NO_ACTIVITY,
       }),
     ];

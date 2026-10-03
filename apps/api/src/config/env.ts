@@ -41,6 +41,13 @@ const envSchema = z
       .optional(),
     /** Sarvam API base URL; tests point it at the fake provider. */
     SARVAM_API_URL: z.string().url().default('https://api.sarvam.ai'),
+    /** Sarvam's Voice Agents API (phone calls, ADR 0039). */
+    SARVAM_AGENTS_URL: z.string().url().default('https://apps.sarvam.ai'),
+    /**
+     * Addresses Sarvam's agent calls our phone hooks from, comma-separated. Empty: any
+     * address with the hook token. Sarvam documents 4.213.167.70.
+     */
+    PHONE_SARVAM_IPS: z.string().default(''),
     /** Meta Graph API base URL. Only change it to go through a proxy. */
     WHATSAPP_GRAPH_URL: z.string().url().default('https://graph.facebook.com'),
     /**
