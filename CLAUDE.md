@@ -8,7 +8,7 @@ Guidance for working in this repo. Read `docs/IMPLEMENTATION_PLAN.md` for the ph
 - `pnpm dev` runs tsc --watch plus the API (`dist/main.js`) and worker (`dist/worker.js`); both come from `apps/api`.
 - `pnpm demo:email` sends a customer email to the dev support mailbox.
 - `pnpm sample:load` loads the fictional sample data (`scripts/sample-data/data.ts`) through the API; `pnpm e2e` runs the Playwright suite in `e2e/` against the running stack.
-- `scripts/demo/garment-demo.ps1 start|stop|up|load|shop|storefront|status|reset|down` runs the Ethnic Threads demo (`start` brings up the stack, the shop's server and its site in one go; `-Rebuild` builds from the code, `-Load` runs the loader) (ADR 0027, ADR 0028): the compose project `tms-garment` (`infra/docker-compose.garment.yml`, API :3200, Orbit Desk :8091) with the shop from the garment-web-scraper repository (branch `feat/shop`) in the folder next to this one. `pnpm garment:load` is the loader alone; `pnpm e2e:garment` runs `e2e/tests/garment` (skipped unless `GARMENT_URL` is set).
+- `scripts/demo/garment-demo.ps1 start|stop|up|load|shop|storefront|status|reset|down` runs the Ethnic Threads demo (`start` brings up the stack, the shop's server and its site in one go and updates what changed since the last start: it builds the stack again when the platform code changed, runs the loader when its data changed, and restarts the shop's server when the shop's code or `.env` changed; `-Rebuild` and `-Load` force the first two; `stop` stops all of it and keeps the data) (ADR 0027, ADR 0028): the compose project `tms-garment` (`infra/docker-compose.garment.yml`, API :3200, Orbit Desk :8091) with the shop from the garment-web-scraper repository (branch `feat/shop`) in the folder next to this one. `pnpm garment:load` is the loader alone; `pnpm e2e:garment` runs `e2e/tests/garment` (skipped unless `GARMENT_URL` is set).
 - `pnpm build` builds all packages (apps depend on `packages/*/dist`, so build after changing `shared` or `db`).
 - `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:int` (needs Postgres, Redis, LiteLLM and `fake-providers`; see README). On Windows, where `@swc/core` rejects its cache folder, run them with `bash scripts/check-in-docker.sh [steps]` (a Linux container on the compose network). `pnpm e2e` accepts `CHROMIUM_PATH`. `pnpm kb:eval` reports knowledge-base recall@5 and `pnpm ai:eval` runs the AI golden conversations (including the red-team ones) against a running stack. CI also runs `pnpm audit`.
 - `pnpm db:generate` after schema edits; commit the SQL in `packages/db/drizzle`. Hand-written SQL goes in `drizzle-kit generate --custom` migrations.
@@ -65,3 +65,17 @@ Guidance for working in this repo. Read `docs/IMPLEMENTATION_PLAN.md` for the ph
 - Tools and identity on an integration's tickets (ADR 0028): a tool with a `customerArg` runs there only for a customer the app has named, meaning an `external_id` identity `<slug>:…` from `customer.externalId` or a signed chat identity (`boundEmail` in `ai/ai-agent.service.ts`). Never bind a tool to an email a visitor typed. An email sent with `externalId` is stored verified, and `CustomersService.attachIdentity` moves an unverified email to the customer who proved it (audited); a verified email is never moved. `GET /integration/tickets?customer=` filters by the app's own id for a person.
 - Channels produce a `MessageEnvelope` and call `InboundService.handle()`; outbound messages are stored `pending` and sent by the worker's `DeliveryHandler` (spoken voice replies are the exception). Don't send to external services inside a request.
 - Worker services that hold resources stop in `beforeApplicationShutdown` (the DB pool and Redis close in `onApplicationShutdown`).
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as GitHub issues in `BlackDeathWarrior/ticketing-sys`, through the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` at the repo root (created when a term is first settled) and the decision records in `docs/adr/`. See `docs/agents/domain.md`.
