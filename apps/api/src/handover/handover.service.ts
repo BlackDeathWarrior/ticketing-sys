@@ -123,7 +123,12 @@ export class HandoverService {
    * An agent passes the ticket on (to the queue, or to a team): nobody
    * controls the conversation until routing or a person picks it up.
    */
-  async requestHandover(ctx: RequestCtx, ticketRef: string, input: RequestHandoverInput) {
+  async requestHandover(
+    ctx: RequestCtx,
+    ticketRef: string,
+    // `source`: who asked. A phone call's agent asks on the AI's behalf (ADR 0039).
+    input: RequestHandoverInput & { source?: HandoverSource },
+  ) {
     const ticket0 = await this.tickets.get(ticketRef);
     if (input.teamId) {
       const [team] = await this.db.select().from(teams).where(eq(teams.id, input.teamId));
@@ -147,7 +152,7 @@ export class HandoverService {
       return this.createInTx(tx, ctx, {
         ticketId: ticket.id,
         conversationId: latest?.id ?? null,
-        source: 'agent',
+        source: input.source ?? 'agent',
         reason: input.reason,
         rules: [],
         teamId: input.teamId ?? null,
