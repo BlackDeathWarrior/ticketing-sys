@@ -46,7 +46,7 @@ const TRAITS = {
     holdingMessage: false,
     settlesBursts: false,
     actsAlone: false,
-    handoverNotice: 'none',
+    handoverNotice: 'after_routing',
     toldWhenClosedForSilence: false,
     quickAnswers: false,
     conductScreened: true,
