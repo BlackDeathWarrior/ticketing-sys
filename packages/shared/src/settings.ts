@@ -143,6 +143,11 @@ export const phoneChannelConfigSchema = z.object({
     .regex(/^\+\d{8,15}$/, 'Give the full international number, starting with +'),
   /** On: outbound calls only between 09:00 and 21:00 India time. */
   callingHours: z.boolean().default(false),
+  /**
+   * The WhatsApp template that carries a link to a caller (a payment link cannot be read
+   * out). Its body has one variable, the link. Empty: nothing is sent.
+   */
+  linkTemplate: z.string().trim().max(512).nullish(),
 });
 export type PhoneChannelConfig = z.infer<typeof phoneChannelConfigSchema>;
 

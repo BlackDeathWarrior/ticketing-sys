@@ -18,6 +18,7 @@ import { ChannelConfigService } from '../../settings/channel-config.service';
 import { ToolGatewayService } from '../../tools/tool-gateway.service';
 import { type AgentTool, ToolsService } from '../../tools/tools.service';
 import { type CallRow, VoiceCallsService } from '../voice/voice-calls.service';
+import { WhatsAppLinkSender } from '../whatsapp/whatsapp-link.sender';
 import { PhoneQueryTranslator } from './phone-query-translator.service';
 
 /** Sarvam waits 30 seconds for a tool at most; we answer before that with something to say. */
@@ -45,6 +46,19 @@ const NEVER_INVENT =
   'Never make up an order, a product, a price, a date or a policy: say only what is written here.';
 const FROM_SYSTEM = `Answer from the shop's system. If a list in it is empty or a count is 0, tell the caller that nothing was found. ${NEVER_INVENT}\n`;
 const FROM_ARTICLES = `From the shop's help articles. Answer only from this text. ${NEVER_INVENT}\n`;
+const LINK_SENT =
+  'The link in this answer was sent just now to the caller’s WhatsApp, on the number they are calling from. Tell them to open WhatsApp for it. Do not read the link out.\n';
+const LINK_NOT_SENT =
+  'The link in this answer could NOT be sent to the caller. Never say a link or message was sent. Tell them to open the shop’s website, sign in and go there themselves.\n';
+const LINK_REPEAT_MS = 10 * 60_000;
+
+/** A link a tool answered with (`url` at the top of its result): what a caller cannot be read. */
+function linkIn(result: unknown): string | null {
+  const url =
+    result && typeof result === 'object' ? (result as Record<string, unknown>).url : null;
+  return typeof url === 'string' && /^https:\/\/\S+$/.test(url) && url.length <= 1000 ? url : null;
+}
+
 const fail = (result: string): PhoneToolReply => ({
   ok: false,
   result: `Error: ${result} Tell the caller you could not find or do that. ${NEVER_INVENT}`,
@@ -69,7 +83,11 @@ export class PhoneToolsService {
     private readonly calls: VoiceCallsService,
     private readonly channels: ChannelConfigService,
     private readonly translator: PhoneQueryTranslator,
+    private readonly links: WhatsAppLinkSender,
   ) {}
+
+  /** Links sent on calls in progress, so the same one is not sent twice: key → when. */
+  private readonly linksSent = new Map<string, number>();
 
   /**
    * Every enabled tool, read now, so one added in Settings is there on the
@@ -154,6 +172,26 @@ export class PhoneToolsService {
     }
   }
 
+  /** What the agent is told about a link in a tool's answer: sent to WhatsApp, or not. */
+  private async shareLink(i: {
+    link: string;
+    phone: string | null;
+    callId: string | null;
+    about: string;
+  }): Promise<string> {
+    const templateName = (await this.channels.phone())?.linkTemplate?.trim();
+    if (!templateName || !i.phone) return LINK_NOT_SENT;
+    // Asked for twice on one call (the agent retries, the caller asks again): sent once.
+    const key = `${i.callId ?? i.phone}:${i.link}`;
+    const now = Date.now();
+    for (const [k, at] of this.linksSent) if (now - at > LINK_REPEAT_MS) this.linksSent.delete(k);
+    if (this.linksSent.has(key)) return LINK_SENT;
+    const outcome = await this.links.send({ ...i, phone: i.phone, templateName });
+    if (!outcome.sent) return LINK_NOT_SENT;
+    this.linksSent.set(key, now);
+    return LINK_SENT;
+  }
+
   /**
    * The call's record, opened if this is the first we hear of the call. Null
    * for a request with no call id: a tool tried from Sarvam's dashboard, which
@@ -220,10 +258,24 @@ export class PhoneToolsService {
 
     const r = await run;
     switch (r.status) {
-      case 'ok':
+      case 'ok': {
+        const link = linkIn(r.result);
+        // A link cannot be read out: it goes to the caller's WhatsApp, and the agent is told
+        // whether it did. Only ever to the number this caller has proven is theirs.
+        const note = link
+          ? await this.shareLink({
+              link,
+              phone: owner && phone ? phone : null,
+              callId: call?.id ?? null,
+              about: found.tool.title ?? found.tool.name,
+            })
+          : '';
         return ok(
-          FROM_SYSTEM + (typeof r.result === 'string' ? r.result : JSON.stringify(r.result ?? {})),
+          FROM_SYSTEM +
+            note +
+            (typeof r.result === 'string' ? r.result : JSON.stringify(r.result ?? {})),
         );
+      }
       case 'denied':
         return fail(found.tool.customerArg && !owner?.email ? NOT_LINKED : r.error);
       case 'error':

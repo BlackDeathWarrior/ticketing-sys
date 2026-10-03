@@ -12,6 +12,7 @@ import { ChannelHealthService } from './health/channel-health.service';
 import { VoiceCallsService } from './voice/voice-calls.service';
 import { WhatsAppCodeSender } from './whatsapp/whatsapp-code.sender';
 import { WhatsAppConnectService } from './whatsapp/whatsapp-connect.service';
+import { WhatsAppLinkSender } from './whatsapp/whatsapp-link.sender';
 import { WhatsAppTemplatesService } from './whatsapp/whatsapp-templates.service';
 import { WhatsAppTypingService } from './whatsapp/whatsapp-typing.service';
 import { WhatsAppWebhookQueue } from './whatsapp/whatsapp-webhook.queue';
@@ -31,6 +32,7 @@ import { WhatsAppService } from './whatsapp/whatsapp.service';
     AiPolicyService,
     WhatsAppTemplatesService,
     WhatsAppCodeSender,
+    WhatsAppLinkSender,
     WhatsAppTypingService,
     WhatsAppService,
     WhatsAppWebhookQueue,
@@ -46,6 +48,7 @@ import { WhatsAppService } from './whatsapp/whatsapp.service';
     WhatsAppService,
     WhatsAppTemplatesService,
     WhatsAppCodeSender,
+    WhatsAppLinkSender,
     WhatsAppTypingService,
     ChannelHealthService,
     VoiceCallsService,

@@ -64,6 +64,19 @@ export class WhatsAppTemplatesService {
     return row ?? null;
   }
 
+  /** An approved template by its name (the first language, when it has several). */
+  async approvedByName(
+    name: string,
+  ): Promise<{ id: string; name: string; language: string } | null> {
+    const [row] = await this.db
+      .select({ id: waTemplates.id, name: waTemplates.name, language: waTemplates.language })
+      .from(waTemplates)
+      .where(and(eq(waTemplates.name, name), eq(waTemplates.status, 'APPROVED')))
+      .orderBy(asc(waTemplates.language))
+      .limit(1);
+    return row ?? null;
+  }
+
   /**
    * Checks a template send and builds what the sender will post. The preview
    * is the text the customer reads; it becomes the message body in TMS.
