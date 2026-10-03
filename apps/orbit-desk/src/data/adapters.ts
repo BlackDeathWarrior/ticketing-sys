@@ -1,5 +1,7 @@
 import {
+  AI_CLOSURES,
   type AiClassification,
+  type AiClosure,
   messageCardSchema,
   type StatusCategory,
   type TicketHandling,
@@ -52,6 +54,7 @@ export interface ApiTicket {
   subcategory?: ApiRef | null;
   aiClassification?: AiClassification | null;
   handling?: string;
+  aiClosure?: string | null;
   slaState?: string | null;
   slaDueAt?: string | null;
   integration?: { id: string; slug: string; name: string } | null;
@@ -218,6 +221,8 @@ export function toTicket(t: ApiTicket, workflow: Workflow | undefined): Ticket {
     updatedAt: new Date(t.updatedAt),
     aiClassification: t.aiClassification ?? null,
     handling: (t.handling ?? 'none') as TicketHandling,
+    // A reason this build does not know is shown as no closure rather than as a blank label.
+    aiClosure: AI_CLOSURES.includes(t.aiClosure as AiClosure) ? (t.aiClosure as AiClosure) : null,
     sla: toSla(t.slaState ?? null, t.slaDueAt ?? null),
     integration: t.integration?.name ?? null,
     externalRef: t.externalRef ?? null,

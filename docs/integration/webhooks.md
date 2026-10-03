@@ -31,6 +31,8 @@ You are shown a **signing secret** (`whsec_…`) once. Store it with your other 
 | `csat.submitted`        | A customer rated a ticket                                           | `ticket`, `rating`                   |
 | `ping`                  | You pressed "Send a test"                                           | `message`                            |
 
+`approval` is `id`, `status` (`pending`, `approved` or `rejected`), `action`, `tool` and `summary`. On `approval.decided` it also carries `reason`: what the person who decided wrote for the customer. Their note for colleagues is not sent.
+
 Internal notes, AI drafts and anything else a customer cannot see are never sent.
 
 ## What arrives

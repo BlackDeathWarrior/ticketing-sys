@@ -71,6 +71,8 @@ export class WebhookPayloadService {
             action: approval.tool.title ?? approval.tool.name,
             tool: approval.tool.qualifiedName,
             summary: approval.summary,
+            // Written for the customer by whoever decided; the note for colleagues is never sent.
+            ...(type === 'approval.decided' ? { reason: approval.reason } : {}),
           },
         };
       }
