@@ -118,7 +118,11 @@ function lineOf(m: { authorType: string; body: string; metadata: unknown }): Lin
   }
   const shown = messageCardSchema.array().safeParse(meta?.cards);
   if (!shown.success || !shown.data.length) return { author, body: m.body };
-  const list = shown.data.map((c) => `${tidy(c.title)} (${tidy(c.id)})`).join('; ');
+  // With what each card said under its title (a price, a rating), so "the cheapest of those"
+  // or "the best rated one" can be answered from what was shown.
+  const list = shown.data
+    .map((c) => `${tidy(c.title)} (${tidy(c.id)}${c.text ? `: ${tidy(c.text)}` : ''})`)
+    .join('; ');
   // Cards that were not shown reached the customer as lines of text, not as something to tap.
   const asText = typeof meta?.cardsDropped === 'string' && meta.cardsDropped !== '';
   return {

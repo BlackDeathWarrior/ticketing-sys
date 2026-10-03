@@ -5,7 +5,7 @@ import { type ChannelTraits, traitsOf } from '../channels/channel-traits';
  * Versioned prompts (ADR 0011). The version is recorded on every AI run, so a
  * change here is traceable in the audit trail; bump it with any edit.
  */
-export const AGENT_PROMPT_VERSION = 'agent-v15';
+export const AGENT_PROMPT_VERSION = 'agent-v16';
 export const CLASSIFIER_PROMPT_VERSION = 'classifier-v1';
 export const SUMMARY_PROMPT_VERSION = 'summary-v1';
 export const HANDOVER_PROMPT_VERSION = 'handover-v1';
