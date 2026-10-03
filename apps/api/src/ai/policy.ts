@@ -289,9 +289,10 @@ export function handoverMessage(
       ? `धन्यवाद। मैं आपकी बातचीत अपने सहयोगी ${name} को सौंप रहा हूँ; वे जल्द ही यहीं जवाब देंगे।`
       : 'धन्यवाद। मैं आपकी बातचीत हमारी टीम के एक सदस्य को सौंप रहा हूँ; वे जल्द ही यहीं जवाब देंगे।';
   }
+  const where = channel === 'email' ? 'to this email' : 'here';
   return name
-    ? `Thanks for your patience. I'm passing this to my colleague ${name}, who will reply here shortly.`
-    : "Thanks for your patience. I'm passing this to a member of our team, who will reply here shortly.";
+    ? `Thanks for your patience. I'm passing this to my colleague ${name}, who will reply ${where} shortly.`
+    : `Thanks for your patience. I'm passing this to a member of our team, who will reply ${where} shortly.`;
 }
 
 /** The internal note left for the humans taking over. */
