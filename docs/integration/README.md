@@ -4,6 +4,7 @@ This guide is for a developer adding support to an existing app. When you finish
 
 - raise a ticket for one of its users and show them the answer;
 - report its own failures as incidents that open, update and close one ticket;
+- prove that a user owns a WhatsApp number, with a code sent over WhatsApp;
 - be told about ticket changes by signed webhooks;
 - show a chat on its pages that knows who the visitor is and what they are looking at.
 
@@ -21,12 +22,13 @@ An administrator does this once, in Orbit Desk under **Settings → Integrations
 1. **Add integration.** Give it a name and an identifier (for example `ethnic-threads`). The identifier cannot be changed later.
 2. **Create key.** Choose what the key may do:
 
-   | Scope                | Allows                                                     |
-   | -------------------- | ---------------------------------------------------------- |
-   | `integration:ticket` | Create and read the integration's own tickets and messages |
-   | `integration:event`  | Report incidents and recoveries                            |
+   | Scope                  | Allows                                                     |
+   | ---------------------- | ---------------------------------------------------------- |
+   | `integration:ticket`   | Create and read the integration's own tickets and messages |
+   | `integration:event`    | Report incidents and recoveries                            |
+   | `integration:customer` | Prove a customer's phone number                            |
 
-   The key (`tms_sk_…`) is shown once. Store it where your server keeps its secrets. Give each part of your app its own key with only the scopes it needs: a storefront backend needs `integration:ticket`, a background worker needs `integration:event`.
+   The key (`tms_sk_…`) is shown once. Store it where your server keeps its secrets. Give each part of your app its own key with only the scopes it needs: a storefront backend needs `integration:ticket` (and `integration:customer` if it proves phone numbers), a background worker needs `integration:event`.
 
 3. Optional: **Add webhook** and **Generate secret** for the chat widget. Both are covered in their own pages.
 
@@ -211,7 +213,64 @@ The answer is `202` with what the report did and the ticket that tracks it:
 
 `GET /integration/incidents?status=open` lists your incidents, for a status banner in your admin pages.
 
-## 5. Errors and limits
+## 5. Proving a phone number
+
+Use this when your app needs to know that a user owns a WhatsApp number. Once the number is proven, the AI acts for that user when they write to your WhatsApp line from it (it looks up their orders, for example). From a number that is not proven, the AI's tools that read or change a customer's data do not run.
+
+TMS sends a 6-digit code to the number over WhatsApp. Your user types it into your app, and you hand it back to TMS to check. The key needs the `integration:customer` scope, and WhatsApp must be connected in TMS.
+
+```bash
+# Send the code
+curl -X POST https://support.example.com/api/v1/integration/customers/phone-verifications \
+  -H "Authorization: Bearer $TMS_API_KEY" -H "Content-Type: application/json" \
+  -d '{ "customer": { "externalId": "user-42", "name": "Asha Verma" }, "phone": "+91 98300 12345" }'
+
+# Check what the user typed
+curl -X POST https://support.example.com/api/v1/integration/customers/phone-verifications/check \
+  -H "Authorization: Bearer $TMS_API_KEY" -H "Content-Type: application/json" \
+  -d '{ "customer": { "externalId": "user-42" }, "phone": "+91 98300 12345", "code": "482913" }'
+```
+
+Both answer `200`. The first returns when the code expires and how it was sent, the second the number as TMS keeps it:
+
+```json
+{ "expiresAt": "2026-10-03T10:40:00.000Z", "sentVia": "template" }
+```
+
+```json
+{ "verified": true, "phone": "919830012345" }
+```
+
+- `customer.externalId` is your own id for the person, the same one your ticket calls use. `email` and `name` are optional; an `email` is stored as a verified email for them, as it is when you raise a ticket.
+- `phone` is the full international number, 8 to 15 digits. Spaces, dashes and a leading `+` are ignored. Use the same number in both calls.
+- `sentVia` is `template` when TMS used an approved WhatsApp authentication template (it works at any time) and `text` when it sent plain text, which WhatsApp allows only to a number that wrote in the last 24 hours.
+- The code is sent inside the request. If Meta refuses it, the call fails with the reason, so your app can tell the user at once. Nothing is stored when the send fails.
+- You never see the code. It reaches the user's phone only.
+
+A code lasts 10 minutes, works once, and is spent after 5 wrong tries. A new code for the same user and number retires the earlier one.
+
+**Errors.** A wrong check answers `400` with a `reason` you can show in your own words:
+
+| `reason`            | Meaning                                         | What to do                            |
+| ------------------- | ----------------------------------------------- | ------------------------------------- |
+| `wrong-code`        | The digits do not match.                        | Let the user try again.               |
+| `expired`           | The 10 minutes are over.                        | Send a new code.                      |
+| `too-many-attempts` | The code has had 5 wrong tries.                 | Send a new code.                      |
+| `no-code`           | There is no open code for this user and number. | Send a code first, or send a new one. |
+
+Other answers:
+
+| Status | Meaning                                                                                                                                                                                      | What to do                                                           |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `409`  | WhatsApp is not connected; or there is no approved authentication template and the number has not written in the last 24 hours; or the number was linked to another customer a moment ago. | Tell the user it cannot be done now. For the last case, try again.   |
+| `429`  | Too many codes (see Limits). `Retry-After` says how many seconds to wait.                                                                                                                    | Wait, then offer to send again.                                      |
+| `502`  | Meta refused the message. `message` carries Meta's reason.                                                                                                                                   | Tell the user the code could not be sent.                            |
+
+**Limits.** One code a minute and five an hour for a number; ten an hour for one of your users. These are always on, even where other limits are switched off, because every code is a paid WhatsApp message to someone's phone.
+
+**What a proof does.** A customer has one proven number, and the latest proof wins. If another customer is known only by that number, the two are merged into the customer who proved it. Any other customer who held the number just loses it.
+
+## 6. Errors and limits
 
 | Status | Meaning                                                                       | What to do                                    |
 | ------ | ----------------------------------------------------------------------------- | --------------------------------------------- |
@@ -225,7 +284,7 @@ The answer is `202` with what the report did and the ticket that tracks it:
 
 Never let a support call break your app: use a short timeout, catch the error, and carry on.
 
-## 6. With the SDKs
+## 7. With the SDKs
 
 Node (18 or later):
 
@@ -255,6 +314,20 @@ await tms.incidents.report({
   title: 'Scraper exited with code 1',
 });
 await tms.incidents.resolve('scraper.run_failed');
+
+await tms.customers.startPhoneVerification({
+  customer: { externalId: user.id },
+  phone: form.phone,
+});
+try {
+  await tms.customers.checkPhoneVerification({
+    customer: { externalId: user.id },
+    phone: form.phone,
+    code: form.code,
+  });
+} catch (err) {
+  // A 400 TmsApiError: err.body.reason is 'wrong-code', 'expired', 'too-many-attempts' or 'no-code'.
+}
 ```
 
 Python (3.8 or later, no dependencies: copy `tms_support.py` into your project):
@@ -275,13 +348,15 @@ try:
     )
     tms.report_event("scraper.run_failed", "Scraper exited with code 1", severity="error")
     tms.resolve_event("scraper.run_failed")
+    tms.start_phone_verification(user.id, form.phone)
+    tms.check_phone_verification(user.id, form.phone, form.code)
 except TmsError as err:
     log.warning("support desk: %s (%s)", err.message, err.status)
 ```
 
 Both clients are tested against the same fixed signatures (`signature-vectors.json`), and the Node SDK is tested against the real API.
 
-## 7. A checklist before going live
+## 8. A checklist before going live
 
 - [ ] The API key and both secrets are only on your server, and not in your repository.
 - [ ] Calls that create something send an `Idempotency-Key`.
@@ -289,4 +364,4 @@ Both clients are tested against the same fixed signatures (`signature-vectors.js
 - [ ] Your webhook handler does each delivery's work once (`id`).
 - [ ] A support call that fails does not fail the user's request.
 - [ ] Fingerprints are per kind of failure, not per occurrence.
-- [ ] A worker's key has only `integration:event`; a storefront's only `integration:ticket`.
+- [ ] A worker's key has only `integration:event`; a storefront's only the scopes it uses (`integration:ticket`, and `integration:customer` if it proves phone numbers).

@@ -1,11 +1,15 @@
 import type {
+  CheckPhoneVerification,
   CreateTicket,
   EventResult,
   Identity,
   Incident,
   Message,
+  PhoneVerificationChecked,
+  PhoneVerificationStarted,
   Rating,
   ReportEvent,
+  StartPhoneVerification,
   Ticket,
   TicketList,
   TicketState,
@@ -124,6 +128,24 @@ export class TmsClient {
 
     list: (filter: { status?: 'open' | 'resolved'; limit?: number } = {}): Promise<Incident[]> =>
       this.request('GET', '/integration/incidents', { query: filter }),
+  };
+
+  readonly customers = {
+    /**
+     * Sends a 6-digit code to the customer's WhatsApp. It works for 10 minutes;
+     * a new code retires the earlier one. A 400, 409, 429 or 502 `TmsApiError`
+     * says why nothing was sent. Needs the `integration:customer` scope.
+     */
+    startPhoneVerification: (input: StartPhoneVerification): Promise<PhoneVerificationStarted> =>
+      this.request('POST', '/integration/customers/phone-verifications', { body: input }),
+
+    /**
+     * Checks the code the customer typed. On success the number is proven for
+     * them. A 400 `TmsApiError` carries `body.reason`: `wrong-code`, `expired`,
+     * `too-many-attempts` or `no-code`.
+     */
+    checkPhoneVerification: (input: CheckPhoneVerification): Promise<PhoneVerificationChecked> =>
+      this.request('POST', '/integration/customers/phone-verifications/check', { body: input }),
   };
 
   private async request<T>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {

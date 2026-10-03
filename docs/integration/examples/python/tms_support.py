@@ -189,6 +189,49 @@ class TmsClient:
     def incidents(self, status: Optional[str] = None, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         return self._request("GET", "/integration/incidents", query={"status": status, "limit": limit})
 
+    # ---- Phone numbers ----
+
+    def start_phone_verification(
+        self,
+        external_id: str,
+        phone: str,
+        *,
+        email: Optional[str] = None,
+        name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Sends a 6-digit code to the customer's WhatsApp. Needs the `integration:customer` scope.
+
+        `phone` is the full international number. The code works for 10
+        minutes, and a new code retires the earlier one. Returns `expiresAt`
+        and `sentVia` (`template` or `text`). A `TmsError` says why nothing was
+        sent: 409 (WhatsApp cannot reach this number now), 429 (wait
+        `retry_after` seconds) or 502 (Meta refused).
+        """
+        payload = {"customer": _phone_customer(external_id, email, name), "phone": phone}
+        return self._request("POST", "/integration/customers/phone-verifications", payload)
+
+    def check_phone_verification(
+        self,
+        external_id: str,
+        phone: str,
+        code: str,
+        *,
+        email: Optional[str] = None,
+        name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Checks the code the customer typed. On success the number is proven for them.
+
+        Returns `{"verified": True, "phone": ...}`. A wrong code is a
+        `TmsError` with status 400 and `err.body["reason"]` one of
+        `wrong-code`, `expired`, `too-many-attempts` or `no-code`.
+        """
+        payload = {
+            "customer": _phone_customer(external_id, email, name),
+            "phone": phone,
+            "code": code,
+        }
+        return self._request("POST", "/integration/customers/phone-verifications/check", payload)
+
     # ---- Transport ----
 
     def _request(
@@ -316,6 +359,10 @@ def sign_chat_identity(
 
 def _without_none(values: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in values.items() if v is not None}
+
+
+def _phone_customer(external_id: str, email: Optional[str], name: Optional[str]) -> Dict[str, Any]:
+    return _without_none({"externalId": external_id, "email": email, "name": name})
 
 
 def _segment(value: str) -> str:
