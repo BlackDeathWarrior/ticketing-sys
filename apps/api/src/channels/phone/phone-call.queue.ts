@@ -29,8 +29,19 @@ const STALE_MINUTES = 60;
 const GIVE_UP_MINUTES = 24 * 60;
 
 type CloseJob =
-  | { kind: 'close'; interactionId: string; hint: PhoneCallHint; trace?: string | null }
+  | {
+      kind: 'close';
+      interactionId: string;
+      hint: PhoneCallHint;
+      trace?: string | null;
+      /** The ticket is written; this run only fetches a recording that was not ready. */
+      recording?: boolean;
+    }
   | { kind: 'sweep' };
+
+/** Sarvam's recording can take minutes: asked for at 1, 2, 4, 8 and 16 minutes, then left. */
+const RECORDING_FOLLOW_UPS = 5;
+const RECORDING_FOLLOW_UP_MS = 60_000;
 
 const closeOptions = (interactionId: string, known = true) => ({
   // One waiting job per call: a trigger that arrives twice is closed once.
@@ -105,6 +116,8 @@ export class PhoneCallWorker implements OnApplicationBootstrap, BeforeApplicatio
       concurrency: 1,
     });
     this.worker.on('failed', (job, err) => {
+      // A recording that never came is not an error: recording may be off at Sarvam.
+      if (job?.data.kind === 'close' && job.data.recording) return;
       if (job && job.attemptsMade >= (job.opts.attempts ?? ATTEMPTS)) {
         this.logger.error(`phone call ${job.id} was not written to a ticket: ${err.message}`);
       }
@@ -134,9 +147,26 @@ export class PhoneCallWorker implements OnApplicationBootstrap, BeforeApplicatio
     return withSpan('phone call close', { parent: d.trace, kind: SpanKind.CONSUMER }, async () => {
       // The first try waits for the recording; after that the ticket is written without it.
       const outcome = await this.closer.close(d.interactionId, d.hint, {
-        waitForRecording: job.attemptsMade === 0,
+        waitForRecording: job.attemptsMade === 0 && !d.recording,
+        recordingFollowUp: !!d.recording,
       });
       this.logger.debug(`phone call ${job.id}: ${outcome}`);
+      if (outcome !== 'closed') return;
+      const call = await this.calls.byProvider(d.interactionId);
+      if (!call?.ticketId || call.recordingKey) return;
+      // Written without its recording: ask Sarvam again later, a few times.
+      await this.queue.add(
+        'close',
+        { ...d, recording: true },
+        {
+          jobId: `${closeOptions(d.interactionId).jobId}-recording`,
+          delay: RECORDING_FOLLOW_UP_MS,
+          attempts: RECORDING_FOLLOW_UPS,
+          backoff: { type: 'exponential', delay: RECORDING_FOLLOW_UP_MS },
+          removeOnComplete: true,
+          removeOnFail: true,
+        },
+      );
     });
   }
 }

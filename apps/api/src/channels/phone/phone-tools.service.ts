@@ -76,8 +76,8 @@ export class PhoneToolsService {
   /** The call begins: who is calling, and what the agent can use. */
   async start(input: PhoneStartInput): Promise<PhoneStartReply> {
     const caller = await this.caller(input.phone);
-    const call = await this.calls.beginPhone({ interactionId: input.interactionId, phone: caller });
-    const phone = caller ?? call.callerPhone;
+    const call = await this.open(input.interactionId, caller);
+    const phone = caller ?? call?.callerPhone;
     const owner = phone ? await this.customers.provenPhoneOwner(phone) : null;
     return {
       customer_name: owner?.name ?? '',
@@ -112,7 +112,7 @@ export class PhoneToolsService {
   private async answer(tool: PhoneToolName, input: PhoneToolInput): Promise<PhoneToolReply> {
     const body = { ...input, phone: await this.caller(input.phone) };
     // The start hook may never have arrived: any tool call opens the call's record.
-    const call = await this.calls.beginPhone(body);
+    const call = await this.open(body.interactionId, body.phone);
     switch (tool) {
       case 'list_tools':
         // Not cut short: half a catalogue is not JSON any more.
@@ -120,13 +120,24 @@ export class PhoneToolsService {
       case 'search_knowledge':
         return this.searchKnowledge(body.query ?? '');
       case 'request_person':
-        await this.calls.markHandover(call.id, body.reason || 'The caller asked for a person');
+        if (call) {
+          await this.calls.markHandover(call.id, body.reason || 'The caller asked for a person');
+        }
         return ok(
           'Noted. Tell the caller a colleague will get back to them, then end the call politely.',
         );
       case 'desk_tool':
         return this.deskTool(call, body);
     }
+  }
+
+  /**
+   * The call's record, opened if this is the first we hear of the call. Null
+   * for a request with no call id: a tool tried from Sarvam's dashboard, which
+   * gets a real answer and leaves no record.
+   */
+  private async open(interactionId: string | null, phone: string | null): Promise<CallRow | null> {
+    return interactionId ? this.calls.beginPhone({ interactionId, phone }) : null;
   }
 
   private async offered(): Promise<AgentTool[]> {
@@ -145,7 +156,7 @@ export class PhoneToolsService {
     );
   }
 
-  private async deskTool(call: CallRow, body: PhoneToolInput): Promise<PhoneToolReply> {
+  private async deskTool(call: CallRow | null, body: PhoneToolInput): Promise<PhoneToolReply> {
     const name = body.name ?? '';
     const all = await this.tools.agentTools();
     const byBareName = all.filter((t) => t.tool.name === name);
@@ -160,7 +171,7 @@ export class PhoneToolsService {
 
     // The number this token-protected request carries; the call's record (set only by such
     // requests) when this one has none.
-    const phone = body.phone ?? call.callerPhone;
+    const phone = body.phone ?? call?.callerPhone;
     const owner = phone ? await this.customers.provenPhoneOwner(phone) : null;
     const run = this.gateway.invoke(AI_CTX, {
       tool: found.tool,
@@ -172,8 +183,8 @@ export class PhoneToolsService {
     });
     // Kept for the ticket even when the answer comes too late for the caller.
     void run
-      .then((r) => (r.callId ? this.calls.noteToolCall(call.id, r.callId) : undefined))
-      .catch((err: Error) => this.logger.warn(`tool call on call ${call.id}: ${err.message}`));
+      .then((r) => (call && r.callId ? this.calls.noteToolCall(call.id, r.callId) : undefined))
+      .catch((err: Error) => this.logger.warn(`tool call on a phone call: ${err.message}`));
 
     const r = await run;
     switch (r.status) {
