@@ -486,8 +486,7 @@ export class CustomersService {
         .select({ type: customerIdentities.type })
         .from(customerIdentities)
         .where(eq(customerIdentities.customerId, other.id));
-      const phoneOnly =
-        !other.primaryEmail && theirs.every((i) => PHONE_ONLY_TYPES.includes(i.type as IdentityType));
+      const phoneOnly = !other.primaryEmail && theirs.every((i) => PHONE_ONLY_TYPES.includes(i.type));
       if (phoneOnly) {
         // Nothing but a number identified them: they were this person on another channel.
         await this.mergeInTx(tx, ctx, other, customer);
