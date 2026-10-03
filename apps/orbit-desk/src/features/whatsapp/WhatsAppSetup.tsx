@@ -21,10 +21,10 @@ export function WhatsAppSetup() {
   const [busy, setBusy] = useState<'sync' | 'subscribe' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const url = webhookUrl();
-  // The one the desk sends codes with: the first approved authentication template by name.
-  const codeTemplate = [...(templates.data ?? [])]
-    .filter((t) => t.category === 'AUTHENTICATION' && t.status === 'APPROVED')
-    .sort((a, b) => a.name.localeCompare(b.name) || a.language.localeCompare(b.language))[0];
+  // The list comes ordered by name then language, as the sender picks: the first one is the one used.
+  const codeTemplate = templates.data?.find(
+    (t) => t.category === 'AUTHENTICATION' && t.status === 'APPROVED',
+  );
 
   const run = async (what: 'sync' | 'subscribe') => {
     setBusy(what);

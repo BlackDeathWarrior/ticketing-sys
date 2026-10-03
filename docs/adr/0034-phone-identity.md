@@ -15,6 +15,7 @@ Someone who writes to a company's WhatsApp line is known only by the number Meta
 - **Limits are always on.** One code a minute and five an hour for a number, ten an hour for one of the key's customers, even with `RATE_LIMITS` off (ADR 0021): every code is a paid message to someone's phone. The hourly bound for a number is also checked in the table, so it holds when Redis is down. Code rows are purged after one day.
 - **The AI on WhatsApp.** On a WhatsApp conversation, tools bound to a customer run only when the conversation's number is a proven number of that customer, on any kind of ticket (`boundEmail`, prompt `agent-v10`). A message from a sender whose number Meta withholds clears the conversation's stored number, so a number seen earlier cannot carry over.
 - **Staff can still mark a phone identity verified by hand.** Anyone with `customer:write` can add a phone to a customer as verified. That is a person's judgement, recorded in the audit log, and it counts as proof for the AI like any other.
+- **The AI also needs an email.** Customer tools are bound to the customer's email, so a customer made from `externalId` alone needs one: the check call stores the `email` it is given as verified.
 
 ## Consequences
 

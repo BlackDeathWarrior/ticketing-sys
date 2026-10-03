@@ -217,6 +217,8 @@ The answer is `202` with what the report did and the ticket that tracks it:
 
 Use this when your app needs to know that a user owns a WhatsApp number. Once the number is proven, the AI acts for that user when they write to your WhatsApp line from it (it looks up their orders, for example). From a number that is not proven, the AI's tools that read or change a customer's data do not run.
 
+The customer also needs an email on file, because the AI's customer tools are bound to it. A customer made from `externalId` alone has none: pass `email` in the check call and TMS stores it as verified.
+
 TMS sends a 6-digit code to the number over WhatsApp. Your user types it into your app, and you hand it back to TMS to check. The key needs the `integration:customer` scope, and WhatsApp must be connected in TMS.
 
 ```bash
@@ -241,7 +243,7 @@ Both answer `200`. The first returns when the code expires and how it was sent, 
 { "verified": true, "phone": "919830012345" }
 ```
 
-- `customer.externalId` is your own id for the person, the same one your ticket calls use. `email` and `name` are optional; an `email` is stored as a verified email for them, as it is when you raise a ticket.
+- `customer.externalId` is your own id for the person, the same one your ticket calls use. `email` and `name` are optional. Only the check call uses them: the send call accepts them and does nothing with them. In the check call, an `email` is stored as a verified email for the customer, as it is when you raise a ticket.
 - `phone` is the full international number, 8 to 15 digits. Spaces, dashes and a leading `+` are ignored. Use the same number in both calls.
 - `sentVia` is `template` when TMS used an approved WhatsApp authentication template (it works at any time) and `text` when it sent plain text, which WhatsApp allows only to a number that wrote in the last 24 hours.
 - The code is sent inside the request. If Meta refuses it, the call fails with the reason, so your app can tell the user at once. Nothing is stored when the send fails.

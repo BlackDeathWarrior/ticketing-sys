@@ -130,7 +130,7 @@ export interface CheckPhoneVerification extends StartPhoneVerification {
   code: string;
 }
 
-/** `sentVia`: `template` if the customer has not written in the last day, `text` if they have. */
+/** `sentVia`: `template` whenever an approved authentication template exists, `text` only when none does and the number wrote in the last 24 hours. */
 export interface PhoneVerificationStarted {
   expiresAt: string;
   sentVia: 'template' | 'text';
