@@ -772,7 +772,8 @@ export class AiAgentService {
     const customerLines = i.transcript.filter((l) => l.author === 'customer').length;
     /** The opening question of a conversation with nothing attached: the same for anyone who asks it. */
     const general = quick && customerLines === 1 && !i.summary && !i.ticket.context;
-    const scope = `${AGENT_PROMPT_VERSION}|${i.integration ?? '-'}|${i.channel}|${i.language ?? '-'}`;
+    // Whether the sender is bound changes the answer ("My order"), so a cached one must not cross over.
+    const scope = `${AGENT_PROMPT_VERSION}|${i.integration ?? '-'}|${i.channel}|${i.language ?? '-'}|${i.customerEmail ? 'bound' : 'unbound'}`;
     let fast: FastAnswer | null = null;
     const talk = quick && paths.smallTalk ? smallTalk(last) : null;
     if (talk) {
