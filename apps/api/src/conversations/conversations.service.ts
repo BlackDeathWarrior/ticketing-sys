@@ -532,12 +532,15 @@ export class ConversationsService {
   }
 
   /**
-   * Puts a failed message whose cards Meta accepted but could not deliver back
-   * to the state a new outbound message has, and queues it again; the sender
-   * then sends it as plain text. This is the one deliberate exception to
-   * "statuses only move forward" (`applyProviderStatus`), and it happens once
-   * per message: `cardsDropped` marks it, and a message that has it, has no
-   * valid cards or is not failed is left alone. Returns whether it requeued.
+   * Puts a failed message that has cards back to the state a new outbound message
+   * has, and queues it again; the sender then sends it as plain text with the items
+   * listed. This is the one deliberate exception to "statuses only move forward"
+   * (`applyProviderStatus`), and it happens once per message: `cardsDropped` marks
+   * it. A message is left alone (returns false) unless it is outbound and failed,
+   * is not a template, has valid cards and does not have `cardsDropped` yet.
+   * Callers: a failed delivery report from Meta (`WhatsAppService.report`) and a
+   * delivery that failed for good in the worker (`DeliveryHandler`, on the last
+   * attempt or a permanent error). Returns whether it requeued.
    */
   async requeueWithoutCards(messageId: string, reason: string): Promise<boolean> {
     return this.db.transaction(async (tx) => {

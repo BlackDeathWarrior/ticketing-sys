@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  cardsAsText,
   MAX_CARDS,
   type MessageCard,
   messageCardSchema,
@@ -77,9 +78,12 @@ export class WhatsAppSender implements ChannelSender {
       phoneNumberId: config.phoneNumberId,
       to: target.target,
     };
-    // A reply that was already sent as text once (cardsDropped) is never tried with cards again.
     const parsed = messageCardSchema.array().min(1).safeParse(rawCards);
-    const cards = !template && cardsDropped === undefined && parsed.success ? parsed.data : [];
+    // Valid cards stay on the message whatever happens to them: sent as text, they are listed under it.
+    const listed = !template && parsed.success ? parsed.data : [];
+    // A reply that was already sent as text once (cardsDropped) is never tried with cards again.
+    const cards = cardsDropped === undefined ? listed : [];
+    const asText = cardsAsText(message.body, listed, WA_TEXT_MAX);
     try {
       if (template) {
         const sent = await sendTemplateMessage({
@@ -91,7 +95,7 @@ export class WhatsAppSender implements ChannelSender {
         return { channelMessageId: sent.messageId };
       }
       if (cards.length && message.body.length > WA_CAROUSEL_BODY_MAX) {
-        return await this.sendText(base, message.body, 'The reply is too long to carry cards');
+        return await this.sendText(base, asText, 'The reply is too long to carry cards');
       }
       if (cards.length) {
         try {
@@ -101,10 +105,10 @@ export class WhatsAppSender implements ChannelSender {
           const why = explainMetaError(err);
           // Another attempt may work for a rate limit or an outage; the retry tries the cards again.
           if (why.retryable) throw err;
-          return await this.sendText(base, message.body, why.summary);
+          return await this.sendText(base, asText, why.summary);
         }
       }
-      return await this.sendText(base, message.body);
+      return await this.sendText(base, asText);
     } catch (err) {
       const why = explainMetaError(err);
       // Rate limits and outages are worth another attempt; a closed window or a bad token is not.

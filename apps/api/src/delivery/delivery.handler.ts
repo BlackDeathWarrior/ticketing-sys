@@ -67,6 +67,8 @@ export class DeliveryHandler implements DomainEventHandler {
       );
       if (err instanceof PermanentDeliveryError || ctx.attempt >= ctx.maxAttempts) {
         await this.conversations.markDelivery(SYSTEM_CTX, messageId, ticketId, 'failed', reason);
+        // A carousel that keeps failing still ends in text; nothing else changes for other messages.
+        await this.conversations.requeueWithoutCards(messageId, reason);
         return;
       }
       throw err;

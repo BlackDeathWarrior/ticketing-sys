@@ -81,13 +81,37 @@ export function parseCardButtonId(id: string): { kind: 'like' | 'view'; cardId: 
  */
 export function cardBody(card: MessageCard): string {
   const head = `*${card.title}*`;
-  if (!card.text) return head;
-  const body = `${head}\n${card.text}`;
+  // Meta allows two line breaks in a card's body and the title line takes one: the text has none.
+  const text = card.text?.replace(/\s+/g, ' ').trim();
+  if (!text) return head;
+  const body = `${head}\n${text}`;
   if (body.length <= WA_CARD_BODY_MAX) return body;
   // What is left for the text after the title and the line break; a title is at most 80 long.
   const room = WA_CARD_BODY_MAX - head.length - 1;
-  let cut = card.text.slice(0, room - 1);
+  let cut = text.slice(0, room - 1);
   // Do not leave half of an emoji behind.
   if (/[\ud800-\udbff]$/.test(cut)) cut = cut.slice(0, -1);
   return `${head}\n${cut.trimEnd()}…`;
+}
+
+/**
+ * A reply whose cards cannot be shown, as plain text: the reply, a blank line, then one
+ * line per card (title, its text, its link). The AI keeps its message short because the
+ * cards carry the items, so without them the customer would get no items at all. The
+ * items that do not fit in `max` characters are left off from the end; the reply is never cut.
+ */
+export function cardsAsText(body: string, cards: MessageCard[], max: number): string {
+  const one = (v: string) => v.replace(/\s+/g, ' ').trim();
+  const lines = cards
+    .slice(0, MAX_CARDS)
+    .map(
+      (c) =>
+        `${one(c.title)}${c.text && one(c.text) ? ` - ${one(c.text)}` : ''}${c.url ? ` - ${c.url}` : ''}`,
+    );
+  while (lines.length) {
+    const text = `${body}\n\n${lines.join('\n')}`;
+    if (text.length <= max) return text;
+    lines.pop();
+  }
+  return body;
 }

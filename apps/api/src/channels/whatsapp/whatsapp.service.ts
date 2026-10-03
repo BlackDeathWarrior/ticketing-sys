@@ -190,7 +190,12 @@ export class WhatsAppService {
     text: string;
     card: { id: string; kind: 'like' | 'view'; title?: string; url?: string };
   } | null> {
-    const reply = message.interactive?.button_reply;
+    // Quick replies on templates arrive as a `button` message; a carousel's taps may too.
+    const reply =
+      message.interactive?.button_reply ??
+      (message.button?.payload
+        ? { id: message.button.payload, title: message.button.text }
+        : undefined);
     const parsed = reply ? parseCardButtonId(reply.id) : null;
     if (!reply || !parsed) return null;
     const { kind } = parsed;
