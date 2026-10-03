@@ -202,9 +202,12 @@ export function smallTalkReply(
   language: string | null,
   /** How to address the customer ("Ms. Verma", "Asha"), when their name is known. */
   name?: string | null,
+  /** Set at the start of a conversation: the company to welcome them to, and which wording to use. */
+  welcome?: { company: string; variant: number } | null,
 ): string {
   const hi = language === 'hi';
   if (kind === 'greeting') {
+    if (welcome) return welcomeMessage(language, name ?? null, welcome.company, welcome.variant);
     if (name) {
       return hi
         ? `नमस्ते ${name}! मैं आपकी कैसे मदद कर सकता हूँ?`
@@ -216,6 +219,35 @@ export function smallTalkReply(
   return hi
     ? 'मैं यहाँ हूँ और मदद के लिए तैयार हूँ। कृपया थोड़ा और बताएँ कि आपको क्या चाहिए: जैसे आपका ऑर्डर नंबर, या बात किस बारे में है।'
     : 'I am here and happy to help. Could you tell me a little more about what you need? For example your order number, or what it is about.';
+}
+
+/**
+ * How a conversation is opened when the customer only said hello: a welcome by
+ * name and to the company. A few wordings, so it does not read like a stamp;
+ * `variant` picks one and the same conversation always gets the same one.
+ */
+export function welcomeMessage(
+  language: string | null,
+  name: string | null,
+  company: string,
+  variant: number,
+): string {
+  if (language === 'hi') {
+    return name
+      ? `नमस्ते ${name}! ${company} में आपका स्वागत है।\nहम आपकी कैसे मदद कर सकते हैं?`
+      : `नमस्ते! ${company} में आपका स्वागत है।\nहम आपकी कैसे मदद कर सकते हैं?`;
+  }
+  // "Hi! Ms. Verma, welcome to …" with a name; "Hi! Welcome to …" without one.
+  const open = (hello: string, rest: string) =>
+    name
+      ? `${hello}! ${name}, ${rest}`
+      : `${hello}! ${rest.charAt(0).toUpperCase()}${rest.slice(1)}`;
+  const wordings = [
+    `${open('Hi', `welcome to ${company}.`)}\nHow may we assist you?`,
+    `${open('Hello', `welcome to ${company}.`)}\nHow can we help you today?`,
+    `${open('Hi', `thanks for reaching out to ${company}.`)}\nWhat can we do for you today?`,
+  ];
+  return wordings[Math.abs(Math.trunc(variant)) % wordings.length]!;
 }
 
 /** The first answer to "I want a person": the AI is the first line and offers to sort it out. */

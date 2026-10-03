@@ -175,6 +175,8 @@ interface ThinkInput {
   mode: AiChannelMode;
   behaviour: AiBehaviour;
   transcript: Line[];
+  /** Nobody on our side has written for a long while: the reply opens with a welcome. A live turn sets it. */
+  opening?: boolean;
   summary: string | null;
   ticket: {
     id: string | null;
@@ -213,6 +215,8 @@ interface ThinkInput {
 const LOCK_MS = 120_000;
 const HISTORY_TAIL = 8;
 const SUMMARIZE_AFTER = 14;
+/** After this long without a word from our side, a customer who writes is welcomed again. */
+const WELCOME_AFTER_MS = 12 * 3_600_000;
 
 /** Whether the last thing the customer was sent is our "a person will reply" message. */
 function toldToWait(rows: Array<{ direction: string; metadata: unknown }>): boolean {
@@ -594,6 +598,9 @@ export class AiAgentService {
         case 'ask': {
           const { ticket, customer, summary } = await rest();
           const transcript: Line[] = rows.filter((m) => m.authorType !== 'system').map(lineOf);
+          // A WhatsApp chat is one thread for good, so "the start" is also a return after a long gap.
+          const lastOurs = [...rows].reverse().find((m) => m.authorType !== 'customer');
+          const opening = !lastOurs || Date.now() - lastOurs.createdAt.getTime() > WELCOME_AFTER_MS;
           const unconfidentBefore = await this.runs.unconfidentTurns(
             conv.id,
             behaviour.sendAt,
@@ -604,6 +611,7 @@ export class AiAgentService {
             mode,
             behaviour,
             transcript: summary ? transcript.slice(-HISTORY_TAIL) : transcript,
+            opening,
             summary,
             ticket: {
               id: ticket.id,
@@ -857,6 +865,10 @@ export class AiAgentService {
       return finish();
     }
 
+    // Nobody has answered yet: the first reply welcomes the customer, by name when we have one.
+    const firstReply =
+      !i.update && (i.opening ?? !i.transcript.some((l) => l.author !== 'customer'));
+
     // ---- Answers that need no model (ADR 0030). An email wants an email, so not there. ----
     const paths = i.behaviour.fastPaths;
     const quick = !i.update && !i.personAsked && traitsOf(i.channel).quickAnswers;
@@ -890,7 +902,17 @@ export class AiAgentService {
     if (talk) {
       fast = {
         route: 'smalltalk',
-        reply: smallTalkReply(talk, i.language, i.customer.address?.short),
+        reply: smallTalkReply(
+          talk,
+          i.language,
+          i.customer.address?.short,
+          firstReply
+            ? {
+                company: (await this.branding.get()).companyName,
+                variant: [...(i.conversationId ?? '')].reduce((sum, c) => sum + c.charCodeAt(0), 0),
+              }
+            : null,
+        ),
         confidence: 1,
         intent: talk,
         resolves: talk === 'thanks',
@@ -954,6 +976,7 @@ export class AiAgentService {
           categories,
           companyTools: companyTools.length > 0,
           cards: cardsOffered,
+          firstReply,
           unverified:
             allTools.length > companyTools.length
               ? i.channel === 'whatsapp'
