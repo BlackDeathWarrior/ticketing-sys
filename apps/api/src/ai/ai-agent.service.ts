@@ -434,7 +434,8 @@ export class AiAgentService {
     if (!lastRow || lastRow.authorType !== 'customer') return 'skipped';
 
     const language = conv.language ?? (await this.language.detect(lastRow.body));
-    // Loaded at the first step that needs them: a "no, thanks" to the closing question needs none.
+    // Loaded by the first step after the closing check: a "no, thanks" to the closing
+    // question needs none of them.
     const rest = once(async () => {
       const ticket = await this.tickets.get(conv.ticketId);
       const customer = await this.customers.get(ticket.customerId);
@@ -554,6 +555,11 @@ export class AiAgentService {
             kind: 'turn',
             counters,
           });
+        }
+        default: {
+          // A step the plan gained and this loop does not carry out yet.
+          const unknown: never = step;
+          throw new Error(`Unknown turn step: ${JSON.stringify(unknown)}`);
         }
       }
     }
@@ -753,6 +759,7 @@ export class AiAgentService {
     const finish = () => ({ ...out, latencyMs: Date.now() - started });
     const last = [...i.transcript].reverse().find((l) => l.author === 'customer')?.body ?? '';
 
+    // The turn plan decides this for a live turn; the dry run comes straight here.
     if (asksForHuman(last) && !i.personAsked) {
       out.rules = ['asked_for_human'];
       return finish();

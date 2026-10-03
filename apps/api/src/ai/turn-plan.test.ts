@@ -317,12 +317,6 @@ describe('a request for a person', () => {
     const drafted = answer({ decision: 'drafted', rules: ['draft_channel'] });
     expect(step.answered(drafted, 0)).toMatchObject({ result: { rules: ['draft_channel'] } });
   });
-
-  it('makes no offer where it does not answer live', () => {
-    const step = asked(startTurn(facts({ message: SHORT, channel: 'email' })));
-    expect(step.personAsked).toBe(false);
-    expect(step.counters).toBeUndefined();
-  });
 });
 
 describe('an answer to something off topic', () => {
@@ -536,5 +530,113 @@ describe('reading the facts of a conversation', () => {
     });
     const damaged = read([row('customer', 'Hello')], { guard: 'x', humanAsks: 'many' });
     expect(damaged).toMatchObject({ strikes: { abuse: 0, offTopic: 0 }, humanAsks: 0 });
+  });
+});
+
+describe('edges of the ladders', () => {
+  const afterClosingQuestion = {
+    outbound: true,
+    closingQuestion: true,
+    closing: false,
+    personOffer: false,
+  };
+
+  it('screens the message like any other when the goodbye could not be given', () => {
+    // The third identical message in a row is spam, whatever it says.
+    const step = startTurn(
+      facts({
+        message: 'No thanks',
+        earlier: ['No thanks', 'No thanks'],
+        previous: afterClosingQuestion,
+      }),
+    );
+    if (step.do !== 'resolve') throw new Error('expected a resolve');
+    expect(step.refused()).toMatchObject({ do: 'send', result: { rules: ['spam'] } });
+  });
+
+  it('hands a request for a person over at once where it does not answer live', () => {
+    for (const where of [{ channel: 'email' }, { mode: 'draft' as const }, { channel: 'voice' }]) {
+      const step = startTurn(facts({ message: 'I want to talk to a human', ...where }));
+      expect(step).toMatchObject({
+        do: 'send',
+        result: { decision: 'handover', reply: null, rules: ['asked_for_human'] },
+      });
+      expect(step).not.toHaveProperty('counters');
+    }
+  });
+
+  it('draws the line between "only a request" and "a request about something" at 60 characters', () => {
+    const base = 'I want to talk to a human about my order';
+    const sixty = `${base} ${'1234567890123456789'.slice(0, 60 - base.length - 1)}`;
+    expect(sixty).toHaveLength(60);
+    expect(startTurn(facts({ message: `  ${sixty}  ` }))).toMatchObject({
+      do: 'send',
+      result: { rules: ['person_offered'] },
+    });
+    expect(asked(startTurn(facts({ message: `${sixty}0` }))).personAsked).toBe(true);
+  });
+
+  it('writes every fixed message in the customer’s language', () => {
+    const hi = { language: 'hi' };
+    expect(startTurn(facts({ message: ABUSE, ...hi }))).toMatchObject({
+      result: { reply: conductWarning('hi', 'abuse'), language: 'hi' },
+    });
+    expect(conductWarning('hi', 'abuse')).not.toBe(conductWarning('en', 'abuse'));
+
+    expect(startTurn(facts({ message: 'I want to talk to a human', ...hi }))).toMatchObject({
+      result: { reply: personOffer('hi') },
+    });
+    expect(personOffer('hi')).not.toBe(personOffer('en'));
+
+    const offTopic = answer({ reply: 'Only orders.', offTopic: true });
+    const warned = asked(startTurn(facts({ strikes: { abuse: 0, offTopic: 1 }, ...hi })));
+    expect(warned.answered(offTopic, 0)).toMatchObject({
+      result: { reply: `Only orders.\n\n${offTopicWarning('hi')}` },
+    });
+    expect(offTopicWarning('hi')).not.toBe(offTopicWarning('en'));
+
+    const unsure = answer({ decision: 'handover', rules: ['no_answer'], confidence: 0.2 });
+    expect(asked(startTurn(facts(hi))).answered(unsure, 0)).toMatchObject({
+      result: { reply: clarifyMessage('hi') },
+    });
+    expect(clarifyMessage('hi')).not.toBe(clarifyMessage('en'));
+  });
+
+  it('adds no warning to an off-topic answer that has no text', () => {
+    const empty = answer({ reply: null, offTopic: true });
+    const step = asked(startTurn(facts({ strikes: { abuse: 0, offTopic: 1 } })));
+    expect(step.answered(empty, 0)).toMatchObject({ do: 'send', result: { reply: null } });
+  });
+
+  it('never changes the answer it was given', () => {
+    const offTopic = answer({ reply: 'Only orders.', offTopic: true, rules: [] });
+    const unsure = answer({ decision: 'handover', rules: ['low_confidence'], confidence: 0.4 });
+    const before = [structuredClone(offTopic), structuredClone(unsure)];
+    asked(startTurn(facts({ strikes: { abuse: 0, offTopic: 1 } }))).answered(offTopic, 0);
+    asked(startTurn(facts())).answered(unsure, 0);
+    expect([offTopic, unsure]).toEqual(before);
+  });
+
+  it('reads damaged marks on the message before as nothing', () => {
+    const rows = (metadata: unknown) => [
+      { authorType: 'ai', direction: 'outbound', body: 'An answer', metadata },
+      { authorType: 'customer', direction: 'inbound', body: 'no', metadata: {} },
+    ];
+    for (const damaged of ['x', 7, { ai: 'yes' }, { ai: null, closing: 0 }]) {
+      const found = turnFacts({
+        channel: 'webchat',
+        mode: 'auto',
+        language: 'en',
+        behaviour: DEFAULT_AI_BEHAVIOUR,
+        metadata: {},
+        rows: rows(damaged),
+      });
+      expect(found.previous).toEqual({
+        outbound: true,
+        closingQuestion: false,
+        closing: false,
+        personOffer: false,
+      });
+    }
   });
 });

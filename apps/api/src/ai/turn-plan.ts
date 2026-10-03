@@ -92,12 +92,15 @@ export type Counters = {
  * turn; `resolve` and `close` end it unless the effect was refused
  * (`'skipped'`), and then `refused()` says what happens instead.
  */
+/** Why a conversation is ended for conduct. */
+export type Closure = GuardKind | 'off_topic';
+
 export type Step =
   | { do: 'resolve'; silent: boolean; refused(): Step }
   | { do: 'need_flagged'; given(flagged: boolean): Step }
   | {
       do: 'close';
-      closure: 'jailbreak' | 'abuse' | 'spam' | 'off_topic';
+      closure: Closure;
       pattern: string | null;
       rules: AiRule[];
       flag: boolean;
@@ -114,7 +117,7 @@ export type Step =
 /** A request for a person this short says nothing else: it gets the fixed offer. */
 const PERSON_ONLY_CHARS = 60;
 
-const CONDUCT_RULE: Record<GuardKind | 'off_topic', AiRule> = {
+const CONDUCT_RULE: Record<Closure, AiRule> = {
   jailbreak: 'jailbreak_attempt',
   abuse: 'abusive_language',
   spam: 'spam',
@@ -144,6 +147,10 @@ function fixed(f: TurnFacts, reply: string, rules: AiRule[], summary: string): T
     tools: [{ name: 'no_model', summary }],
   };
 }
+
+/** The rules a conduct close is recorded under; a repeat offender is named as one. */
+const closeRules = (closure: Closure, repeat: boolean): AiRule[] =>
+  repeat ? [CONDUCT_RULE[closure], 'repeat_offender'] : [CONDUCT_RULE[closure]];
 
 /** Continues once it is known whether the customer was flagged recently; asks only if nobody said. */
 function withFlag(f: TurnFacts, next: (repeat: boolean) => Step): Step {
@@ -200,7 +207,7 @@ function conductHit(f: TurnFacts, hit: GuardHit, repeat: boolean): Step {
       do: 'close',
       closure: hit.kind,
       pattern: hit.pattern,
-      rules: [rule, ...(repeat ? (['repeat_offender'] as AiRule[]) : [])],
+      rules: closeRules(hit.kind, repeat),
       // An attempt on the AI's instructions is flagged; so is someone closed twice.
       flag: hit.kind === 'jailbreak' || hit.kind === 'abuse' || repeat,
       refused: () => personRequest(f),
@@ -225,15 +232,18 @@ function conductHit(f: TurnFacts, hit: GuardHit, repeat: boolean): Step {
 
 /** A request for a person: the AI offers to sort it out first (ADR 0029). */
 function personRequest(f: TurnFacts): Step {
+  const asks = asksForHuman(f.message);
+  const toPerson: ThinkResult = { ...blankResult(f.language), rules: ['asked_for_human'] };
+  if (!live(f)) {
+    // By email, in drafts or on a call there is no offer to make: a request is handed over.
+    return asks ? { do: 'send', result: toPerson } : askModel(f, false);
+  }
   const insists = !!f.previous?.personOffer && acceptsOffer(f.message);
-  if (!(asksForHuman(f.message) || insists) || !live(f)) return askModel(f, false);
-  const counters: Counters = { humanAsks: f.humanAsks + 1 };
-  if (insists || f.humanAsks + 1 >= f.settings.handover.personRequestsBeforeHandover) {
-    return {
-      do: 'send',
-      counters,
-      result: { ...blankResult(f.language), rules: ['asked_for_human'] },
-    };
+  if (!asks && !insists) return askModel(f, false);
+  const requests = f.humanAsks + 1;
+  const counters: Counters = { humanAsks: requests };
+  if (insists || requests >= f.settings.handover.personRequestsBeforeHandover) {
+    return { do: 'send', counters, result: toPerson };
   }
   if (f.message.trim().length <= PERSON_ONLY_CHARS) {
     return {
@@ -292,7 +302,7 @@ function offTopic(f: TurnFacts, r: ThinkResult, unconfidentBefore: number): Step
           do: 'close',
           closure: 'off_topic',
           pattern: null,
-          rules: ['off_topic', ...(repeat ? (['repeat_offender'] as AiRule[]) : [])],
+          rules: closeRules('off_topic', repeat),
           flag: repeat,
           refused: redirect,
         }
