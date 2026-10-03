@@ -127,6 +127,13 @@ const CHANNELS: Record<
       { name: 'appVersion', label: 'Agent version', kind: 'number' },
       { name: 'connectionId', label: 'Connection ID', kind: 'text' },
       { name: 'callingHours', label: 'Outbound calls only 09:00–21:00 IST', kind: 'bool' },
+      {
+        name: 'linkTemplate',
+        label: 'WhatsApp template for links',
+        kind: 'text',
+        placeholder: 'Template name; its body has one variable, the link',
+        optional: true,
+      },
     ],
     defaults: { enabled: true, appVersion: 1, callingHours: false },
   },
