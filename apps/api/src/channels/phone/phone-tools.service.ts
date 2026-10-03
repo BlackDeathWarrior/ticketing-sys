@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  internationalCallerNumber,
   PHONE_TOOL_RESULT_MAX,
   type PhoneStartInput,
   type PhoneStartReply,
@@ -12,6 +13,7 @@ import { AI_CTX } from '../../common/request-context';
 import { CustomersService } from '../../customers/customers.service';
 import { KbSearchService } from '../../kb/kb-search.service';
 import { BrandingService } from '../../settings/branding.service';
+import { ChannelConfigService } from '../../settings/channel-config.service';
 import { ToolGatewayService } from '../../tools/tool-gateway.service';
 import { type AgentTool, ToolsService } from '../../tools/tools.service';
 import { type CallRow, VoiceCallsService } from '../voice/voice-calls.service';
@@ -51,6 +53,7 @@ export class PhoneToolsService {
     private readonly customers: CustomersService,
     private readonly branding: BrandingService,
     private readonly calls: VoiceCallsService,
+    private readonly channels: ChannelConfigService,
   ) {}
 
   /**
@@ -72,8 +75,9 @@ export class PhoneToolsService {
 
   /** The call begins: who is calling, and what the agent can use. */
   async start(input: PhoneStartInput): Promise<PhoneStartReply> {
-    const call = await this.calls.beginPhone(input);
-    const phone = input.phone ?? call.callerPhone;
+    const caller = await this.caller(input.phone);
+    const call = await this.calls.beginPhone({ interactionId: input.interactionId, phone: caller });
+    const phone = caller ?? call.callerPhone;
     const owner = phone ? await this.customers.provenPhoneOwner(phone) : null;
     return {
       customer_name: owner?.name ?? '',
@@ -100,7 +104,13 @@ export class PhoneToolsService {
     ]);
   }
 
-  private async answer(tool: PhoneToolName, body: PhoneToolInput): Promise<PhoneToolReply> {
+  /** The caller's number in the form proven numbers are stored in (with the country code). */
+  private async caller(phone: string | null): Promise<string | null> {
+    return internationalCallerNumber(phone, (await this.channels.phone())?.agentPhoneNumber ?? '');
+  }
+
+  private async answer(tool: PhoneToolName, input: PhoneToolInput): Promise<PhoneToolReply> {
+    const body = { ...input, phone: await this.caller(input.phone) };
     // The start hook may never have arrived: any tool call opens the call's record.
     const call = await this.calls.beginPhone(body);
     switch (tool) {

@@ -34,6 +34,25 @@ const callerPhone = loose
   .transform((v) => (v == null ? '' : normalizeIdentity('phone', String(v))))
   .transform((v) => (/^\d{8,15}$/.test(v) ? v : null));
 
+/**
+ * Sarvam gives a caller from the number's own country in national form
+ * (`0XXXXXXXXXX`, seen on the first real call), while proven numbers are stored
+ * in international form (`91XXXXXXXXXX`). The country code is taken from our
+ * own rented number; a number that already carries one is left alone.
+ */
+export function internationalCallerNumber(
+  phone: string | null,
+  agentPhoneNumber: string,
+): string | null {
+  if (!phone) return null;
+  const agent = agentPhoneNumber.replace(/\D/g, '');
+  const countryCode = agent.length > 10 ? agent.slice(0, agent.length - 10) : '';
+  if (!countryCode) return phone;
+  if (phone.length === 11 && phone.startsWith('0')) return countryCode + phone.slice(1);
+  if (phone.length === 10) return countryCode + phone;
+  return phone;
+}
+
 export const phoneStartSchema = z.object({ interactionId, phone: callerPhone });
 export type PhoneStartInput = z.output<typeof phoneStartSchema>;
 

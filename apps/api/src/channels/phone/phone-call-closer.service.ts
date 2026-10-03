@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { MessageEnvelope } from '@tms/shared';
+import { internationalCallerNumber, type MessageEnvelope } from '@tms/shared';
 import { AiAutoResolveService } from '../../ai/ai-auto-resolve';
 import { AI_CTX, SYSTEM_CTX } from '../../common/request-context';
 import { HandoverService } from '../../handover/handover.service';
+import { ChannelConfigService } from '../../settings/channel-config.service';
 import { ToolGatewayService } from '../../tools/tool-gateway.service';
 import { InboundService } from '../inbound.service';
 import { OutboundService } from '../outbound.service';
@@ -34,6 +35,7 @@ export class PhoneCallCloser {
     private readonly gateway: ToolGatewayService,
     private readonly handover: HandoverService,
     private readonly autoResolve: AiAutoResolveService,
+    private readonly channels: ChannelConfigService,
   ) {}
 
   async close(interactionId: string, hint: PhoneCallHint): Promise<'closed' | 'empty' | 'already'> {
@@ -78,7 +80,12 @@ export class PhoneCallCloser {
     // Who the ticket is filed under. With no hook during the call, the trigger's number is
     // all there is: it files the ticket, and is never used to run a tool. A caller whose
     // number the network withheld is still one person for this call.
-    const phone = call.callerPhone ?? hint.phone;
+    const phone =
+      call.callerPhone ??
+      internationalCallerNumber(
+        hint.phone,
+        (await this.channels.phone())?.agentPhoneNumber ?? '',
+      );
     const from: MessageEnvelope['from'] = phone
       ? { identity: { type: 'phone', value: phone } }
       : { identity: { type: 'external_id', value: `sarvam-call:${interactionId}` } };
