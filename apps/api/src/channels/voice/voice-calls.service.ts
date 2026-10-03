@@ -7,7 +7,7 @@ import {
   type VoiceEndReason,
   type VoiceState,
 } from '@tms/shared';
-import { and, desc, eq, gt, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { AuditService } from '../../audit/audit.service';
 import { OutboxService } from '../../audit/outbox.service';
 import { type RequestCtx, SYSTEM_CTX } from '../../common/request-context';
@@ -76,17 +76,7 @@ export class VoiceCallsService {
       recording: Buffer | null;
     },
   ): Promise<void> {
-    let recordingKey: string | null = null;
-    if (result.recording && this.storage.enabled) {
-      const now = new Date();
-      recordingKey = `recordings/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}.wav`;
-      try {
-        await this.storage.put(recordingKey, result.recording, 'audio/wav');
-      } catch (err) {
-        this.logger.error(`recording of call ${id} was not stored: ${(err as Error).message}`);
-        recordingKey = null;
-      }
-    }
+    const recordingKey = result.recording ? await this.store(id, result.recording) : null;
     await this.db.transaction(async (tx) => {
       const [row] = await tx
         .update(voiceCalls)
@@ -108,6 +98,42 @@ export class VoiceCallsService {
         seconds: result.seconds,
         recorded: !!recordingKey,
       });
+    });
+  }
+
+  /** Puts a call's WAV in object storage. Null when storage is off or the upload failed. */
+  private async store(id: string, wav: Buffer): Promise<string | null> {
+    if (!this.storage.enabled) return null;
+    const now = new Date();
+    const key = `recordings/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}.wav`;
+    try {
+      await this.storage.put(key, wav, 'audio/wav');
+      return key;
+    } catch (err) {
+      this.logger.error(`recording of call ${id} was not stored: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
+   * A recording that arrived after the call was closed (a phone call's audio
+   * is fetched from Sarvam and may be ready later than its transcript). Only
+   * for a call that has none and whose recording was not already deleted.
+   */
+  async attachRecording(id: string, wav: Buffer): Promise<boolean> {
+    const call = await this.get(id);
+    if (call.status !== 'ended' || call.recordingKey || call.recordingDeletedAt) return false;
+    const recordingKey = await this.store(id, wav);
+    if (!recordingKey) return false;
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(voiceCalls)
+        .set({ recordingKey, recordingBytes: wav.length })
+        .where(and(eq(voiceCalls.id, id), isNull(voiceCalls.recordingKey)))
+        .returning();
+      if (!row) return false;
+      await this.changed(tx, SYSTEM_CTX, 'voice.call_updated', row, { recorded: true });
+      return true;
     });
   }
 
