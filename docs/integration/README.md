@@ -260,11 +260,11 @@ A code lasts 10 minutes, works once, and is spent after 5 wrong tries. A new cod
 
 Other answers:
 
-| Status | Meaning                                                                                                                                                                                      | What to do                                                           |
-| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `409`  | WhatsApp is not connected; or there is no approved authentication template and the number has not written in the last 24 hours; or the number was linked to another customer a moment ago. | Tell the user it cannot be done now. For the last case, try again.   |
-| `429`  | Too many codes (see Limits). `Retry-After` says how many seconds to wait.                                                                                                                    | Wait, then offer to send again.                                      |
-| `502`  | Meta refused the message. `message` carries Meta's reason.                                                                                                                                   | Tell the user the code could not be sent.                            |
+| Status | Meaning                                                                                                                                                                                    | What to do                                                         |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| `409`  | WhatsApp is not connected; or there is no approved authentication template and the number has not written in the last 24 hours; or the number was linked to another customer a moment ago. | Tell the user it cannot be done now. For the last case, try again. |
+| `429`  | Too many codes (see Limits). `Retry-After` says how many seconds to wait.                                                                                                                  | Wait, then offer to send again.                                    |
+| `502`  | Meta refused the message. `message` carries Meta's reason.                                                                                                                                 | Tell the user the code could not be sent.                          |
 
 **Limits.** One code a minute and five an hour for a number; ten an hour for one of your users. These are always on, even where other limits are switched off, because every code is a paid WhatsApp message to someone's phone.
 
