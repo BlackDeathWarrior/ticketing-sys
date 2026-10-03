@@ -398,15 +398,31 @@ export interface VoiceFacts {
   probe?: ProbeResult;
   /** Calls in progress on this server, and how many it takes at once. */
   lines: { active: number; max: number } | null;
+  /** Phone calls through Sarvam's Voice Agent (ADR 0039); null when never set up. */
+  phone?: {
+    enabled: boolean;
+    keySaved: boolean;
+    tokenSaved: boolean;
+    probe?: ProbeResult;
+    /** The last time Sarvam's agent reached one of our hooks. */
+    lastHookAt: string | null;
+  } | null;
   activity: ChannelActivity;
 }
 
 export function voiceHealth(f: VoiceFacts): ChannelHealth {
-  if (f.enabled === null && !f.keySaved) return off('voice', 'Not set up');
-  if (f.enabled === false) return off('voice', 'Switched off', [], f.activity);
+  const phone = f.phone?.enabled ? f.phone : null;
+  const browserOff = (f.enabled === null && !f.keySaved) || f.enabled === false;
+  if (browserOff && !phone) {
+    return f.enabled === false
+      ? off('voice', 'Switched off', [], f.activity)
+      : off('voice', 'Not set up');
+  }
 
   const checks: HealthCheck[] = [];
-  if (!f.keySaved) {
+  if (browserOff) {
+    // Phone calls alone: nothing about calls in the browser is wrong.
+  } else if (!f.keySaved) {
     checks.push({
       key: 'key',
       label: 'Sarvam key',
@@ -430,7 +446,8 @@ export function voiceHealth(f: VoiceFacts): ChannelHealth {
         : (f.probe.error ?? 'Sarvam refused the connection'),
     });
   }
-  if (f.lines) {
+  if (phone) checks.push(...phoneChecks(phone));
+  if (f.lines && !browserOff) {
     const busy = f.lines.active >= f.lines.max;
     checks.push({
       key: 'lines',
@@ -442,6 +459,52 @@ export function voiceHealth(f: VoiceFacts): ChannelHealth {
     });
   }
   return build('voice', checks, f.activity, 'Ready for calls', f.probe?.at ?? null);
+}
+
+function phoneChecks(p: NonNullable<VoiceFacts['phone']>): HealthCheck[] {
+  const checks: HealthCheck[] = [];
+  if (!p.keySaved) {
+    checks.push({
+      key: 'phone_key',
+      label: 'Phone: Sarvam key',
+      state: 'down',
+      detail: 'Not saved. Tickets cannot be written after a call.',
+    });
+  } else if (!p.probe) {
+    checks.push({
+      key: 'phone_sarvam',
+      label: 'Phone: connection to Sarvam',
+      state: 'warning',
+      detail: 'Not checked yet. Click Test connection.',
+    });
+  } else {
+    checks.push({
+      key: 'phone_sarvam',
+      label: 'Phone: connection to Sarvam',
+      state: p.probe.ok ? 'ok' : 'down',
+      detail: p.probe.ok
+        ? (p.probe.detail ?? 'Sarvam accepts the key')
+        : (p.probe.error ?? 'Sarvam refused the connection'),
+    });
+  }
+  checks.push(
+    p.tokenSaved
+      ? {
+          key: 'phone_hooks',
+          label: 'Phone: calls from the phone agent',
+          state: p.lastHookAt ? 'ok' : 'warning',
+          detail: p.lastHookAt
+            ? 'The phone agent reaches the desk'
+            : 'No call has reached the desk yet',
+        }
+      : {
+          key: 'phone_hooks',
+          label: 'Phone: hook token',
+          state: 'down',
+          detail: 'Not saved. The phone agent is refused.',
+        },
+  );
+  return checks;
 }
 
 /** Adds up activity across channels that share one way out (email and the help-center form). */

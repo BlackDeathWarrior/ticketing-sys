@@ -44,7 +44,7 @@ export const voiceCalls = pgTable(
     recordingKey: text('recording_key'),
     recordingBytes: integer('recording_bytes'),
     recordingDeletedAt: timestamp('recording_deleted_at', { withTimezone: true }),
-    /** browser | phone. A phone call is answered by the phone agent at Sarvam (ADR 0034). */
+    /** browser | phone. A phone call is answered by the phone agent at Sarvam (ADR 0039). */
     transport: text('transport').notNull().default('browser'),
     /** inbound | outbound */
     direction: text('direction').notNull().default('inbound'),

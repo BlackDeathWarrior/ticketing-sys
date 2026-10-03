@@ -7,6 +7,8 @@ import {
   type EmailChannelConfig,
   emailChannelConfigSchema,
   type KnownSecretKey,
+  type PhoneChannelConfig,
+  phoneChannelConfigSchema,
   SECRET_KEYS,
   type SarvamChannelConfig,
   sarvamChannelConfigSchema,
@@ -126,6 +128,29 @@ export class ChannelConfigService {
     return { ...(saved ?? sarvamChannelConfigSchema.parse({ enabled: true })), apiKey };
   }
 
+  /**
+   * Phone calls through Sarvam's Voice Agent (ADR 0039). Read fresh: a hook
+   * that arrives right after the channel is switched on must not be refused.
+   */
+  async phone(): Promise<
+    (PhoneChannelConfig & { apiKey: string | null; hookToken: string | null }) | null
+  > {
+    const saved = await this.settings.get(configKey('phone'), phoneChannelConfigSchema, {
+      fresh: true,
+    });
+    if (!saved) return null;
+    return {
+      ...saved,
+      apiKey: await this.secrets.get('phone.sarvam_api_key'),
+      hookToken: await this.secrets.get('phone.hook_token'),
+    };
+  }
+
+  /** Where Sarvam's Voice Agents API lives. */
+  get sarvamAgentsUrl(): string {
+    return this.env.SARVAM_AGENTS_URL;
+  }
+
   async view(kind: ChannelKind): Promise<ChannelSettingsView> {
     const saved = await this.settings.get(configKey(kind), CHANNEL_CONFIG_SCHEMAS[kind]);
     let config: Record<string, unknown> | null = saved;
@@ -216,6 +241,20 @@ export class ChannelConfigService {
       if (!res.ok) throw new Error(`Sarvam answered HTTP ${res.status}`);
       const body = (await res.json()) as { language_code?: string };
       return { detail: `Sarvam detected ${body.language_code ?? 'a language'}`, facts: {} };
+    }
+    if (kind === 'phone') {
+      const c = await this.phone();
+      if (!c) throw new Error('Phone calls are not configured');
+      if (!c.apiKey) throw new Error('The Voice Agents API key is not set');
+      // Listing the workspace's deployments costs nothing and proves the key and both ids.
+      const path = `/api/app-authoring/v1/orgs/${encodeURIComponent(c.orgId)}/workspaces/${encodeURIComponent(c.workspaceId)}/deployments`;
+      const res = await fetch(new URL(path, this.env.SARVAM_AGENTS_URL), {
+        headers: { 'X-API-Key': c.apiKey },
+      });
+      if (!res.ok) throw new Error(`Sarvam answered HTTP ${res.status}`);
+      const body = (await res.json()) as { total?: number };
+      const n = body.total ?? 0;
+      return { detail: `Sarvam lists ${n} deployment${n === 1 ? '' : 's'}`, facts: {} };
     }
     return this.testWhatsapp();
   }

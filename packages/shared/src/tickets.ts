@@ -75,7 +75,7 @@ export const DEFAULT_TRANSITIONS: Array<[from: string, to: string]> = [
 export const AI_CLOSURES = [
   'customer_confirmed',
   'no_reply',
-  // A phone call the phone agent answered, with nothing left for a person (ADR 0034).
+  // A phone call the phone agent answered, with nothing left for a person (ADR 0039).
   'phone_call_ended',
   // Closed for conduct (ADR 0029): closed for good at once, and never asked for a rating.
   'jailbreak',

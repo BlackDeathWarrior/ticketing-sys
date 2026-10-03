@@ -114,7 +114,52 @@ const CHANNELS: Record<
       recordCalls: true,
     },
   },
+  phone: {
+    title: 'Phone calls',
+    subtitle:
+      'Calls on a number rented from Sarvam, answered by a Sarvam Voice Agent that uses this desk’s knowledge and tools. Calls use your Sarvam wallet.',
+    fields: [
+      { name: 'enabled', label: 'Phone calls on', kind: 'bool' },
+      { name: 'agentPhoneNumber', label: 'Rented number', kind: 'text', placeholder: '+9180…' },
+      { name: 'orgId', label: 'Sarvam org ID', kind: 'text' },
+      { name: 'workspaceId', label: 'Sarvam workspace ID', kind: 'text' },
+      { name: 'appId', label: 'Agent (app) ID', kind: 'text' },
+      { name: 'appVersion', label: 'Agent version', kind: 'number' },
+      { name: 'connectionId', label: 'Connection ID', kind: 'text' },
+      { name: 'callingHours', label: 'Outbound calls only 09:00–21:00 IST', kind: 'bool' },
+    ],
+    defaults: { enabled: true, appVersion: 1, callingHours: false },
+  },
 };
+
+/** The token the phone agent sends with every request: made here, shown once, saved write-only. */
+function newHookToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Where Sarvam's agent reaches this desk; pasted into its tools, start hook and webhook. */
+function PhoneAddresses() {
+  const base = `${window.location.origin}/api/v1/phone/sarvam`;
+  const rows = [
+    ['On-start hook', `${base}/start`],
+    ['Tools', `${base}/tools/<name>`],
+    ['Webhook (call ended)', `${base}/ended`],
+  ] as const;
+  return (
+    <div>
+      <p className={styles.note}>
+        Paste these into the agent in Sarvam’s dashboard. The hook and the tools send the hook token
+        as a bearer token.
+      </p>
+      {rows.map(([label, url]) => (
+        <p key={label} className={styles.note}>
+          {label}: <span className={styles.mono}>{url}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
 
 export function ChannelsPanel() {
   const channels = useGet<ChannelSettingsView[]>('/settings/channels');
@@ -129,6 +174,7 @@ export function ChannelsPanel() {
   const email = view('email');
   const whatsapp = view('whatsapp');
   const sarvam = view('sarvam');
+  const phone = view('phone');
   const webchat = light('webchat');
   const webForm = light('web_form');
 
@@ -158,6 +204,8 @@ export function ChannelsPanel() {
         />
       )}
       {sarvam && <ChannelCard view={sarvam} health={light('voice')} onChanged={changed} />}
+      {/* The Voice light is shown once, on the card above: it covers phone calls too. */}
+      {phone && <ChannelCard view={phone} health={undefined} onChanged={changed} />}
     </div>
   );
 }
@@ -333,8 +381,10 @@ function ChannelForm({ view, onChanged }: { view: ChannelSettingsView; onChanged
             secret={s}
             canEdit={can('settings:secrets')}
             onChanged={onChanged}
+            generate={s.key === 'phone.hook_token' ? newHookToken : undefined}
           />
         ))}
+        {view.kind === 'phone' && <PhoneAddresses />}
       </div>
     </div>
   );
@@ -344,12 +394,16 @@ export function SecretField({
   secret,
   canEdit,
   onChanged,
+  generate,
 }: {
   secret: ChannelSettingsView['secrets'][number];
   canEdit: boolean;
   onChanged: () => void;
+  /** For a secret we make up ourselves: fills the field, shown in clear so it can be copied. */
+  generate?: () => string;
 }) {
   const [value, setValue] = useState('');
+  const [generated, setGenerated] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -359,6 +413,7 @@ export function SecretField({
     try {
       await api('PUT', `/settings/secrets/${secret.key}`, { value });
       setValue('');
+      setGenerated(false);
       onChanged();
     } catch (err) {
       setError((err as Error).message);
@@ -384,19 +439,34 @@ export function SecretField({
         <Input
           id={id}
           label={secret.label}
-          type="password"
+          type={generated ? 'text' : 'password'}
           autoComplete="new-password"
           spellCheck={false}
           value={value}
           disabled={!canEdit}
           placeholder={secret.set ? 'Enter a new value to rotate' : 'Not set'}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setGenerated(false);
+          }}
           hint={
             <span className={styles.keyState}>Stored: {maskedKey(secret.last4, secret.set)}</span>
           }
         />
         {canEdit && (
           <div className={styles.actions}>
+            {generate && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setValue(generate());
+                  setGenerated(true);
+                }}
+                disabled={busy}
+              >
+                Generate
+              </Button>
+            )}
             <Button onClick={save} disabled={!value || busy}>
               {secret.set ? 'Rotate' : 'Save'}
             </Button>

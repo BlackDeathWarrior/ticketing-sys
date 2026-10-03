@@ -121,7 +121,7 @@ export interface VoiceCallView {
   ticketId: string | null;
   conversationId: string | null;
   status: 'active' | 'ended';
-  /** `phone`: a call on the rented number, answered by the phone agent (ADR 0034). */
+  /** `phone`: a call on the rented number, answered by the phone agent (ADR 0039). */
   transport: 'browser' | 'phone';
   direction: 'inbound' | 'outbound';
   /** Only for calls in progress on this server. */
