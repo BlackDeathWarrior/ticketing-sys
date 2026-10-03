@@ -200,7 +200,7 @@ describe('the conduct ladder', () => {
   });
 
   it('hands over, with the pattern as the reason, where it does not answer live', () => {
-    for (const where of [{ channel: 'email' }, { mode: 'draft' as const }]) {
+    for (const where of [{ channel: 'email' as const }, { mode: 'draft' as const }]) {
       const step = startTurn(facts({ message: ABUSE, ...where }));
       expect(step).toMatchObject({
         do: 'send',
@@ -555,7 +555,11 @@ describe('edges of the ladders', () => {
   });
 
   it('hands a request for a person over at once where it does not answer live', () => {
-    for (const where of [{ channel: 'email' }, { mode: 'draft' as const }, { channel: 'voice' }]) {
+    for (const where of [
+      { channel: 'email' as const },
+      { mode: 'draft' as const },
+      { channel: 'voice' as const },
+    ]) {
       const step = startTurn(facts({ message: 'I want to talk to a human', ...where }));
       expect(step).toMatchObject({
         do: 'send',

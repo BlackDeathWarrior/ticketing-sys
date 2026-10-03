@@ -16,6 +16,7 @@ import {
 } from '@tms/shared';
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
+import { traitsOf } from '../channels/channel-traits';
 import { OutboundService } from '../channels/outbound.service';
 import { AI_CTX } from '../common/request-context';
 import type { Env } from '../config/env';
@@ -34,8 +35,6 @@ const QUEUE = 'ai-auto-resolve';
 const DAY_MS = 86_400_000;
 /** Tickets looked at per run; the rest wait for the next one. */
 const BATCH = 200;
-/** Where a customer sees a message in place, so "this request was closed" reaches them. */
-const TOLD_ON = new Set(['webchat', 'api']);
 
 /** "30 minutes", "3 hours", "2 days": how long the customer was quiet, for the ticket's resolution. */
 function span(ms: number): string {
@@ -218,7 +217,11 @@ export class AiAutoResolveService {
           `No reply from the customer for ${span(quiet)} after the AI's answer.`,
           'no_reply',
         );
-        if (done && behaviour.closing.tellCustomer && TOLD_ON.has(t.channel)) {
+        if (
+          done &&
+          behaviour.closing.tellCustomer &&
+          traitsOf(t.channel).toldWhenClosedForSilence
+        ) {
           const conv = await this.conversations.get(m.conversationId);
           await this.outbound.aiReply(
             AI_CTX,

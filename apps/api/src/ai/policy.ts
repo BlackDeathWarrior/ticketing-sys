@@ -1,4 +1,5 @@
 import type { AiBehaviour, AiChannelMode, AiDecision, AiRule } from '@tms/shared';
+import { traitsOf } from '../channels/channel-traits';
 
 /**
  * Turns what the model said into what the system does (ADR 0011). Pure, so
@@ -127,16 +128,13 @@ export function waitingMessage(language: string | null): string {
   return 'Thanks for your message. I want to be sure you get the right answer, so a member of our team will reply here shortly.';
 }
 
-/** Channels answered by email: no fixed one-liners, no warnings or closing by the AI alone. */
-export const byEmail = (channel: string) => channel === 'email' || channel === 'web_form';
-
 /**
  * "Is there anything else?", added to an answer that settles the request.
  * Fixed wording rather than the model's: it costs nothing, it is the same on
  * every channel, and the reply to it can be recognised without a model.
  */
 export function closingQuestion(language: string | null, channel: string): string {
-  if (byEmail(channel)) {
+  if (traitsOf(channel).repliesByEmail) {
     return language === 'hi'
       ? 'अगर आपको किसी और चीज़ में मदद चाहिए, तो बस इस ईमेल का जवाब दें।'
       : 'If there is anything else you need, just reply to this email.';
@@ -161,12 +159,13 @@ export function withClosingQuestion(reply: string, question: string): string {
 
 /** What the customer is told when they answer that nothing else is needed. */
 export function closingThanks(language: string | null, channel: string): string {
+  const byEmail = traitsOf(channel).repliesByEmail;
   if (language === 'hi') {
-    return byEmail(channel)
+    return byEmail
       ? 'मदद कर पाने की खुशी है। मैं यह अनुरोध अब बंद कर रहा हूँ। बाद में कुछ चाहिए, तो इस ईमेल का जवाब दें।'
       : 'मदद कर पाने की खुशी है। मैं यह अनुरोध अब बंद कर रहा हूँ। बाद में कुछ चाहिए, तो यहीं लिखें।';
   }
-  return byEmail(channel)
+  return byEmail
     ? 'Glad I could help. I am closing this request now. If you need anything later, just reply to this email.'
     : 'Glad I could help. I am closing this request now. If you need anything later, just write here again.';
 }
@@ -275,10 +274,11 @@ export function conductClosed(
  */
 export function handoverMessage(
   language: string | null,
-  channel?: string,
+  channel: string,
   colleague?: string | null,
 ): string {
-  if (channel === 'voice') {
+  const traits = traitsOf(channel);
+  if (traits.handoverNotice === 'in_turn') {
     return language === 'hi'
       ? 'कृपया लाइन पर बने रहें। मैं आपको हमारी टीम के एक सदस्य से जोड़ रहा हूँ।'
       : "Please stay on the line. I'm connecting you with a member of our team.";
@@ -290,7 +290,7 @@ export function handoverMessage(
       ? `धन्यवाद। मैं आपकी बातचीत अपने सहयोगी ${name} को सौंप रहा हूँ; वे जल्द ही यहीं जवाब देंगे।`
       : 'धन्यवाद। मैं आपकी बातचीत हमारी टीम के एक सदस्य को सौंप रहा हूँ; वे जल्द ही यहीं जवाब देंगे।';
   }
-  const where = channel === 'email' ? 'to this email' : 'here';
+  const where = traits.repliesByEmail ? 'to this email' : 'here';
   return name
     ? `Thanks for your patience. I'm passing this to my colleague ${name}, who will reply ${where} shortly.`
     : `Thanks for your patience. I'm passing this to a member of our team, who will reply ${where} shortly.`;

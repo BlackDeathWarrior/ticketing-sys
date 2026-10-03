@@ -117,8 +117,8 @@ describe('assess (send, draft or hand over)', () => {
 
 describe('handover texts', () => {
   it('speaks the customer’s language', () => {
-    expect(handoverMessage('hi')).toMatch(/टीम/);
-    expect(handoverMessage('en')).toMatch(/member of our team/);
+    expect(handoverMessage('hi', 'webchat')).toMatch(/टीम/);
+    expect(handoverMessage('en', 'webchat')).toMatch(/member of our team/);
   });
 
   it('names the colleague the ticket was routed to, when there is one', () => {

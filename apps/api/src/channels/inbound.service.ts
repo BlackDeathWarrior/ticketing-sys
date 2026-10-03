@@ -20,6 +20,7 @@ import { type Ticket, TicketsService } from '../tickets/tickets.service';
 import { WorkflowService } from '../workflow/workflow.service';
 import { PriorityRulesService } from '../settings/priority-rules.service';
 import { AiPolicyService } from './ai-policy.service';
+import { CHANNELS_ANSWERED_BY_EMAIL } from './channel-traits';
 import { extractTicketNumber } from './email/email.util';
 
 export interface InboundResult {
@@ -240,7 +241,7 @@ export class InboundService {
           conversation: await this.conversations.findLatestForTicket(
             tx,
             pinned.id,
-            env.channel === 'api' ? API_THREADS : EMAIL_THREADS,
+            env.channel === 'api' ? API_THREADS : CHANNELS_ANSWERED_BY_EMAIL,
           ),
           ticket: pinned,
         };
@@ -250,7 +251,11 @@ export class InboundService {
 
     if (env.channel === 'email') {
       // Replies to a web-form ticket's emails thread onto the form's conversation.
-      conversation = await this.conversations.findByMessageIds(tx, EMAIL_THREADS, env.references);
+      conversation = await this.conversations.findByMessageIds(
+        tx,
+        CHANNELS_ANSWERED_BY_EMAIL,
+        env.references,
+      );
       if (!conversation) {
         const num = extractTicketNumber(env.subject);
         if (num) {
@@ -260,7 +265,7 @@ export class InboundService {
             conversation = await this.conversations.findLatestForTicket(
               tx,
               tagged.id,
-              EMAIL_THREADS,
+              CHANNELS_ANSWERED_BY_EMAIL,
             );
           } else if (tagged) {
             this.logger.warn(`ignoring ticket tag TMS-${num}: sender is not the ticket's customer`);
@@ -280,10 +285,8 @@ export class InboundService {
   }
 }
 
-/** Conversations whose replies travel by email. */
-const EMAIL_THREADS: Channel[] = ['email', 'web_form'];
 /** Conversations an integration reads through the API. */
-const API_THREADS: Channel[] = ['api'];
+const API_THREADS: readonly Channel[] = ['api'];
 
 function subjectFor(env: ParsedEnvelope): string {
   if (env.subject) return env.subject.slice(0, 300);
