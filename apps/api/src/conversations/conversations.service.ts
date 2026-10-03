@@ -546,7 +546,7 @@ export class ConversationsService {
         message.direction !== 'outbound' ||
         message.deliveryStatus !== 'failed' ||
         message.metadata.cardsDropped !== undefined ||
-        !(messageCardSchema.array().min(1).safeParse(message.metadata.cards).success)
+        !messageCardSchema.array().min(1).safeParse(message.metadata.cards).success
       ) {
         return false;
       }
