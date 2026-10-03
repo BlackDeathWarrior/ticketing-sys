@@ -440,10 +440,7 @@ export class CustomersService {
           .returning({ id: conversations.id })
       ).length,
     };
-    await tx
-      .update(customers)
-      .set({ mergedIntoId: target.id })
-      .where(eq(customers.id, source.id));
+    await tx.update(customers).set({ mergedIntoId: target.id }).where(eq(customers.id, source.id));
     // Earlier merges into the source now point at the target.
     await tx
       .update(customers)
