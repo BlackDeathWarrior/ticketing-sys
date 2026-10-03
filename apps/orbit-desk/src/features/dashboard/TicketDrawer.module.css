@@ -331,12 +331,13 @@
   color: var(--color-ash);
 }
 
-/* Why the cards went as plain text: words only, like the delivery error. */
+/* The caption above a message's cards, and why they went as plain text: words only, like the delivery error. */
 .cardsNote {
   margin-top: var(--spacing-8);
   font-size: var(--text-caption);
   line-height: 1.5;
   color: var(--color-fog);
+  overflow-wrap: anywhere;
 }
 
 .attachments {

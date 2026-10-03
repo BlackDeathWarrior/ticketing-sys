@@ -403,14 +403,14 @@ export const tools: GarmentTool[] = [
     name: 'product_search',
     title: 'Search products',
     description:
-      'Up to five products whose name or brand contains the given words. Use it when a customer names a product but there is no product_id in the ticket context.',
+      'Finds products by words from the name, brand or category (for example "kurta" or "saree"), up to five at a time. Use it when a customer wants to see or browse items, and when they name a product but there is no product_id in the ticket context. It returns cards, so the products can be shown with their pictures.',
     method: 'GET',
     path: '/products',
     parameters: [
       {
         name: 'query',
         type: 'string',
-        description: 'A few words from the name or the brand, e.g. "silk saree"',
+        description: 'A few words from the name, the brand or the category, e.g. "silk saree"',
         required: true,
       },
     ],

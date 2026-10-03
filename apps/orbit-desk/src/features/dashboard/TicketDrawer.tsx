@@ -106,27 +106,33 @@ function AttachmentList({ files }: { files: Attachment[] }) {
  * The picture cards a WhatsApp reply carried. Titles, texts and pictures come from the
  * company's app: the text is rendered as text, and the picture is fetched without a referrer.
  */
-function CardList({ cards }: { cards: MessageCard[] }) {
+function CardList({ cards, dropped }: { cards: MessageCard[]; dropped: boolean }) {
   return (
-    <ul className={styles.cards} aria-label="Cards shown">
-      {cards.map((c) => (
-        <li key={c.id} className={styles.card}>
-          <img
-            className={styles.cardImage}
-            src={c.imageUrl}
-            alt=""
-            width={40}
-            height={40}
-            loading="lazy"
-            referrerPolicy="no-referrer"
-          />
-          <div className={styles.cardText}>
-            <span className={styles.cardTitle}>{c.title}</span>
-            {c.text && <span className={styles.cardBody}>{c.text}</span>}
-          </div>
-        </li>
-      ))}
-    </ul>
+    <>
+      <p className={styles.cardsNote}>
+        {dropped ? 'Cards not shown; the items were listed as text' : 'Cards sent with this reply'}
+      </p>
+      <ul className={styles.cards} aria-label="Cards shown">
+        {cards.map((c) => (
+          <li key={c.id} className={styles.card}>
+            <img
+              className={styles.cardImage}
+              src={c.imageUrl}
+              alt=""
+              width={40}
+              height={40}
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+            <div className={styles.cardText}>
+              <span className={styles.cardTitle}>{c.title}</span>
+              {c.text && <span className={styles.cardBody}>{c.text}</span>}
+              {c.url && <span className={styles.cardBody}>{c.url}</span>}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -575,7 +581,9 @@ function DrawerContent({
                         </time>
                       </p>
                       <p className={styles.body}>{withMentions(m.body)}</p>
-                      {m.cards && m.cards.length > 0 && <CardList cards={m.cards} />}
+                      {m.cards && m.cards.length > 0 && (
+                        <CardList cards={m.cards} dropped={!!m.cardsDropped} />
+                      )}
                       {m.cardsDropped && (
                         <p className={styles.cardsNote} role="note">
                           Sent as text: {m.cardsDropped}

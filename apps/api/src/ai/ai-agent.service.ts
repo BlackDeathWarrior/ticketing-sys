@@ -97,19 +97,39 @@ type Line = { author: 'customer' | 'ai' | 'agent'; body: string };
  */
 function lineOf(m: { authorType: string; body: string; metadata: unknown }): Line {
   const author = m.authorType as Line['author'];
-  if (author === 'customer') return { author, body: m.body };
-  const shown = messageCardSchema
-    .array()
-    .safeParse((m.metadata as { cards?: unknown } | null)?.cards);
-  if (!shown.success || !shown.data.length) return { author, body: m.body };
+  const meta = m.metadata as { cards?: unknown; cardsDropped?: unknown; waCard?: unknown } | null;
   // Outside text: one line, and nothing that looks like the note's own brackets or separator.
   const tidy = (v: string) =>
     v
       .replace(/[[\];]/g, '')
       .replace(/\s+/g, ' ')
       .trim();
+  if (author === 'customer') {
+    // Many cards share a title, so the tap says which card it was.
+    const tapped = (meta?.waCard as { id?: unknown } | null | undefined)?.id;
+    return typeof tapped === 'string'
+      ? { author, body: `${m.body} [Tapped card: ${tidy(tapped).slice(0, 100)}]` }
+      : { author, body: m.body };
+  }
+  const shown = messageCardSchema.array().safeParse(meta?.cards);
+  if (!shown.success || !shown.data.length) return { author, body: m.body };
   const list = shown.data.map((c) => `${tidy(c.title)} (${tidy(c.id)})`).join('; ');
-  return { author, body: `${m.body}\n[Cards shown: ${list}]` };
+  // Cards that were not shown reached the customer as lines of text, not as something to tap.
+  const asText = typeof meta?.cardsDropped === 'string' && meta.cardsDropped !== '';
+  return {
+    author,
+    body: `${m.body}\n[${asText ? 'Items listed as text' : 'Cards shown'}: ${list}]`,
+  };
+}
+
+/** The bracket notes `lineOf` adds are ours: a model that echoes one has it taken off its reply. */
+function withoutNotes(message: string): string {
+  let text = message.trimEnd();
+  for (;;) {
+    const next = text.replace(/\[(?:Cards shown|Items listed as text|Tapped card):[^\]]*\]$/, '');
+    if (next === text) return text.trim();
+    text = next.trimEnd();
+  }
 }
 
 /**
@@ -499,16 +519,18 @@ export class AiAgentService {
       ? new Date(String(conv.metadata.lastHandoverAt))
       : undefined;
 
-    let step = startTurn(
-      turnFacts({
-        channel: conv.channel,
-        mode,
-        language,
-        behaviour,
-        metadata: conv.metadata,
-        rows,
-      }),
-    );
+    const facts = turnFacts({
+      channel: conv.channel,
+      mode,
+      language,
+      behaviour,
+      metadata: conv.metadata,
+      rows,
+    });
+    // A tap on a card makes the same text each time (cards often share a title or are tapped
+    // twice), so the repeat check gets nothing earlier to match it with.
+    const tapped = !!(lastRow.metadata as { waCard?: unknown } | null)?.waCard;
+    let step = startTurn(tapped ? { ...facts, earlier: [] } : facts);
     // Strikes and requests for a person, saved with the reply they belong to: a turn whose
     // reply could not be saved counts nothing, so a retry cannot count one message twice.
     let counters: Counters = {};
@@ -682,8 +704,10 @@ export class AiAgentService {
           await this.outbound.holdingReply(tx, conv.id, waitingMessage(replyLanguage));
         }
         // An answer that settles the request ends by asking whether anything else is needed.
+        // Not under a carousel: the cards are what the customer reads and answers next.
         const asks =
           r.decision === 'sent' &&
+          r.cards.length === 0 &&
           r.resolves &&
           behaviour.closing.askAnythingElse &&
           mode === 'auto';
@@ -1088,7 +1112,8 @@ export class AiAgentService {
       out.handoverReason = final.reason || null;
       return finish();
     }
-    const a = final.args;
+    // The notes `lineOf` writes are not the model's to write: an echoed one is taken off.
+    const a = { ...final.args, message: withoutNotes(final.args.message) };
     const cited = a.sources.filter((id) => labels.has(id));
     // Customers rated answers like this one badly: a person sees it before the customer does.
     const caution = await this.learning

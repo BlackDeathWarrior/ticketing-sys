@@ -305,7 +305,7 @@ A tool (see ADR 0017 for how a tool is defined) adds `cards` to its result, next
 - The AI shows at most 10 cards in one reply, because a WhatsApp carousel holds 10. One card goes as a single picture message.
 - Each card carries two buttons, "I like this" and "View product". "View product" is there only when every card in the reply has a `url`. A customer who taps it gets the `url` back at once. The AI is not asked.
 - Cards are shown only on WhatsApp. Other channels get the reply text alone.
-- If WhatsApp cannot show the cards (the reply is too long, or Meta refuses them), the reply goes as plain text and the ticket in Orbit Desk says why.
+- If WhatsApp cannot show the cards, the reply goes as plain text and the ticket in Orbit Desk says why. The reply is too long, or Meta refuses the cards for a reason a retry cannot fix: it goes as text at once. A temporary failure is retried with the cards, and if the last attempt fails too, the reply is sent once more as text. In every text fallback the items are listed under the reply, one line each: the title, then the text and the `url` when the card has them.
 
 ## 7. Errors and limits
 
