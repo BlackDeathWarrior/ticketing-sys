@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normalizeIdentity } from './customers';
 import type { Permission } from './permissions';
 import {
   externalRefSchema,
@@ -19,6 +20,7 @@ import {
 export const API_KEY_SCOPES = [
   'integration:ticket',
   'integration:event',
+  'integration:customer',
   'kb:read',
 ] as const satisfies readonly Permission[];
 export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
@@ -26,6 +28,7 @@ export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
 export const API_KEY_SCOPE_LABELS: Record<ApiKeyScope, string> = {
   'integration:ticket': 'Create and read its own tickets and messages',
   'integration:event': 'Report incidents and recoveries',
+  'integration:customer': "Prove a customer's phone number",
   'kb:read': 'Search the knowledge base',
 };
 
@@ -318,3 +321,57 @@ export const listIncidentsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 export type ListIncidentsQuery = z.output<typeof listIncidentsQuerySchema>;
+
+// ---- The integration API: proving a customer's phone number ----
+
+/** How long a code works, and how many wrong tries it allows before it is spent. */
+export const PHONE_CODE_TTL_MINUTES = 10;
+export const PHONE_CODE_MAX_ATTEMPTS = 5;
+
+/** Why a check failed. The app shows its own words for each. */
+export const PHONE_CODE_FAILURES = [
+  'wrong-code',
+  'expired',
+  'too-many-attempts',
+  'no-code',
+] as const;
+export type PhoneCodeFailure = (typeof PHONE_CODE_FAILURES)[number];
+
+/** The person the number belongs to, as the app knows them. Only the app's own id is required. */
+const phoneCustomerSchema = z.object({
+  externalId: z.string().trim().min(1).max(200),
+  email: z.string().trim().email().max(320).optional(),
+  name: z.string().trim().min(1).max(200).optional(),
+});
+
+/** Digits only, country code included: "+91 98300-12345" and "919830012345" are the same number. */
+const phoneNumberSchema = z
+  .string()
+  .transform((v) => normalizeIdentity('phone', v))
+  .refine((v) => /^\d{8,15}$/.test(v), {
+    message: 'Give the full international number, 8 to 15 digits',
+  });
+
+export const startPhoneVerificationSchema = z.object({
+  customer: phoneCustomerSchema,
+  phone: phoneNumberSchema,
+});
+export type StartPhoneVerificationInput = z.output<typeof startPhoneVerificationSchema>;
+
+export const checkPhoneVerificationSchema = z.object({
+  customer: phoneCustomerSchema,
+  phone: phoneNumberSchema,
+  code: z.string().regex(/^\d{6}$/, 'The code is 6 digits'),
+});
+export type CheckPhoneVerificationInput = z.output<typeof checkPhoneVerificationSchema>;
+
+/** `sentVia`: `template` if the customer has not written in the last day, `text` if they have. */
+export interface PhoneVerificationStarted {
+  expiresAt: string;
+  sentVia: 'template' | 'text';
+}
+
+export interface PhoneVerificationChecked {
+  verified: true;
+  phone: string;
+}

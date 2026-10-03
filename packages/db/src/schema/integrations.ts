@@ -44,3 +44,31 @@ export const apiKeys = pgTable(
   },
   (t) => [index('api_keys_integration_idx').on(t.integrationId)],
 );
+
+/**
+ * A code sent to prove a customer owns a phone number. Only a keyed hash of
+ * the code is stored, never the code. Rows are purged after a day.
+ */
+export const phoneVerifications = pgTable(
+  'phone_verifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    integrationId: uuid('integration_id')
+      .notNull()
+      .references(() => integrations.id, { onDelete: 'cascade' }),
+    /** The app's own id for the person, as in the request. */
+    externalId: text('external_id').notNull(),
+    /** Digits only, country code included. */
+    phone: text('phone').notNull(),
+    codeHash: text('code_hash').notNull(),
+    /** `template` or `text`: how the code reached the customer. */
+    sentVia: text('sent_via').notNull(),
+    /** Wrong tries so far; the code is spent at PHONE_CODE_MAX_ATTEMPTS. */
+    attempts: integer('attempts').notNull().default(0),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    /** Set when the right code was given; a code works once. */
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('phone_verifications_lookup_idx').on(t.integrationId, t.externalId, t.phone)],
+);
