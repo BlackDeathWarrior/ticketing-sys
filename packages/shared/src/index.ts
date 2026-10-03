@@ -9,6 +9,7 @@ export * from './reports';
 export * from './llm';
 export * from './settings';
 export * from './kb';
+export * from './kb-connectors';
 export * from './ai';
 export * from './web-form';
 export * from './tools';

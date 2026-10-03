@@ -183,6 +183,13 @@
       "when": 1790995765826,
       "tag": "0025_team_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790996643481,
+      "tag": "0026_kb_connectors",
+      "breakpoints": true
     }
   ]
 }

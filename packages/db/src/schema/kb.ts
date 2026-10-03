@@ -1,5 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
+  boolean,
   customType,
   index,
   integer,
@@ -7,6 +9,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   vector,
 } from 'drizzle-orm/pg-core';
@@ -48,6 +51,11 @@ export const kbDocuments = pgTable(
     contentType: text('content_type'),
     sizeBytes: integer('size_bytes'),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    /** Brought in by a connector (ADR 0033), as the source's item `external_id`. */
+    connectorId: uuid('connector_id').references((): AnyPgColumn => kbConnectors.id, {
+      onDelete: 'set null',
+    }),
+    externalId: text('external_id'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     approvedBy: uuid('approved_by').references(() => users.id, { onDelete: 'set null' }),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
@@ -57,8 +65,33 @@ export const kbDocuments = pgTable(
   (t) => [
     index('kb_documents_status_idx').on(t.status, t.indexState),
     index('kb_documents_title_trgm').using('gin', sql`${t.title} gin_trgm_ops`),
+    uniqueIndex('kb_documents_connector_item_uq').on(t.connectorId, t.externalId),
   ],
 );
+
+/**
+ * An outside source the knowledge base keeps in sync (ADR 0033). Its
+ * credentials are secrets `kb.connector-<id>.<field>`, never stored here.
+ */
+export const kbConnectors = pgTable('kb_connectors', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  /** website | github | notion | google_drive | s3 | folder | postgres */
+  type: text('type').notNull(),
+  config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
+  visibility: text('visibility').notNull().default('internal'),
+  teamId: uuid('team_id').references(() => teams.id, { onDelete: 'set null' }),
+  autoApprove: boolean('auto_approve').notNull().default(false),
+  scheduleMinutes: integer('schedule_minutes').notNull().default(1440),
+  enabled: boolean('enabled').notNull().default(true),
+  /** idle | syncing | ok | failed */
+  status: text('status').notNull().default('idle'),
+  lastSyncAt: timestamp('last_sync_at', { withTimezone: true }),
+  lastError: text('last_error'),
+  stats: jsonb('stats').$type<Record<string, number>>(),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  ...timestamps,
+});
 
 /** Searchable pieces of a document: a pgvector embedding plus a full-text vector. */
 export const kbChunks = pgTable(
