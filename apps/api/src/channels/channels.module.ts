@@ -10,6 +10,7 @@ import { InboundService } from './inbound.service';
 import { OutboundService } from './outbound.service';
 import { ChannelHealthService } from './health/channel-health.service';
 import { VoiceCallsService } from './voice/voice-calls.service';
+import { WhatsAppCodeSender } from './whatsapp/whatsapp-code.sender';
 import { WhatsAppConnectService } from './whatsapp/whatsapp-connect.service';
 import { WhatsAppTemplatesService } from './whatsapp/whatsapp-templates.service';
 import { WhatsAppWebhookQueue } from './whatsapp/whatsapp-webhook.queue';
@@ -28,6 +29,7 @@ import { WhatsAppService } from './whatsapp/whatsapp.service';
     OutboundService,
     AiPolicyService,
     WhatsAppTemplatesService,
+    WhatsAppCodeSender,
     WhatsAppService,
     WhatsAppWebhookQueue,
     WhatsAppConnectService,
@@ -41,6 +43,7 @@ import { WhatsAppService } from './whatsapp/whatsapp.service';
     ConversationsModule,
     WhatsAppService,
     WhatsAppTemplatesService,
+    WhatsAppCodeSender,
     ChannelHealthService,
     VoiceCallsService,
   ],

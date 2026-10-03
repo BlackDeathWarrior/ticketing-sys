@@ -157,3 +157,19 @@ export function buildSendComponents(
   });
   return out;
 }
+
+/**
+ * The components for a copy-code authentication template: the code goes in the
+ * body and again in the button, which is where Meta documents it.
+ */
+export function authenticationComponents(code: string): MetaSendComponent[] {
+  return [
+    { type: 'body', parameters: [{ type: 'text', text: code }] },
+    {
+      type: 'button',
+      sub_type: 'url',
+      index: '0',
+      parameters: [{ type: 'text', text: code }],
+    },
+  ];
+}

@@ -53,6 +53,17 @@ export class WhatsAppTemplatesService {
     return rows.map(toView);
   }
 
+  /** The approved authentication template to send a verification code with, if there is one. */
+  async authentication(): Promise<{ name: string; language: string } | null> {
+    const [row] = await this.db
+      .select({ name: waTemplates.name, language: waTemplates.language })
+      .from(waTemplates)
+      .where(and(eq(waTemplates.category, 'AUTHENTICATION'), eq(waTemplates.status, 'APPROVED')))
+      .orderBy(asc(waTemplates.name), asc(waTemplates.language))
+      .limit(1);
+    return row ?? null;
+  }
+
   /**
    * Checks a template send and builds what the sender will post. The preview
    * is the text the customer reads; it becomes the message body in TMS.
