@@ -17,6 +17,7 @@ import { ChannelConfigService } from '../../settings/channel-config.service';
 import { ToolGatewayService } from '../../tools/tool-gateway.service';
 import { type AgentTool, ToolsService } from '../../tools/tools.service';
 import { type CallRow, VoiceCallsService } from '../voice/voice-calls.service';
+import { PhoneQueryTranslator } from './phone-query-translator.service';
 
 /** Sarvam waits 30 seconds for a tool at most; we answer before that with something to say. */
 const TOOL_DEADLINE_MS = 25_000;
@@ -54,6 +55,7 @@ export class PhoneToolsService {
     private readonly branding: BrandingService,
     private readonly calls: VoiceCallsService,
     private readonly channels: ChannelConfigService,
+    private readonly translator: PhoneQueryTranslator,
   ) {}
 
   /**
@@ -146,9 +148,11 @@ export class PhoneToolsService {
 
   private async searchKnowledge(query: string): Promise<PhoneToolReply> {
     if (!query) return fail('Give the question to look up in "query".');
+    // The knowledge base is in English; the caller may not be.
+    const q = await this.translator.toEnglish(query);
     const { hits } = await this.kb.search(
       {},
-      { q: query, limit: KB_HITS, audience: 'customer', includeDrafts: false },
+      { q, limit: KB_HITS, audience: 'customer', includeDrafts: false },
     );
     if (!hits.length) return ok('Nothing in the knowledge base matches.');
     return ok(
@@ -176,7 +180,8 @@ export class PhoneToolsService {
     const run = this.gateway.invoke(AI_CTX, {
       tool: found.tool,
       server: found.server,
-      args: body.arguments?.trim() || '{}',
+      // The shop's catalogue is in English too: a search for "लाल कुर्ता" would find nothing.
+      args: await this.translator.argumentsToEnglish(body.arguments?.trim() || '{}'),
       ticketId: null,
       conversationId: null,
       customerEmail: owner?.email ?? null,
