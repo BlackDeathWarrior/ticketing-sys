@@ -1,4 +1,4 @@
-import type { AiDecision, AiRule } from '@tms/shared';
+import type { AiDecision, AiRule, MessageCard } from '@tms/shared';
 
 /** What one pass of the agent came to: the model's answer once judged, or a fixed outcome. */
 export interface ThinkResult {
@@ -16,6 +16,8 @@ export interface ThinkResult {
   ticketUpdate: { category?: string; priority?: 'urgent' | 'high' | 'normal' | 'low' };
   tools: Array<{ name: string; summary: string }>;
   sources: Array<{ chunkId: string; label: string }>;
+  /** Items the reply shows as picture cards (WhatsApp only): ones a tool returned this turn. */
+  cards: MessageCard[];
   seenSources: string[];
   model: string | null;
   costUsd: number;
@@ -39,6 +41,7 @@ export function blankResult(language: string | null): ThinkResult {
     ticketUpdate: {},
     tools: [],
     sources: [],
+    cards: [],
     seenSources: [],
     model: null,
     costUsd: 0,

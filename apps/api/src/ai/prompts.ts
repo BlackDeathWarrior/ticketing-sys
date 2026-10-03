@@ -4,7 +4,7 @@ import { DEFAULT_BRANDING } from '@tms/shared';
  * Versioned prompts (ADR 0011). The version is recorded on every AI run, so a
  * change here is traceable in the audit trail; bump it with any edit.
  */
-export const AGENT_PROMPT_VERSION = 'agent-v10';
+export const AGENT_PROMPT_VERSION = 'agent-v11';
 export const CLASSIFIER_PROMPT_VERSION = 'classifier-v1';
 export const SUMMARY_PROMPT_VERSION = 'summary-v1';
 export const HANDOVER_PROMPT_VERSION = 'handover-v1';
@@ -56,6 +56,8 @@ export interface AgentPromptInput {
   categories: string[];
   /** Company-system tools are available this turn. */
   companyTools: boolean;
+  /** `send_reply` takes cards this turn (WhatsApp, with company tools). */
+  cards?: boolean;
   /**
    * Tools that act for a customer were left out: nobody vouched for who this is.
    * `visitor` is a chat visitor who is not signed in; `whatsapp` is a number no
@@ -116,6 +118,11 @@ export function agentSystemPrompt(i: AgentPromptInput): string {
           '- A tool that needs approval only submits a request to a supervisor. Tell the customer it is with the team for review; never say it is done.',
           '- Tool results count as sources; you do not need to cite them in send_reply.',
           '- When the customer wants money back or reports a wrong charge, and a tool can request it, use that tool: our team decides on the request. Do not send the customer to a person for it.',
+        ]
+      : []),
+    ...(i.cards
+      ? [
+          '- When you recommend or list items that a tool returned in "cards", put their ids in cards of send_reply (up to 10). The customer sees each as a picture card. Keep the message to one or two sentences and do not repeat what the cards say.',
         ]
       : []),
     ...(i.unverified === 'visitor'
