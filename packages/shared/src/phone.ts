@@ -99,7 +99,10 @@ export interface PhoneToolEntry {
 
 /** What the start hook answers: flat, so Sarvam can map each field to an agent variable. */
 export interface PhoneStartReply {
+  /** How to address a known caller aloud ("Ms. Verma", "Asha"); empty when unknown. */
   customer_name: string;
+  /** The opening line, with the name when there is one: for the agent's greeting. */
+  greeting: string;
   known: boolean;
   company: string;
   /** The tool catalogue as JSON text. */

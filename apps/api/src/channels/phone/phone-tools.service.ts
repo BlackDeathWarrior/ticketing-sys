@@ -9,6 +9,7 @@ import {
   type PhoneToolName,
   type PhoneToolReply,
 } from '@tms/shared';
+import { addressOf, titleOf } from '../../ai/address';
 import { AI_CTX } from '../../common/request-context';
 import { CustomersService } from '../../customers/customers.service';
 import { KbSearchService } from '../../kb/kb-search.service';
@@ -93,10 +94,17 @@ export class PhoneToolsService {
     const call = await this.open(input.interactionId, caller);
     const phone = caller ?? call?.callerPhone;
     const owner = phone ? await this.customers.provenPhoneOwner(phone) : null;
+    // How a known caller is addressed aloud: "Ms. Verma" when they chose a title, else the
+    // first name; nothing when the name on file is not a person's name (ADR 0037).
+    const name = owner ? (addressOf(owner.name, titleOf(owner.attributes))?.short ?? '') : '';
+    const company = (await this.branding.get()).companyName;
     return {
-      customer_name: owner?.name ?? '',
+      customer_name: name,
+      greeting: name
+        ? `Hello ${name}, thanks for calling ${company}.`
+        : `Hello, thanks for calling ${company}.`,
       known: !!owner,
-      company: (await this.branding.get()).companyName,
+      company,
       desk_tools: JSON.stringify(await this.catalogue()),
     };
   }
