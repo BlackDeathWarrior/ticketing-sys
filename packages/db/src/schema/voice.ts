@@ -1,4 +1,13 @@
-import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { users } from './auth';
 import { conversations } from './conversations';
 import { tickets } from './tickets';
@@ -35,9 +44,24 @@ export const voiceCalls = pgTable(
     recordingKey: text('recording_key'),
     recordingBytes: integer('recording_bytes'),
     recordingDeletedAt: timestamp('recording_deleted_at', { withTimezone: true }),
+    /** browser | phone. A phone call is answered by the phone agent at Sarvam (ADR 0034). */
+    transport: text('transport').notNull().default('browser'),
+    /** inbound | outbound */
+    direction: text('direction').notNull().default('inbound'),
+    /** Phone calls: the telephony side's id for the call (Sarvam's interaction id). */
+    providerCallId: text('provider_call_id'),
+    /** Phone calls: the caller's number as digits, set only by the token-protected hooks. */
+    callerPhone: text('caller_phone'),
+    /** Phone calls: why the phone agent asked for a person; applied when the call ends. */
+    handoverReason: text('handover_reason'),
+    /** Phone calls: tool calls made before the ticket existed, linked to it when the call ends. */
+    toolCallIds: jsonb('tool_call_ids').$type<string[]>().notNull().default([]),
+    /** Phone calls: how many transcript turns are on the ticket, so a retry never repeats one. */
+    importedTurns: integer('imported_turns').notNull().default(0),
   },
   (t) => [
     index('voice_calls_ticket_idx').on(t.ticketId),
     index('voice_calls_status_idx').on(t.status, t.startedAt),
+    uniqueIndex('voice_calls_provider_call_idx').on(t.providerCallId),
   ],
 );

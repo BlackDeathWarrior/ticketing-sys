@@ -111,6 +111,8 @@ export const VOICE_END_REASONS = [
   'time_limit',
   'error',
   'server_shutdown',
+  // A phone call: the telephony side ended it and told us afterwards.
+  'provider_ended',
 ] as const;
 export type VoiceEndReason = (typeof VOICE_END_REASONS)[number];
 
@@ -119,6 +121,9 @@ export interface VoiceCallView {
   ticketId: string | null;
   conversationId: string | null;
   status: 'active' | 'ended';
+  /** `phone`: a call on the rented number, answered by the phone agent (ADR 0034). */
+  transport: 'browser' | 'phone';
+  direction: 'inbound' | 'outbound';
   /** Only for calls in progress on this server. */
   state: VoiceState | null;
   startedAt: string;
