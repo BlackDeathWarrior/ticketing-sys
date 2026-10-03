@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import type { Database } from '@tms/db';
 import {
   type AttachmentRef,
   type MessageEnvelope,
@@ -7,6 +8,7 @@ import {
 } from '@tms/shared';
 import { ConversationsService } from '../../conversations/conversations.service';
 import { CustomersService } from '../../customers/customers.service';
+import { DB } from '../../infra/tokens';
 import {
   ChannelConfigService,
   type ResolvedWhatsappConfig,
@@ -57,6 +59,7 @@ export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
 
   constructor(
+    @Inject(DB) private readonly db: Database,
     private readonly channels: ChannelConfigService,
     private readonly inbound: InboundService,
     private readonly conversations: ConversationsService,
@@ -233,14 +236,20 @@ export class WhatsAppService {
 
   private async report(status: WaStatus): Promise<'applied' | 'ignored' | 'unknown'> {
     if (!PROVIDER_STATUSES.has(status.status)) return 'ignored';
-    return this.conversations.applyProviderStatus(
+    const error = status.status === 'failed' ? explainStatusError(status.errors?.[0]) : undefined;
+    const result = await this.conversations.applyProviderStatus(
       'whatsapp',
       status.id,
       status.status as 'sent' | 'delivered' | 'read' | 'failed',
-      {
-        at: new Date(messageTime(status.timestamp)),
-        error: status.status === 'failed' ? explainStatusError(status.errors?.[0]) : undefined,
-      },
+      { at: new Date(messageTime(status.timestamp)), error },
     );
+    if (result === 'applied' && error !== undefined) {
+      // Meta took cards it could not show: send the reply again as text, once. Looked up
+      // before requeueing, which clears the id the report names. A repeat of this report
+      // finds no message with that id, and the message carries `cardsDropped` by then.
+      const found = await this.conversations.findMessageByChannelId(this.db, 'whatsapp', status.id);
+      if (found) await this.conversations.requeueWithoutCards(found.message.id, error);
+    }
+    return result;
   }
 }

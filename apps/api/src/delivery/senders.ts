@@ -9,9 +9,13 @@ export interface DeliveryItem {
   authorName: string | null;
 }
 
-/** What the provider said about a send; its message id lets later status reports find the message. */
+/**
+ * What the provider said about a send; its message id lets later status reports find the message.
+ * `metadata` is merged into the message's own when it is marked sent (WhatsApp: why cards went as text).
+ */
 export interface DeliveryReceipt {
   channelMessageId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 /** A failure that another attempt can't fix (a closed window, a bad token): fail at once. */
