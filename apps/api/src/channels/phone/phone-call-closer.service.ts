@@ -40,19 +40,21 @@ export class PhoneCallCloser {
 
   /**
    * `waitForRecording`: the recording is not ready yet, so fail and let the job try once
-   * more before writing the ticket without it.
+   * more before writing the ticket without it. `recordingFollowUp`: the ticket is written
+   * and this run is only for the recording, so fail while Sarvam still has none.
    */
   async close(
     interactionId: string,
     hint: PhoneCallHint,
-    opts: { waitForRecording?: boolean } = {},
+    opts: { waitForRecording?: boolean; recordingFollowUp?: boolean } = {},
   ): Promise<'closed' | 'empty' | 'already'> {
     const known = await this.calls.byProvider(interactionId);
     if (known?.status === 'ended') {
-      // Closed without its recording (Sarvam had none yet): a later trigger brings it.
+      // Closed without its recording (Sarvam had none yet): a later run brings it.
       if (!known.recordingKey && !known.recordingDeletedAt && known.ticketId) {
         const late = await this.recording(interactionId);
         if (late) await this.calls.attachRecording(known.id, late);
+        else if (opts.recordingFollowUp) throw new Error('Sarvam has no recording yet');
       }
       return 'already';
     }

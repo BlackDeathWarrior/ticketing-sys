@@ -53,11 +53,21 @@ export function internationalCallerNumber(
   return phone;
 }
 
-export const phoneStartSchema = z.object({ interactionId, phone: callerPhone });
+/**
+ * The call's id on the start hook and the tools. Null when there is none: Sarvam's
+ * dashboard sends none when a tool is tried with its "Send" button, and the tool must
+ * still answer there, or its reply cannot be mapped for the agent. A real call always has one.
+ */
+const callId = z
+  .union([z.string(), z.number()])
+  .nullish()
+  .transform((v) => (v == null ? '' : String(v).trim().slice(0, 200)) || null);
+
+export const phoneStartSchema = z.object({ interactionId: callId, phone: callerPhone });
 export type PhoneStartInput = z.output<typeof phoneStartSchema>;
 
 export const phoneToolSchema = z.object({
-  interactionId,
+  interactionId: callId,
   phone: callerPhone,
   /** `desk_tool`: which desk tool, and its arguments: a JSON object, as text or as it is. */
   name: clipped(200),
