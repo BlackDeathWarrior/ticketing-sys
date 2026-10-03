@@ -111,6 +111,24 @@ export class ConversationsService {
     return row ?? null;
   }
 
+  /** When this number last wrote to us on WhatsApp, newest across its conversations. */
+  async lastWhatsappInboundAt(phone: string): Promise<string | null> {
+    const lastInbound = sql<string>`${conversations.metadata}->>'lastInboundAt'`;
+    const [row] = await this.db
+      .select({ at: lastInbound })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.channel, 'whatsapp'),
+          sql`${conversations.metadata}->>'waPhone' = ${phone}`,
+          sql`${lastInbound} is not null`,
+        ),
+      )
+      .orderBy(sql`(${lastInbound})::timestamptz desc`)
+      .limit(1);
+    return row?.at ?? null;
+  }
+
   /** Adds channel details to a conversation's metadata; undefined values are left alone. */
   async mergeMetadata(tx: DbOrTx, id: string, patch: Record<string, unknown>) {
     const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
