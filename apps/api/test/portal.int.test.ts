@@ -11,7 +11,15 @@ import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { io, type Socket } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { makeUser, startApp, startWorker, type TestClient, uniq, waitFor } from './helpers';
+import {
+  eventsHandled,
+  makeUser,
+  startApp,
+  startWorker,
+  type TestClient,
+  uniq,
+  waitFor,
+} from './helpers';
 import { applyEmailEnv, TEST_MAIL } from './test-env';
 
 applyEmailEnv();
@@ -404,7 +412,7 @@ describe('ratings', () => {
       body: { status: 'in_progress' },
     });
     await resolve(c.id);
-    await new Promise((r) => setTimeout(r, 1500));
+    await eventsHandled(t);
     expect(
       (await mailbox(c.email)).filter((m) => m.subject?.startsWith('How did we do?')),
     ).toHaveLength(1);
@@ -485,10 +493,10 @@ describe('ratings', () => {
       (await t.call('POST', '/public/portal/sign-in', { body: { email: c.email } })).status,
     ).toBe(403);
     expect((await t.call('GET', '/portal/tickets', { token: session })).status).toBe(403);
-    // Give the worker a moment to hear about the new settings.
-    await new Promise((r) => setTimeout(r, 800));
+    // The worker hears about the new settings through an event.
+    await eventsHandled(t);
     await resolve(c.id);
-    await new Promise((r) => setTimeout(r, 1500));
+    await eventsHandled(t);
     expect(
       (await mailbox(c.email)).filter((m) => m.subject?.startsWith('How did we do?')),
     ).toHaveLength(0);

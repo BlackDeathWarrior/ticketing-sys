@@ -2,6 +2,7 @@ import type { INestApplicationContext } from '@nestjs/common';
 import type { VoiceCallView, VoiceCaption, VoiceStartResult, VoiceState } from '@tms/shared';
 import { io, type Socket } from 'socket.io-client';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { AI_QUEUE } from '../src/ai/ai.worker';
 import { VoiceCallsService } from '../src/channels/voice/voice-calls.service';
 import { VoiceService } from '../src/channels/voice/voice.service';
 import type { Env } from '../src/config/env';
@@ -9,6 +10,7 @@ import { ENV } from '../src/infra/tokens';
 import { ChannelSignalsService } from '../src/settings/channel-signals.service';
 import {
   clearKnowledgeBase,
+  eventsHandled,
   makeUser,
   startApp,
   startWorker,
@@ -231,7 +233,7 @@ describe('voice calls', () => {
     expect(done.recording!.bytes).toBeGreaterThan(44);
     expect(done.durationSeconds).toBeGreaterThanOrEqual(0);
     // A queued AI turn must not answer a voice message a second time.
-    await new Promise((r) => setTimeout(r, 1500));
+    await eventsHandled(t, [AI_QUEUE]);
     expect((await conversation(ticketId)).messages).toHaveLength(2);
   });
 

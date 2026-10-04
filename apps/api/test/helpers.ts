@@ -1,4 +1,5 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import type { Database } from '@tms/db';
 import { applyTestEnv, TEST_ADMIN } from './test-env';
 
 applyTestEnv();
@@ -89,9 +90,51 @@ export async function waitFor<T>(
     } catch (err) {
       last = err;
     }
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 50));
   }
   throw new Error(`Timed out waiting for ${what}${last ? `: ${String(last)}` : ''}`);
+}
+
+/**
+ * Waits until everything written so far has had its consequences: every event
+ * relayed from the outbox, and nothing waiting or running on the event queue
+ * (and on `queues`, for work the handlers pass on). A check that something did
+ * NOT happen waits for this instead of sleeping and hoping.
+ */
+export async function eventsHandled(t: TestClient, queues: string[] = []): Promise<void> {
+  const [{ Queue }, { default: Redis }, { outboxEvents }, { count, isNull }, shared, { DB }] =
+    await Promise.all([
+      import('bullmq'),
+      import('ioredis'),
+      import('@tms/db'),
+      import('drizzle-orm'),
+      import('@tms/shared'),
+      import('../src/infra/tokens'),
+    ]);
+  const db = t.app.get<Database>(DB);
+  const connection = new Redis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
+  const watched = [shared.DOMAIN_EVENTS_QUEUE, ...queues].map(
+    (name) => new Queue(name, { connection }),
+  );
+  const quiet = async () => {
+    const [pending] = await db
+      .select({ n: count() })
+      .from(outboxEvents)
+      .where(isNull(outboxEvents.publishedAt));
+    if (pending!.n > 0) return false;
+    for (const queue of watched) {
+      const jobs = await queue.getJobCounts('waiting', 'active', 'prioritized');
+      if (Object.values(jobs).some((n) => n > 0)) return false;
+    }
+    return true;
+  };
+  try {
+    // Twice in a row: a handler may write the next event as it finishes.
+    await waitFor(async () => (await quiet()) && (await quiet()), 'every event to be handled');
+  } finally {
+    await Promise.all(watched.map((queue) => queue.close()));
+    await connection.quit().catch(() => undefined);
+  }
 }
 
 /** Creates a team; returns its id. */

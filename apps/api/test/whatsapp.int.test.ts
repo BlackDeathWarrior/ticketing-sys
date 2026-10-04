@@ -3,8 +3,17 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { type Database, phoneVerifications } from '@tms/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { WHATSAPP_WEBHOOK_QUEUE } from '../src/channels/whatsapp/whatsapp-webhook.queue';
 import { DB } from '../src/infra/tokens';
-import { makeUser, startApp, startWorker, type TestClient, uniq, waitFor } from './helpers';
+import {
+  eventsHandled,
+  makeUser,
+  startApp,
+  startWorker,
+  type TestClient,
+  uniq,
+  waitFor,
+} from './helpers';
 import { FAKE_LLM_BASE_URL } from './test-env';
 
 /**
@@ -372,7 +381,7 @@ describe('WhatsApp channel', () => {
       const [c] = await conversations(ticket.id);
       return c!.messages.length >= 2 ? c! : undefined;
     }, 'second message');
-    await new Promise((r) => setTimeout(r, 700));
+    await eventsHandled(t, [WHATSAPP_WEBHOOK_QUEUE]);
     expect((await conversations(ticket.id))[0]!.messages).toHaveLength(2);
     expect(after.messages[1]!.body).toBe('It was due on Monday.');
     expect(await ticketsFor('It was due on Monday')).toHaveLength(0);

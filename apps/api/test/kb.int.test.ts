@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { INestApplicationContext } from '@nestjs/common';
 import { type Database, kbChunks, kbDocuments } from '@tms/db';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { DB } from '../src/infra/tokens';
 import { KbIndexerService } from '../src/kb/kb-indexer.service';
@@ -249,7 +249,13 @@ describe('knowledge base documents', () => {
           .where(eq(kbDocuments.id, pdfId))
           .for('update');
         open();
-        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        // The row is held until both jobs are waiting for it: that is the overlap.
+        await waitFor(async () => {
+          const res = await database.execute<{ n: number }>(
+            sql`select count(*)::int as n from pg_locks where not granted`,
+          );
+          return res.rows[0]!.n >= 2;
+        }, 'both jobs to wait for the document');
       });
       await Promise.all(jobs);
     } finally {
