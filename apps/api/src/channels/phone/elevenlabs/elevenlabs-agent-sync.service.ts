@@ -28,6 +28,16 @@ const SILENCE_HANG_UP_SECONDS = 45;
  */
 const ENGLISH_TTS = 'eleven_flash_v2';
 const MULTILINGUAL_TTS = 'eleven_flash_v2_5';
+/**
+ * The languages an ElevenLabs agent can switch to, as its API listed them when it refused
+ * Bengali on the first real set-up (2026-10-04). One language outside the list fails the whole
+ * agent, so such a language is left out and named on the card instead.
+ */
+const AGENT_LANGUAGES = new Set(
+  'en zh es hi pt fr de ja ar ko id it nl tr pl ru sv tl ms ro uk el cs da fi bg hr sk ta vi no hu pt-br fil'.split(
+    ' ',
+  ),
+);
 
 const EMPTY: ElevenlabsSyncState = syncStateSchema.parse({});
 
@@ -184,7 +194,20 @@ export class ElevenLabsAgentSync {
 
       // 4. The agent. One ElevenLabs no longer knows (deleted there, or the key now belongs
       // to another workspace) is made again.
-      const body = await this.agentBody(config, state, toolIds.keep);
+      const languages = config.moreLanguages
+        .map((l) => l.toLowerCase())
+        .filter((l) => l !== config.language.toLowerCase());
+      for (const l of languages.filter((x) => !AGENT_LANGUAGES.has(x))) {
+        state.skipped.push({
+          tool: `language ${l}`,
+          reason: 'ElevenLabs agents cannot switch to this language, so it was left out.',
+        });
+      }
+      const body = await this.agentBody(
+        { ...config, moreLanguages: languages.filter((l) => AGENT_LANGUAGES.has(l)) },
+        state,
+        toolIds.keep,
+      );
       if (state.agentId) {
         try {
           await this.client.updateAgent(state.agentId, body);
