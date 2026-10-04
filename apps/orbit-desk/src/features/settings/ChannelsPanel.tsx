@@ -467,16 +467,16 @@ function ChannelForm({ view, onChanged }: { view: ChannelSettingsView; onChanged
             Credentials are encrypted and write-only: only the last four characters show.
           </p>
           {view.secrets
-          .filter((s) => !DESK_ONLY_SECRET_KEYS.includes(s.key))
-          .map((s) => (
-            <SecretField
-              key={s.key}
-              secret={s}
-              canEdit={can('settings:secrets')}
-              onChanged={onChanged}
-              generate={s.key === 'phone.hook_token' ? newHookToken : undefined}
-            />
-          ))}
+            .filter((s) => !DESK_ONLY_SECRET_KEYS.includes(s.key))
+            .map((s) => (
+              <SecretField
+                key={s.key}
+                secret={s}
+                canEdit={can('settings:secrets')}
+                onChanged={onChanged}
+                generate={s.key === 'phone.hook_token' ? newHookToken : undefined}
+              />
+            ))}
           {view.kind === 'phone' && <PhoneAddresses />}
         </div>
       )}

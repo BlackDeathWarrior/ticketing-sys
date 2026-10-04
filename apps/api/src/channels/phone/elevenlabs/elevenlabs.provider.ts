@@ -51,8 +51,6 @@ export function parseConversation(body: unknown): PhoneTranscript | null {
   return {
     turns,
     seconds: typeof seconds === 'number' && seconds >= 0 ? Math.round(seconds) : null,
-    language: languageCode(
-      typeof meta.main_language === 'string' ? meta.main_language : undefined,
-    ),
+    language: languageCode(typeof meta.main_language === 'string' ? meta.main_language : undefined),
   };
 }
