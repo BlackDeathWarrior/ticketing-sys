@@ -116,8 +116,11 @@ export const elevenlabsEventSchema = z
   .passthrough();
 export type ElevenlabsEventInput = z.output<typeof elevenlabsEventSchema>;
 
-/** A named tool's body: that desk tool's arguments, as the agent filled them in. */
-export const phoneNamedToolBodySchema = z.record(z.unknown());
+/**
+ * A named tool's body: that desk tool's arguments, as the agent filled them in. A tool
+ * with no inputs may be called with no body at all.
+ */
+export const phoneNamedToolBodySchema = z.record(z.unknown()).default({});
 
 /** What the last set-up of the ElevenLabs agent did; shown on its card. */
 export interface ElevenlabsSyncState {
