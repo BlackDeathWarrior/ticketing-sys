@@ -112,6 +112,11 @@
   white-space: nowrap;
 }
 
+/* A long address wraps instead of widening the page on a phone. */
+.address {
+  overflow-wrap: anywhere;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

@@ -8,6 +8,8 @@ const FAKE_LLM_URL = process.env.FAKE_LLM_URL ?? 'http://fake-providers:4010/v1'
 async function openSettings(page: import('@playwright/test').Page) {
   await page.getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Workspace settings' })).toBeVisible();
+  // Settings opens on a person's own settings; the keys are under AI providers.
+  await page.getByRole('tab', { name: 'AI providers' }).click();
 }
 
 test.describe('Settings: AI, channels and keys', () => {
@@ -162,14 +164,17 @@ test.describe('Settings: AI, channels and keys', () => {
     await call(admin, 'DELETE', '/settings/secrets/sarvam.api_key');
   });
 
-  test('is hidden from agents and team leads, and the API refuses them', async ({ page }) => {
+  test('offers agents and team leads only their own settings, and the API refuses them', async ({
+    page,
+  }) => {
     for (const who of [AGENTS.jonah, AGENTS.maya]) {
       const token = (await login(who.email, SAMPLE_PASSWORD)).accessToken;
       expect((await raw(token, 'GET', '/settings/llm/providers')).status).toBe(403);
       expect((await raw(token, 'GET', '/settings/secrets')).status).toBe(403);
     }
     await signInOrbit(page, AGENTS.maya.email);
-    await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+    await page.getByRole('link', { name: 'Settings' }).click();
+    await expect(page.getByRole('tab')).toHaveText(['My settings', 'Teams']);
   });
 
   test('fits a phone screen without horizontal scroll', async ({ page }) => {

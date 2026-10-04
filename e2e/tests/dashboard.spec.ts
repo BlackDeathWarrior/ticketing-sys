@@ -94,7 +94,8 @@ test.describe('Orbit Desk dashboard on sample data', () => {
 
     await search.fill('zzzz-no-such-ticket');
     await expect(page.getByText('No tickets in this part of the sky')).toBeVisible();
-    await page.getByRole('button', { name: 'Clear filters' }).click();
+    // One beside the search, one in the empty state: the empty state's is the one on offer here.
+    await page.getByRole('button', { name: 'Clear filters' }).last().click();
     await expect(search).toHaveValue('');
 
     const resolvedTab = page.getByRole('tab', { name: /^Resolved/ });

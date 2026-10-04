@@ -1,5 +1,5 @@
 import type { Browser } from '@playwright/test';
-import { login } from './api';
+import { chatIdentity, login } from './api';
 import { AGENTS, env, SAMPLE_PASSWORD } from './env';
 import { expect, openTicket, signInOrbit, test } from './fixtures';
 
@@ -13,13 +13,19 @@ function shopper() {
   return { name: `Rafa Moreno ${stamp}`, email: `rafa.${stamp}@shopper.example`, order };
 }
 
+/**
+ * A signed-in shopper on the page that stands in for a site: company tools act
+ * only for a visitor the site vouches for, never for a typed email (ADR 0028).
+ */
 async function visitorSays(browser: Browser, s: ReturnType<typeof shopper>, text: string) {
   const visitor = await browser.newPage();
-  await visitor.goto(env.widgetDemo);
-  await visitor.getByRole('button', { name: 'Chat with us' }).click();
-  await visitor.getByLabel('Name').fill(s.name);
-  await visitor.getByLabel('Email').fill(s.email);
-  await visitor.getByRole('button', { name: 'Start chat' }).click();
+  await visitor.goto(env.widgetSite);
+  await visitor.evaluate(
+    (token) =>
+      (window as unknown as { tmsChat: { identify(t: string): void } }).tmsChat.identify(token),
+    chatIdentity(s),
+  );
+  await visitor.getByRole('button', { name: 'Need help?' }).click();
   await visitor.getByLabel('Message').fill(text);
   await visitor.getByRole('button', { name: 'Send' }).click();
   return visitor;
@@ -49,7 +55,7 @@ test.describe('Company tools and approvals', () => {
     await expect(actions).not.toContainText(s.email);
   });
 
-  test('a refund waits for a supervisor; approving it runs it and tells the customer', async ({
+  test('a refund waits for the team that owns the ticket; approving it runs it and tells the customer', async ({
     browser,
     page,
   }) => {
@@ -61,14 +67,8 @@ test.describe('Company tools and approvals', () => {
     );
     await expect(visitor.getByText(/to our team for approval/)).toBeVisible({ timeout: 30_000 });
 
-    // Agents can't approve.
-    const agent = (await login(AGENTS.jonah.email, SAMPLE_PASSWORD)).accessToken;
-    const res = await fetch(`${env.api}/api/v1/approvals`, {
-      headers: { authorization: `Bearer ${agent}` },
-    });
-    expect(res.status).toBe(403);
-
-    await signInOrbit(page, AGENTS.priya.email, SAMPLE_PASSWORD);
+    // The request belongs to the ticket's team (ADR 0031): web chats go to Orders, and Maya leads it.
+    await signInOrbit(page, AGENTS.maya.email, SAMPLE_PASSWORD);
     await page.getByRole('link', { name: /Approvals/ }).click();
     await expect(page.getByRole('heading', { name: 'Approvals', level: 1 })).toBeVisible();
     const card = page.locator('[data-approval]', { hasText: s.order });
@@ -77,7 +77,8 @@ test.describe('Company tools and approvals', () => {
     await expect(card).toContainText(s.name);
     await expect(card).toContainText('charged twice');
     await expect(card).not.toContainText(s.email);
-    await card.getByLabel('Note (internal, optional)').fill('Duplicate charge on the statement');
+    await card.getByLabel(/^Reason/).fill('The second charge is on your statement.');
+    await card.getByLabel(/^Note for colleagues/).fill('Duplicate charge on the statement');
     await card.getByRole('button', { name: 'Approve' }).click();
     await expect(card).toHaveCount(0);
 
@@ -89,7 +90,7 @@ test.describe('Company tools and approvals', () => {
     await page.getByRole('tab', { name: /Decided/ }).click();
     const decided = page.locator('[data-approval]', { hasText: s.order });
     await expect(decided).toContainText('Approved');
-    await expect(decided).toContainText('By Priya Natarajan');
+    await expect(decided).toContainText('By Maya Lindqvist');
   });
 
   test('admins manage tools in Settings; agents cannot', async ({ page }) => {

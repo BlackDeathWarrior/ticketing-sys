@@ -80,6 +80,12 @@ test.describe('AI agent', () => {
     const name = `Kofi Mensah ${stamp}`;
     await signInOrbit(page);
     const visitor = await visitorSays(browser, name, 'Can I talk to a real person please?');
+    // The first request gets an offer to sort it out here; asking again brings a person in.
+    await expect(visitor.getByText(/If you would still like one of my colleagues/)).toBeVisible({
+      timeout: 30_000,
+    });
+    await visitor.getByLabel('Message').fill('I still want to talk to a real person.');
+    await visitor.getByRole('button', { name: 'Send' }).click();
     // "…to a member of our team", or to a colleague by name when routing chose one.
     await expect(visitor.getByText(/I'm passing this to/)).toBeVisible({ timeout: 30_000 });
 

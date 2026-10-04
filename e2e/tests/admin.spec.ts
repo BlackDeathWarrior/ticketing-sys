@@ -63,8 +63,11 @@ test.describe('admin pages', () => {
       const users = page.getByRole('region', { name: 'Users' });
       const teams = page.getByRole('region', { name: 'Teams' });
       await expect(users.locator('tr[data-user]')).not.toHaveCount(0);
+      // Teams have their own tab.
+      const tab = (name: string) => page.getByRole('tab', { name }).click();
 
       // A team first, so the new user can join it.
+      await tab('Teams');
       await teams.getByRole('button', { name: 'Add team' }).click();
       const teamForm = page.getByRole('form', { name: 'Add team' });
       await teamForm.getByLabel('Team name').fill(team);
@@ -74,6 +77,7 @@ test.describe('admin pages', () => {
       const teamRow = teams.locator(`li[data-team="${team}"]`);
       await expect(teamRow).toContainText('Evenings and weekends · Jonah Reyes');
 
+      await tab('People');
       await users.getByRole('button', { name: 'Add user' }).click();
       const form = page.getByRole('form', { name: 'Add user' });
       await form.getByLabel('Name').fill('Ada Park');
@@ -93,8 +97,10 @@ test.describe('admin pages', () => {
       await expect(row).toContainText('Ada Park');
       await expect(row).toContainText('Team lead');
       await expect(row).toContainText(team);
-      await expect(teamRow).toContainText('Ada Park');
       await shot(page, 'orbit-settings-people');
+      await tab('Teams');
+      await expect(teamRow).toContainText('Ada Park');
+      await tab('People');
       // She can sign in, with a team lead's permissions.
       const ada = (await login(email, SAMPLE_PASSWORD)).accessToken;
       expect((await raw(ada, 'GET', '/reports/performance')).status).toBe(200);
@@ -111,6 +117,7 @@ test.describe('admin pages', () => {
       await expect(login(email, SAMPLE_PASSWORD)).rejects.toThrow(/401/);
 
       // Rename the team and empty it, then delete it.
+      await tab('Teams');
       await teamRow.getByRole('button', { name: 'Edit' }).click();
       const editTeam = page.getByRole('form', { name: 'Edit team' });
       await editTeam.getByLabel('Team name').fill(`${team} B`);
@@ -250,8 +257,10 @@ test.describe('admin pages', () => {
     ).toBe(403);
     expect((await raw(lead, 'PUT', '/workflow/transitions', { transitions: [] })).status).toBe(403);
     expect((await raw(lead, 'GET', '/settings/customer-experience')).status).toBe(403);
+    // Her Settings holds her own settings and the list of teams, and no admin page.
     await signInOrbit(page, AGENTS.maya.email);
-    await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+    await page.getByRole('link', { name: 'Settings' }).click();
+    await expect(page.getByRole('tab')).toHaveText(['My settings', 'Teams']);
   });
 
   test('the new tabs fit a phone screen', async ({ page }) => {
