@@ -282,17 +282,17 @@ export class ElevenLabsAgentSync {
 
     // Every tool, also one that needs an approval: the caller is rung back with the answer.
     const company = (await this.tools.agentTools()).map((t) => {
-        const fn = (t.definition as { function: { description?: string; parameters?: unknown } })
-          .function;
-        return {
-          key: t.tool.id,
-          path: `tools/desk/${t.tool.id}`,
-          label: t.qualifiedName,
-          name: elevenLabsToolName(t.qualifiedName, t.tool.id, taken),
-          description: fn.description ?? t.tool.name,
-          parameters: fn.parameters,
-        };
-      });
+      const fn = (t.definition as { function: { description?: string; parameters?: unknown } })
+        .function;
+      return {
+        key: t.tool.id,
+        path: `tools/desk/${t.tool.id}`,
+        label: t.qualifiedName,
+        name: elevenLabsToolName(t.qualifiedName, t.tool.id, taken),
+        description: fn.description ?? t.tool.name,
+        parameters: fn.parameters,
+      };
+    });
     const own = OWN_TOOLS.map((t) => ({
       key: t.name,
       path: `tools/${t.name}`,
