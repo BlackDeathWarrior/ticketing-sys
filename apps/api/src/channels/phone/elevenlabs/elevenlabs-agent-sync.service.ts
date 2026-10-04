@@ -14,7 +14,7 @@ import { ToolsService } from '../../../tools/tools.service';
 import { PHONE_AGENT_INSTRUCTION_VERSION, phoneAgentInstruction } from '../phone-agent-instruction';
 import { SEND_WHATSAPP_ENTRY } from '../phone-tools.service';
 import { ELEVENLABS_SYNC_KEY, syncStateSchema } from './elevenlabs-sync-state';
-import { ElevenLabsClient } from './elevenlabs.client';
+import { ElevenLabsClient, ElevenLabsError } from './elevenlabs.client';
 
 const PROVIDER = 'elevenlabs';
 /** ElevenLabs waits this long for a tool; the desk answers within 25 seconds. */
@@ -53,6 +53,9 @@ const OWN_TOOLS: PhoneToolEntry[] = [
   SEND_WHATSAPP_ENTRY,
 ];
 
+/** ElevenLabs no longer has what a stored id points at (deleted there, or another workspace's key). */
+const gone = (err: unknown) => err instanceof ElevenLabsError && err.status === 404;
+
 /** A name ElevenLabs accepts (letters, digits, `_`, `-`), unique among this agent's tools. */
 export function elevenLabsToolName(qualifiedName: string, toolId: string, taken: Set<string>) {
   const base = qualifiedName.replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 56) || 'tool';
@@ -69,7 +72,10 @@ export function elevenLabsToolName(qualifiedName: string, toolId: string, taken:
  * fills needs a description, so a field without one is described by its name.
  */
 export function toElevenLabsSchema(schema: unknown, name = 'input'): Record<string, unknown> {
-  const s = (schema ?? {}) as Record<string, unknown>;
+  let s = (schema ?? {}) as Record<string, unknown>;
+  // `Optional[int]` from a Python tool server: the type sits in the first member that is not null.
+  const options = [s.anyOf, s.oneOf].find(Array.isArray) as Array<Record<string, unknown>> | undefined;
+  if (!s.type && options) s = { ...(options.find((o) => o?.type !== 'null') ?? {}), ...s };
   const type = Array.isArray(s.type)
     ? (s.type.find((t) => t !== 'null') ?? 'string')
     : (s.type ?? (s.properties ? 'object' : 'string'));
@@ -91,7 +97,8 @@ export function toElevenLabsSchema(schema: unknown, name = 'input'): Record<stri
   return {
     type,
     description,
-    ...(Array.isArray(s.enum) ? { enum: s.enum.map(String) } : {}),
+    // ElevenLabs lists choices as text; choices of a number are left to the description.
+    ...(Array.isArray(s.enum) && type === 'string' ? { enum: s.enum.map(String) } : {}),
   };
 }
 
@@ -134,6 +141,8 @@ export class ElevenLabsAgentSync {
     if (!config?.enabled || !config.apiKey) return null;
     const state: ElevenlabsSyncState = { ...(await this.state()), skipped: [], error: null };
     try {
+      this.assertReachable();
+
       // 1. The token the agent's requests carry. ElevenLabs sends a stored secret as the
       // header's whole value, so what it stores is the header: "Bearer <token>".
       let token = config.hookToken;
@@ -142,10 +151,15 @@ export class ElevenLabsAgentSync {
         await this.secrets.set(SYSTEM_CTX, 'elevenlabs.hook_token', token);
         state.secretId = null;
       }
-      state.secretId ??= await this.client.createSecret(
-        `orbit-desk-hook-${Date.now()}`,
-        `Bearer ${token}`,
-      );
+      if (!state.secretId) {
+        state.secretId = await this.client.createSecret(
+          `orbit-desk-hook-${Date.now()}`,
+          `Bearer ${token}`,
+        );
+        // Saved at once, here and after every other create: a run that stops later must
+        // not make the same thing a second time and leave the first behind at ElevenLabs.
+        await this.save(state);
+      }
 
       // 2. The tools. The agent keeps every tool that is already there, also one whose
       // update was refused: it never loses a tool that was working.
@@ -159,28 +173,64 @@ export class ElevenLabsAgentSync {
         );
         await this.secrets.set(SYSTEM_CTX, 'elevenlabs.webhook_secret', hook.secret);
         state.webhookId = hook.id;
+        await this.save(state);
       }
 
-      // 4. The agent.
+      // 4. The agent. One ElevenLabs no longer knows (deleted there, or the key now belongs
+      // to another workspace) is made again.
       const body = await this.agentBody(config, state, toolIds.keep);
-      if (state.agentId) await this.client.updateAgent(state.agentId, body);
-      else state.agentId = await this.client.createAgent(body);
+      if (state.agentId) {
+        try {
+          await this.client.updateAgent(state.agentId, body);
+        } catch (err) {
+          if (!gone(err)) throw err;
+          state.agentId = null;
+        }
+      }
+      if (!state.agentId) {
+        state.agentId = await this.client.createAgent(body);
+        await this.save(state);
+      }
 
       // Tools that left the desk are deleted only now that the agent no longer holds them.
-      for (const gone of toolIds.gone) {
-        await this.client.deleteTool(gone.providerToolId);
-        await this.db.delete(phoneAgentTools).where(eq(phoneAgentTools.id, gone.id));
+      // One that cannot be deleted keeps its row for the next run and does not fail this one.
+      for (const left of toolIds.gone) {
+        try {
+          await this.client.deleteTool(left.providerToolId);
+          await this.db.delete(phoneAgentTools).where(eq(phoneAgentTools.id, left.id));
+        } catch (err) {
+          state.skipped.push({
+            tool: left.name,
+            reason: `Not removed at ElevenLabs: ${(err as Error).message.slice(0, 250)}`,
+          });
+        }
       }
 
-      // 5. The number, once one is connected at ElevenLabs and chosen on the card.
-      if (config.phoneNumberId) await this.client.assignNumber(config.phoneNumberId, state.agentId);
+      // 5. The number, once one is connected at ElevenLabs and chosen on the card. A number
+      // id ElevenLabs does not list is said on the card; the agent is in step all the same.
+      state.agentNumber = null;
+      if (config.phoneNumberId) {
+        const number = (await this.client.listPhoneNumbers()).find(
+          (n) => n.id === config.phoneNumberId,
+        );
+        if (number) {
+          await this.client.assignNumber(number.id, state.agentId);
+          state.agentNumber = number.number;
+        } else {
+          state.skipped.push({
+            tool: 'number',
+            reason: 'ElevenLabs lists no number with the id saved on the card.',
+          });
+        }
+      }
 
       state.ok = true;
       state.tools = toolIds.keep.length;
     } catch (err) {
       state.ok = false;
       state.error = (err as Error).message.slice(0, 500);
-      await this.save(state);
+      // The run's own error is what matters: a failure to record it must not replace it.
+      await this.save(state).catch(() => undefined);
       throw err;
     }
     await this.save(state);
@@ -250,13 +300,26 @@ export class ElevenLabsAgentSync {
           keep.push(providerToolId);
           continue;
         }
-        keep.push(row.providerToolId);
-        if (row.hash === hash) continue;
-        await this.client.updateTool(row.providerToolId, config);
+        if (row.hash === hash) {
+          keep.push(row.providerToolId);
+          continue;
+        }
+        let providerToolId = row.providerToolId;
+        try {
+          await this.client.updateTool(providerToolId, config);
+        } catch (err) {
+          if (!gone(err)) {
+            // Refused as it is now: the tool stays on the agent as it was.
+            keep.push(row.providerToolId);
+            throw err;
+          }
+          providerToolId = await this.client.createTool(config);
+        }
         await this.db
           .update(phoneAgentTools)
-          .set({ name: tool.name, hash, syncedAt: new Date() })
+          .set({ providerToolId, name: tool.name, hash, syncedAt: new Date() })
           .where(eq(phoneAgentTools.id, row.id));
+        keep.push(providerToolId);
       } catch (err) {
         this.logger.warn(
           `tool ${tool.label} was not synced to ElevenLabs: ${(err as Error).message}`,
@@ -323,6 +386,20 @@ export class ElevenLabsAgentSync {
         privacy: { record_voice: true },
       },
     };
+  }
+
+  /**
+   * ElevenLabs calls the desk from the internet. With a local address every tool and
+   * webhook would point nowhere while the card said "in step", so the run stops here.
+   */
+  private assertReachable(): void {
+    const url = new URL(this.env.HELP_CENTER_URL);
+    const local = /^(localhost|127\.|10\.|192\.168\.|\[?::1\]?$)/.test(url.hostname);
+    if (url.protocol !== 'https:' || local) {
+      throw new Error(
+        'This desk has no public https address (HELP_CENTER_URL), so ElevenLabs could not reach it.',
+      );
+    }
   }
 
   /** Where ElevenLabs reaches this desk: the API behind the help center's public address. */

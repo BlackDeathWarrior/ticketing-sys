@@ -12,4 +12,5 @@ export const syncStateSchema = z.object({
   error: z.string().nullable().default(null),
   skipped: z.array(z.object({ tool: z.string(), reason: z.string() })).default([]),
   tools: z.number().default(0),
+  agentNumber: z.string().nullable().default(null),
 });
