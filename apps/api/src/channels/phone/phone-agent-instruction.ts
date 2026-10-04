@@ -11,8 +11,10 @@ import type { PhoneProviderId } from '@tms/shared';
  * Version 3 is the text as Sarvam's own assistant restructured it on
  * 2026-10-04 (persona, returns, guardrails: each rule answers something heard
  * on a real call), with the line on sending details to WhatsApp kept.
+ * Version 4 adds the plain-sentences rule: on the first long ElevenLabs call the
+ * agent spoke bullet lists and a markdown link.
  */
-export const PHONE_AGENT_INSTRUCTION_VERSION = 3;
+export const PHONE_AGENT_INSTRUCTION_VERSION = 4;
 
 interface Wording {
   /** How the company's tools are reached. */
@@ -58,6 +60,7 @@ Resolve the caller's question using the shop's tools, and hand off to a colleagu
 
 Speaking style rules
 * Answer in the caller's language, in one or two short sentences. Ask one question at a time.
+* Everything you write is spoken aloud. Use plain sentences only: no lists, no bullet points, no markdown, no links, no symbols. Name at most three products at a time, then ask whether the caller wants more.
 * Say clothing sizes in words: Small, Medium, Large, Extra large, Double X Large, Free size. Never say the letters S, M, L, XL or XXL.
 
 Facts

@@ -117,6 +117,24 @@ function linkIn(result: unknown): string | null {
   return typeof url === 'string' && /^https:\/\/\S+$/.test(url) && url.length <= 1000 ? url : null;
 }
 
+/**
+ * A tool's answer as the agent gets it: without web addresses. On an ElevenLabs call the
+ * agent read a product's link out as "[View it here](https://…)": a model that sees an
+ * address tends to say it, whatever its instruction says. A link the caller needs goes to
+ * their WhatsApp instead (`shareLink`).
+ */
+function withoutAddresses(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutAddresses);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, v]) => !(typeof v === 'string' && /^https?:\/\/\S+$/.test(v.trim())))
+        .map(([k, v]) => [k, withoutAddresses(v)]),
+    );
+  }
+  return value;
+}
+
 const fail = (result: string): PhoneToolReply => ({
   ok: false,
   result: `Error: ${result} Tell the caller you could not find or do that. ${NEVER_INVENT}`,
@@ -456,7 +474,9 @@ export class PhoneToolsService {
             canSend +
             note +
             confirmed +
-            (typeof r.result === 'string' ? r.result : JSON.stringify(r.result ?? {})),
+            (typeof r.result === 'string'
+              ? r.result
+              : JSON.stringify(withoutAddresses(r.result ?? {}))),
         );
       }
       case 'denied':
