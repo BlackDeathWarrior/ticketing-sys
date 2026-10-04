@@ -148,6 +148,20 @@ const DEFAULT_STRINGS: Required<ChatStrings> = {
   emailRequired: 'Please enter your email address, for example name@example.com.',
 };
 
+/** Where the visitor's choice of panel size is kept, in their own browser. */
+const SIZE_KEY = 'tms-chat-size';
+
+/** What is asked after a rating, by how happy it was. The answer is optional. */
+function ratingFollowUp(rating: number): string {
+  if (rating <= 2) {
+    return 'We are sorry to hear that. Would you like to tell us what went wrong, so we can improve? (optional)';
+  }
+  if (rating === 3) {
+    return 'Thank you. Is there anything we could have done better? (optional)';
+  }
+  return 'We are glad to hear that. Would you like to tell us what went well? (optional)';
+}
+
 /** How long the typing dots may show without an answer arriving. */
 const TYPING_MAX_MS = 45_000;
 
@@ -206,6 +220,16 @@ form button:disabled { opacity: .5; cursor: default; }
   font-size: 15px; cursor: pointer; }
 .rate .scale button:hover { background: #f3f4f6; }
 .rate .ends { display: flex; justify-content: space-between; font-size: 11px; color: #6b7280; margin-top: 4px; }
+.rate label { display: block; margin: 0 0 6px; }
+.rate textarea { display: block; width: 100%; min-height: 60px; }
+.rate .actions { display: flex; gap: 8px; margin-top: 8px; }
+.rate .actions button { min-height: 34px; padding: 0 12px; border: 1px solid var(--tms-primary); border-radius: 8px; background: var(--tms-primary); color: var(--tms-on-primary); font-size: 14px; cursor: pointer; }
+.rate .actions button.plain { background: #fff; color: var(--tms-primary); }
+.rate .actions button:disabled { opacity: .5; cursor: default; }
+header .tools { display: flex; gap: 10px; align-items: center; }
+.panel.large { width: min(560px, calc(100vw - 40px)); height: min(760px, calc(100vh - 120px)); }
+.panel.large .card { flex-basis: 200px; }
+@media (max-width: 480px) { header .size { display: none; } }
 `;
 
 export function init(options: ChatOptions = {}): ChatHandle {
@@ -229,7 +253,8 @@ export function init(options: ChatOptions = {}): ChatHandle {
     <button class="launcher" type="button" aria-expanded="false" aria-controls="tms-panel">${escapeHtml(text.launcher)}</button>
     <section class="panel" id="tms-panel" role="dialog" aria-label="${escapeHtml(options.title ?? options.strings?.title ?? 'Chat')}" hidden>
       <header><strong>${escapeHtml(text.title)}</strong>
-        <button type="button" class="close" aria-label="Close chat">×</button></header>
+        <span class="tools"><button type="button" class="size" aria-pressed="false" aria-label="Make the chat larger" title="Make the chat larger">⤢</button>
+        <button type="button" class="close" aria-label="Close chat">×</button></span></header>
       <div class="status" aria-live="polite" hidden></div>
       <div class="details" hidden>
         <p>${escapeHtml(fresh ? text.detailsRequired : text.details)}</p>
@@ -431,12 +456,64 @@ export function init(options: ChatOptions = {}): ChatHandle {
         .timeout(10_000)
         .emitWithAck('rate', { token: prompt.token, rating })) as Ack<{ rating: number }>;
       if (!res.ok) throw new Error(res.error);
-      box.replaceChildren(label);
-      label.textContent = `Thanks for your rating: ${res.rating} out of 5.`;
-      box.setAttribute('role', 'status');
+      askForComment(prompt, res.rating, box, label);
     } catch (err) {
       label.textContent = `Your rating was not saved: ${err instanceof Error ? err.message : 'please try again'}`;
     }
+  }
+
+  /**
+   * The rating is saved; now the visitor may say why, in their own words. Nothing more is
+   * needed from them: "No thanks" leaves the rating as it is.
+   */
+  function askForComment(prompt: RatingPrompt, rating: number, box: HTMLElement, label: HTMLElement) {
+    const thanks = `Thanks for your rating: ${rating} out of 5.`;
+    label.textContent = thanks;
+    const id = `tms-comment-${prompt.reference}`;
+    const question = document.createElement('label');
+    question.htmlFor = id;
+    question.textContent = ratingFollowUp(rating);
+    const comment = document.createElement('textarea');
+    comment.id = id;
+    comment.rows = 3;
+    comment.maxLength = 2000;
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    const sendComment = document.createElement('button');
+    sendComment.type = 'button';
+    sendComment.textContent = 'Send';
+    const skip = document.createElement('button');
+    skip.type = 'button';
+    skip.className = 'plain';
+    skip.textContent = 'No thanks';
+    const done = (message: string) => {
+      box.replaceChildren(label);
+      label.textContent = message;
+      box.setAttribute('role', 'status');
+    };
+    skip.addEventListener('click', () => done(thanks));
+    sendComment.addEventListener('click', () => {
+      const words = comment.value.trim();
+      if (!words) return done(thanks);
+      sendComment.disabled = true;
+      skip.disabled = true;
+      socket!
+        .timeout(10_000)
+        .emitWithAck('rate', { token: prompt.token, rating, comment: words })
+        .then((res: Ack<{ rating: number }>) => {
+          if (!res.ok) throw new Error(res.error);
+          done(`${thanks} Thank you for telling us more.`);
+        })
+        .catch((err: unknown) => {
+          sendComment.disabled = false;
+          skip.disabled = false;
+          question.textContent = `Your comment was not sent: ${err instanceof Error ? err.message : 'please try again'}`;
+        });
+    });
+    actions.append(sendComment, skip);
+    box.replaceChildren(label, question, comment, actions);
+    log.scrollTop = log.scrollHeight;
+    comment.focus();
   }
 
   function setStatus(message: string, retry = false) {
@@ -607,6 +684,29 @@ export function init(options: ChatOptions = {}): ChatHandle {
 
   launcher.addEventListener('click', () => (panel.hidden ? open() : close()));
   $<HTMLButtonElement>('.close').addEventListener('click', close);
+
+  // Two sizes: the usual one, and a larger one for reading long answers and cards. Never
+  // larger than the window allows; on a narrow screen the panel fills the width either way.
+  const sizeBtn = $<HTMLButtonElement>('.size');
+  function setLarge(large: boolean) {
+    panel.classList.toggle('large', large);
+    sizeBtn.setAttribute('aria-pressed', String(large));
+    const label = large ? 'Make the chat smaller' : 'Make the chat larger';
+    sizeBtn.setAttribute('aria-label', label);
+    sizeBtn.title = label;
+    try {
+      localStorage.setItem(SIZE_KEY, large ? 'large' : 'normal');
+    } catch {
+      // Storage is blocked: the size holds until the page is left.
+    }
+    log.scrollTop = log.scrollHeight;
+  }
+  sizeBtn.addEventListener('click', () => setLarge(!panel.classList.contains('large')));
+  try {
+    if (localStorage.getItem(SIZE_KEY) === 'large') setLarge(true);
+  } catch {
+    // Storage is blocked: the usual size.
+  }
   root.addEventListener('keydown', (e) => {
     if ((e as KeyboardEvent).key === 'Escape' && !panel.hidden) close();
   });
