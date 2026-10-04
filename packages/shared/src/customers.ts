@@ -4,10 +4,21 @@ export const IDENTITY_TYPES = [
   'email',
   'phone',
   'whatsapp',
+  /** WhatsApp business-scoped user id, for senders Meta shows without a phone number. */
+  'whatsapp_bsuid',
   'webchat_session',
   'external_id',
 ] as const;
 export const identityTypeSchema = z.enum(IDENTITY_TYPES);
+
+/**
+ * How a customer chose to be addressed, in an app that knows them. Kept in
+ * `customers.attributes.title`. A fixed list: it goes into the AI's prompt as
+ * it is, and it is never worked out from a name.
+ */
+export const CUSTOMER_TITLES = ['Mr.', 'Ms.', 'Mrs.', 'Mx.', 'Dr.'] as const;
+export const customerTitleSchema = z.enum(CUSTOMER_TITLES);
+export type CustomerTitle = (typeof CUSTOMER_TITLES)[number];
 export type IdentityType = z.infer<typeof identityTypeSchema>;
 
 export const CUSTOMER_TYPES = ['standard', 'vip', 'business', 'internal'] as const;
@@ -62,6 +73,32 @@ export const resolveCustomerSchema = z.object({
   displayName: z.string().trim().max(200).optional(),
 });
 export type ResolveCustomerInput = z.infer<typeof resolveCustomerSchema>;
+
+/** Why the AI flagged a customer (ADR 0029). */
+export const CUSTOMER_FLAG_KINDS = ['jailbreak', 'abuse', 'spam', 'off_topic'] as const;
+export type CustomerFlagKind = (typeof CUSTOMER_FLAG_KINDS)[number];
+
+export const CUSTOMER_FLAG_LABELS: Record<CustomerFlagKind, string> = {
+  jailbreak: "Tried to override the AI's instructions",
+  abuse: 'Abusive language',
+  spam: 'Spam',
+  off_topic: 'Kept asking about unrelated things',
+};
+
+export interface CustomerFlagView {
+  id: string;
+  kind: CustomerFlagKind;
+  ticketId: string | null;
+  createdAt: string;
+  clearedAt: string | null;
+  clearNote: string | null;
+}
+
+export const clearCustomerFlagSchema = z.object({
+  /** Why the flag no longer applies; kept with it. */
+  note: z.string().trim().min(3).max(500),
+});
+export type ClearCustomerFlagInput = z.infer<typeof clearCustomerFlagSchema>;
 
 export const mergeCustomersSchema = z.object({
   sourceId: z.string().uuid(),

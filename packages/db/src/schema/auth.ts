@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   index,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -27,6 +28,8 @@ export const users = pgTable(
     passwordHash: text('password_hash'),
     isActive: boolean('is_active').notNull().default(true),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+    /** The person's own Orbit Desk settings (`userPreferencesSchema`), e.g. notification sound. */
+    preferences: jsonb('preferences').$type<Record<string, unknown>>().notNull().default({}),
     ...timestamps,
   },
   (t) => [uniqueIndex('users_email_lower_uq').on(sql`lower(${t.email})`)],
@@ -97,6 +100,8 @@ export const teamMembers = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** member | admin: an admin manages the team's members (ADR 0031). */
+    role: text('role').notNull().default('member'),
   },
   (t) => [
     primaryKey({ columns: [t.teamId, t.userId] }),

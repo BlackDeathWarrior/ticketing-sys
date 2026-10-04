@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   NotFoundException,
   Param,
   ParseIntPipe,
@@ -12,14 +13,19 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
+  type ApproveDraftInput,
+  approveDraftSchema,
+  type ParsedSendTemplate,
   type ReplyInput,
   replySchema,
+  sendTemplateSchema,
   type StartConversationInput,
   startConversationSchema,
 } from '@tms/shared';
 import type { FastifyReply } from 'fastify';
 import { Ctx, type RequestCtx, RequirePermission } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
+import { ActsOnTicket } from '../tickets/ticket-access';
 import { ConversationsService } from '../conversations/conversations.service';
 import { StorageService } from '../storage/storage.service';
 import { TicketsService } from '../tickets/tickets.service';
@@ -43,26 +49,64 @@ export class ChannelsController {
     return this.conversations.listForTicket(ticket.id);
   }
 
-  /** Starts a new conversation on a ticket (email only for now). */
+  /** Starts a new conversation on a ticket: an email, or a WhatsApp template. */
   @Post('tickets/:id/conversations')
   @RequirePermission('message:send')
+  @ActsOnTicket('ticket')
   start(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodPipe(startConversationSchema)) body: StartConversationInput,
   ) {
-    return this.outbound.startEmailConversation(ctx, id, body.body);
+    return body.channel === 'whatsapp'
+      ? this.outbound.startWhatsAppConversation(ctx, id, body.template)
+      : this.outbound.startEmailConversation(ctx, id, body.body);
+  }
+
+  /** Sends an approved WhatsApp template on a conversation (needed once the 24-hour window closes). */
+  @Post('conversations/:id/whatsapp-template')
+  @RequirePermission('message:send')
+  @ActsOnTicket('conversation')
+  template(
+    @Ctx() ctx: RequestCtx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(sendTemplateSchema)) body: ParsedSendTemplate,
+  ) {
+    return this.outbound.replyWithTemplate(ctx, id, body);
   }
 
   /** Replies on the conversation's own channel. */
   @Post('conversations/:id/messages')
   @RequirePermission('message:send')
+  @ActsOnTicket('conversation')
   reply(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodPipe(replySchema)) body: ReplyInput,
   ) {
     return this.outbound.reply(ctx, id, body.body);
+  }
+
+  /** Sends an AI draft, optionally edited. */
+  @Post('messages/:id/approve')
+  @HttpCode(200)
+  @RequirePermission('message:approve_draft')
+  @ActsOnTicket('message')
+  approve(
+    @Ctx() ctx: RequestCtx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(approveDraftSchema)) body: ApproveDraftInput,
+  ) {
+    return this.outbound.approveDraft(ctx, id, body.body);
+  }
+
+  /** Throws an AI draft away; the customer never sees it. */
+  @Post('messages/:id/discard')
+  @HttpCode(200)
+  @RequirePermission('message:approve_draft')
+  @ActsOnTicket('message')
+  discard(@Ctx() ctx: RequestCtx, @Param('id', ParseUUIDPipe) id: string) {
+    return this.outbound.discardDraft(ctx, id);
   }
 
   @Get('messages/:id/attachments/:index')

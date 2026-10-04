@@ -1,0 +1,37 @@
+{
+  "description": "Fixed values every TMS client must reproduce. Webhook: header = t=<timestamp>,v1=<hex HMAC-SHA256 of \"<timestamp>.<body>\" with the secret>. Identity: an HS256 JWT.",
+  "webhook": [
+    {
+      "name": "a ticket event",
+      "secret": "whsec_test_secret",
+      "timestamp": 1790000000,
+      "body": "{\"id\":\"d1\",\"type\":\"ticket.created\"}",
+      "header": "t=1790000000,v1=00c77c95442d04dd586e98d6f729b5f1761b29b2af360c13679ea85340a19a89"
+    },
+    {
+      "name": "unicode in the body",
+      "secret": "whsec_3J9mN0aQ7xVbYt2LkPz8uWcR4sHdEf6GiOj1AlMnBvC",
+      "timestamp": 1790003600,
+      "body": "{\"id\":\"d2\",\"type\":\"message.created\",\"data\":{\"message\":{\"body\":\"नमस्ते — ₹1,499\"}}}",
+      "header": "t=1790003600,v1=53e952e572019a3c466e97df052474c8649bc43cde1c6b91959484e77160d4f2"
+    },
+    {
+      "name": "an empty object",
+      "secret": "s",
+      "timestamp": 1,
+      "body": "{}",
+      "header": "t=1,v1=b253639bcd705ed1cda3073f66104f16988bd40272584dea7d0d345ae93e61cc"
+    }
+  ],
+  "identity": {
+    "secret": "chid_test_identity_secret_0123456789abcdef",
+    "claims": {
+      "sub": "shopper-42",
+      "name": "Asha Verma",
+      "email": "asha@shopper.example"
+    },
+    "issuedAt": 1790000000,
+    "ttlSeconds": 300,
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzaG9wcGVyLTQyIiwibmFtZSI6IkFzaGEgVmVybWEiLCJlbWFpbCI6ImFzaGFAc2hvcHBlci5leGFtcGxlIiwiaWF0IjoxNzkwMDAwMDAwLCJleHAiOjE3OTAwMDAzMDB9.a-QKAaf674TJEdU6a_-keGmtiyGMCCIhlyyZLCqke5A"
+  }
+}

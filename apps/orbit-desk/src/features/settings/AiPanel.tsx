@@ -1,0 +1,543 @@
+import {
+  AI_CHANNEL_MODES,
+  AI_CHANNELS,
+  type AiBehaviour,
+  type AiChannel,
+  type AiChannelMode,
+  type SimulateAiResult,
+  DEFAULT_QUIET_MINUTES,
+} from '@tms/shared';
+import { type FormEvent, useEffect, useState } from 'react';
+import { api } from '../../api/client';
+import { Button, Card, CardHeader, Input, Select, Textarea } from '../../components/ui';
+import { useGet } from '../../lib/useGet';
+import { DECISION_LABELS, percent, ruleLabels } from '../ai/logic';
+import styles from './Settings.module.css';
+
+const CHANNEL_LABELS: Record<AiChannel, string> = {
+  webchat: 'Web chat',
+  whatsapp: 'WhatsApp',
+  voice: 'Voice',
+  email: 'Email',
+  web_form: 'Web form (replies by email)',
+  api: 'Integrations (tickets raised through the API)',
+};
+
+const YES_NO = [
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
+];
+
+const MODE_LABELS: Record<AiChannelMode, string> = {
+  auto: 'Answers on its own when confident',
+  draft: 'Drafts replies for a person to approve',
+  off: 'Off: people answer',
+};
+
+/** Settings → AI behaviour: autonomy per channel, thresholds, and a dry run. */
+/** What each kind of turn answered without a model is called on the savings line. */
+const SAVED_LABELS: Record<string, string> = {
+  smalltalk: 'greetings and thanks',
+  faq: 'FAQ answers',
+  cache: 'repeated questions',
+  card_link: 'card links',
+  closing: '“nothing else” goodbyes',
+  guard: 'conversations closed for misuse',
+};
+
+export function AiPanel() {
+  const current = useGet<AiBehaviour>('/settings/ai');
+  const saved = useGet<Record<string, number>>('/ai/savings');
+  const savedTotal = Object.values(saved.data ?? {}).reduce((a, b) => a + b, 0);
+  const [form, setForm] = useState<AiBehaviour | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (current.data) setForm(current.data);
+  }, [current.data]);
+
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!form) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      setForm(await api<AiBehaviour>('PUT', '/settings/ai', form));
+      setMessage('Saved. New turns use these settings.');
+    } catch (err) {
+      setMessage((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const pct = (key: 'sendAt' | 'handoverBelow') => (
+    <Input
+      id={`ai-${key}`}
+      type="number"
+      min={0}
+      max={100}
+      step={5}
+      label={key === 'sendAt' ? 'Send on its own at (%)' : 'Hand over below (%)'}
+      value={form ? Math.round(form[key] * 100) : ''}
+      onChange={(e) => form && setForm({ ...form, [key]: Number(e.target.value) / 100 })}
+      hint={
+        key === 'sendAt'
+          ? 'At or above this confidence, replies go out on channels that answer on their own.'
+          : 'Below this, the AI passes the conversation to your team. In between, it drafts.'
+      }
+    />
+  );
+
+  return (
+    <div className={styles.stack}>
+      <Card padding="md">
+        <CardHeader
+          title="AI behaviour"
+          subtitle="What the AI agent may do on each channel, and how sure it must be."
+        />
+        {current.error && <p className={styles.error}>{current.error}</p>}
+        {form && (
+          <form className={styles.form} onSubmit={save} aria-label="AI behaviour">
+            <div className={styles.formRow}>
+              {AI_CHANNELS.map((ch) => (
+                <Select
+                  key={ch}
+                  id={`ai-mode-${ch}`}
+                  label={CHANNEL_LABELS[ch]}
+                  value={form.channels[ch]}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      channels: { ...form.channels, [ch]: e.target.value as AiChannelMode },
+                    })
+                  }
+                  options={AI_CHANNEL_MODES.map((m) => ({ value: m, label: MODE_LABELS[m] }))}
+                />
+              ))}
+            </div>
+            <div className={styles.formRow}>
+              {pct('sendAt')}
+              {pct('handoverBelow')}
+            </div>
+            <div className={styles.formRow}>
+              <Input
+                id="ai-failed"
+                type="number"
+                min={1}
+                max={20}
+                label="Hand over after this many unsure replies"
+                value={form.maxFailedTurns}
+                onChange={(e) => setForm({ ...form, maxFailedTurns: Number(e.target.value) })}
+              />
+              <Select
+                id="ai-classify"
+                label="Classify new tickets"
+                value={form.classifyTickets ? 'yes' : 'no'}
+                onChange={(e) => setForm({ ...form, classifyTickets: e.target.value === 'yes' })}
+                options={[
+                  { value: 'yes', label: 'Yes: category, priority, language, sentiment' },
+                  { value: 'no', label: 'No' },
+                ]}
+              />
+            </div>
+            <Select
+              id="ai-await"
+              label="After a confident answer"
+              value={form.awaitCustomerWhenAnswered ? 'yes' : 'no'}
+              onChange={(e) =>
+                setForm({ ...form, awaitCustomerWhenAnswered: e.target.value === 'yes' })
+              }
+              options={[
+                { value: 'yes', label: 'Mark the ticket as waiting on the customer' },
+                { value: 'no', label: 'Leave the status as it is' },
+              ]}
+            />
+            <h3 className={styles.sectionTitle}>Ending a conversation</h3>
+            <p className={styles.note}>
+              When an answer settles the request, the AI asks whether anything else is needed. A
+              “no, thanks” resolves the ticket at once, without asking a model. Silence resolves it
+              after the quiet time below.
+            </p>
+            <Select
+              id="ai-ask-anything-else"
+              label="Ask “is there anything else?” after an answer that settles the request"
+              value={form.closing.askAnythingElse ? 'yes' : 'no'}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  closing: { ...form.closing, askAnythingElse: e.target.value === 'yes' },
+                })
+              }
+              options={[
+                { value: 'yes', label: 'Yes' },
+                { value: 'no', label: 'No' },
+              ]}
+            />
+            <div className={styles.formRow}>
+              {AI_CHANNELS.map((ch) => (
+                <Input
+                  key={ch}
+                  id={`ai-quiet-${ch}`}
+                  type="number"
+                  min={0}
+                  max={43200}
+                  label={`Quiet time: ${CHANNEL_LABELS[ch]} (minutes)`}
+                  placeholder={
+                    DEFAULT_QUIET_MINUTES[ch] !== undefined
+                      ? `${DEFAULT_QUIET_MINUTES[ch]} (the default for this channel)`
+                      : `${form.autoResolveHours * 60} (the general setting)`
+                  }
+                  value={form.closing.quietMinutes[ch] ?? ''}
+                  onChange={(e) => {
+                    const quietMinutes = { ...form.closing.quietMinutes };
+                    if (e.target.value === '') delete quietMinutes[ch];
+                    else quietMinutes[ch] = Number(e.target.value);
+                    setForm({ ...form, closing: { ...form.closing, quietMinutes } });
+                  }}
+                  hint="Empty: the default shown. 0: never."
+                />
+              ))}
+            </div>
+            <div className={styles.formRow}>
+              <Select
+                id="ai-tell-closed"
+                label="Tell the customer when a request is closed for silence"
+                value={form.closing.tellCustomer ? 'yes' : 'no'}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    closing: { ...form.closing, tellCustomer: e.target.value === 'yes' },
+                  })
+                }
+                options={[
+                  { value: 'yes', label: 'Yes, on the channel they wrote on' },
+                  { value: 'no', label: 'No' },
+                ]}
+              />
+              <Input
+                id="ai-close-days"
+                type="number"
+                min={0}
+                max={365}
+                label="Close a resolved ticket for good after (days; 0 = never)"
+                value={String(form.closing.closeResolvedAfterDays)}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    closing: { ...form.closing, closeResolvedAfterDays: Number(e.target.value) },
+                  })
+                }
+                hint="Until then a reply from the customer reopens it. After, a reply opens a new ticket."
+              />
+            </div>
+            <Input
+              id="ai-closing-message"
+              label="Closing message"
+              maxLength={500}
+              value={form.closing.message}
+              onChange={(e) =>
+                setForm({ ...form, closing: { ...form.closing, message: e.target.value } })
+              }
+              placeholder="I have not heard back from you, so I am closing this request for now. If you still need help, just write here again and it will reopen."
+              hint="Sent in web chat, on WhatsApp, by email and in in-app requests when a request is closed for silence. Empty: the built-in message, in the customer's language."
+            />
+            <Input
+              id="ai-auto-resolve"
+              label="General quiet time: resolve the ticket when the customer has not replied for (hours; 0 = never)"
+              type="number"
+              min={0}
+              max={720}
+              value={String(form.autoResolveHours)}
+              onChange={(e) => setForm({ ...form, autoResolveHours: Number(e.target.value) })}
+              required
+            />
+            <h3 className={styles.sectionTitle}>Answers without a model</h3>
+            <p className={styles.note}>
+              Some messages need no model at all. Each of these saves the whole cost of a turn.
+            </p>
+            {savedTotal > 0 && (
+              <p className={styles.note} role="status">
+                In the last 30 days, {savedTotal} {savedTotal === 1 ? 'turn was' : 'turns were'}{' '}
+                answered without a model:{' '}
+                {Object.entries(saved.data ?? {})
+                  .map(([route, n]) => `${n} ${SAVED_LABELS[route] ?? route}`)
+                  .join(', ')}
+                .
+              </p>
+            )}
+            <div className={styles.formRow}>
+              <Select
+                id="ai-fast-smalltalk"
+                label="Greetings and thanks get a fixed reply"
+                value={form.fastPaths.smallTalk ? 'yes' : 'no'}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    fastPaths: { ...form.fastPaths, smallTalk: e.target.value === 'yes' },
+                  })
+                }
+                options={YES_NO}
+              />
+              <Select
+                id="ai-fast-cache"
+                label="A question asked before, in the same words, gets the same answer"
+                value={form.fastPaths.answerCache ? 'yes' : 'no'}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    fastPaths: { ...form.fastPaths, answerCache: e.target.value === 'yes' },
+                  })
+                }
+                options={YES_NO}
+              />
+            </div>
+            <div className={styles.formRow}>
+              <Select
+                id="ai-fast-faq"
+                label="A question an FAQ entry answers gets that entry's answer"
+                value={form.fastPaths.faq ? 'yes' : 'no'}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    fastPaths: { ...form.fastPaths, faq: e.target.value === 'yes' },
+                  })
+                }
+                options={YES_NO}
+              />
+              <Input
+                id="ai-fast-faq-similarity"
+                type="number"
+                min={50}
+                max={100}
+                step={1}
+                label="How close the question must be to the FAQ entry (%)"
+                value={Math.round(form.fastPaths.faqMinSimilarity * 100)}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    fastPaths: {
+                      ...form.fastPaths,
+                      faqMinSimilarity: Number(e.target.value) / 100,
+                    },
+                  })
+                }
+                hint="Higher: fewer, surer matches. Add FAQ entries in the Knowledge base."
+              />
+            </div>
+
+            <h3 className={styles.sectionTitle}>Guardrails</h3>
+            <p className={styles.note}>
+              Checked before any model is asked, where the AI answers by itself. On email, and where
+              it only drafts, a person gets the conversation instead.
+            </p>
+            <div className={styles.formRow}>
+              <Select
+                id="ai-guard-enabled"
+                label="Guardrails"
+                value={form.guardrails.enabled ? 'yes' : 'no'}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    guardrails: { ...form.guardrails, enabled: e.target.value === 'yes' },
+                  })
+                }
+                options={[
+                  { value: 'yes', label: 'On' },
+                  { value: 'no', label: 'Off' },
+                ]}
+              />
+              <Select
+                id="ai-guard-jailbreak"
+                label="An attempt to override the AI's instructions"
+                value={form.guardrails.closeOnJailbreak ? 'yes' : 'no'}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    guardrails: { ...form.guardrails, closeOnJailbreak: e.target.value === 'yes' },
+                  })
+                }
+                options={[
+                  { value: 'yes', label: 'Close the ticket at once and flag the customer' },
+                  { value: 'no', label: 'Let the AI answer it as an ordinary message' },
+                ]}
+              />
+            </div>
+            <div className={styles.formRow}>
+              <Input
+                id="ai-guard-offtopic"
+                type="number"
+                min={2}
+                max={10}
+                label="Off-topic messages before the conversation is closed"
+                value={form.guardrails.offTopicLimit}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    guardrails: { ...form.guardrails, offTopicLimit: Number(e.target.value) },
+                  })
+                }
+                hint="A redirect first, a warning on the one before last."
+              />
+              <Input
+                id="ai-guard-abuse"
+                type="number"
+                min={1}
+                max={10}
+                label="Abusive or spam messages before the conversation is closed"
+                value={form.guardrails.abuseLimit}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    guardrails: { ...form.guardrails, abuseLimit: Number(e.target.value) },
+                  })
+                }
+                hint="A warning each time before that."
+              />
+            </div>
+            <div className={styles.formRow}>
+              <Input
+                id="ai-guard-flag-hours"
+                type="number"
+                min={1}
+                max={720}
+                label="Hours a flagged customer gets no second warning"
+                value={form.guardrails.flagHours}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    guardrails: { ...form.guardrails, flagHours: Number(e.target.value) },
+                  })
+                }
+                hint="A flag is cleared from the customer's ticket, with a note."
+              />
+              <Input
+                id="ai-person-requests"
+                type="number"
+                min={1}
+                max={5}
+                label="Requests for a person before one is brought in"
+                value={form.handover.personRequestsBeforeHandover}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    handover: { personRequestsBeforeHandover: Number(e.target.value) },
+                  })
+                }
+                hint="At 2, the first request gets an offer to sort it out now. 1 hands over at once. A phone call always does."
+              />
+            </div>
+
+            <Select
+              id="ai-learn"
+              label="Learn from customer ratings"
+              value={form.learnFromRatings ? 'yes' : 'no'}
+              onChange={(e) => setForm({ ...form, learnFromRatings: e.target.value === 'yes' })}
+              options={[
+                {
+                  value: 'yes',
+                  label: 'Yes: follow lessons, and ask a person on badly rated topics',
+                },
+                { value: 'no', label: 'No' },
+              ]}
+            />
+            <p className={styles.note}>
+              Only tickets the AI answered and still owns. A later reply from the customer reopens
+              the ticket. These count as “resolved by the AI alone” in Reports.
+            </p>
+            <div className={styles.formActions}>
+              <Button type="submit" disabled={saving}>
+                Save AI behaviour
+              </Button>
+            </div>
+            {message && (
+              <p className={styles.note} role="status">
+                {message}
+              </p>
+            )}
+          </form>
+        )}
+      </Card>
+      <TryAgent />
+    </div>
+  );
+}
+
+/** A dry run: the agent answers a made-up message; nothing is stored or sent. */
+function TryAgent() {
+  const [channel, setChannel] = useState<AiChannel>('webchat');
+  const [text, setText] = useState('When will my refund reach my card?');
+  const [result, setResult] = useState<SimulateAiResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      setResult(
+        await api<SimulateAiResult>('POST', '/ai/simulate', {
+          channel,
+          messages: [{ author: 'customer', body: text }],
+        }),
+      );
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card padding="md">
+      <CardHeader
+        title="Try the agent"
+        subtitle="A dry run with the current settings, models and knowledge base. Nothing is sent."
+      />
+      <form className={styles.form} onSubmit={run} aria-label="Try the agent">
+        <div className={styles.formRow}>
+          <Select
+            id="try-channel"
+            label="Channel"
+            value={channel}
+            onChange={(e) => setChannel(e.target.value as AiChannel)}
+            options={AI_CHANNELS.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))}
+          />
+        </div>
+        <Textarea
+          id="try-message"
+          label="Customer message"
+          rows={3}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <div className={styles.formActions}>
+          <Button type="submit" disabled={busy || !text.trim()}>
+            Run
+          </Button>
+        </div>
+      </form>
+      {error && <p className={styles.error}>{error}</p>}
+      {result && (
+        <div className={styles.form} role="status" aria-label="Agent result">
+          <p>
+            <strong>{DECISION_LABELS[result.decision]}</strong>
+            <span className={styles.muted}>
+              {' '}
+              · confidence {percent(result.confidence)} · {result.model ?? 'no model'} ·{' '}
+              {result.latencyMs} ms
+            </span>
+          </p>
+          {result.reply && <p className={styles.tryOut}>“{result.reply}”</p>}
+          {ruleLabels(result.rules).length > 0 && (
+            <p className={styles.note}>{ruleLabels(result.rules).join('; ')}</p>
+          )}
+          {result.sources.length > 0 && (
+            <p className={styles.note}>Sources: {result.sources.map((s) => s.label).join(', ')}</p>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}

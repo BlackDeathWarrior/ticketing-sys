@@ -13,9 +13,16 @@ import {
   type UpdateTicketInput,
   updateTicketSchema,
 } from '@tms/shared';
+import { z } from 'zod';
 import { Ctx, type RequestCtx, RequirePermission } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
+import { ActsOnTicket } from './ticket-access';
 import { TicketsService } from './tickets.service';
+
+/** History filtered by who acted: people, the AI, the system or the customer. */
+const historyQuerySchema = z.object({
+  actorType: z.enum(['user', 'ai', 'system', 'customer']).optional(),
+});
 
 @ApiTags('tickets')
 @ApiBearerAuth()
@@ -44,6 +51,7 @@ export class TicketsController {
 
   @Patch(':id')
   @RequirePermission('ticket:update')
+  @ActsOnTicket('ticket')
   update(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,
@@ -54,6 +62,7 @@ export class TicketsController {
 
   @Post(':id/transition')
   @RequirePermission('ticket:transition')
+  @ActsOnTicket('ticket')
   transition(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,
@@ -64,6 +73,7 @@ export class TicketsController {
 
   @Post(':id/assign')
   @RequirePermission('ticket:assign')
+  @ActsOnTicket('ticket')
   assign(
     @Ctx() ctx: RequestCtx,
     @Param('id', ParseUUIDPipe) id: string,
@@ -90,7 +100,10 @@ export class TicketsController {
 
   @Get(':id/history')
   @RequirePermission('ticket:read')
-  history(@Param('id', ParseUUIDPipe) id: string) {
-    return this.tickets.history(id);
+  history(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodPipe(historyQuerySchema)) q: z.infer<typeof historyQuerySchema>,
+  ) {
+    return this.tickets.history(id, q.actorType);
   }
 }

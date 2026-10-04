@@ -1,4 +1,12 @@
-import type { StatusCategory } from '@tms/shared';
+import {
+  AI_CLOSURES,
+  type AiClassification,
+  type AiClosure,
+  messageCardSchema,
+  type StatusCategory,
+  type TicketHandling,
+} from '@tms/shared';
+import type { SlaState } from '../lib/format';
 import type {
   Channel,
   Conversation,
@@ -36,11 +44,22 @@ export interface ApiTicket {
     id: string;
     displayName: string;
     primaryEmail?: string | null;
+    primaryPhone?: string | null;
     customerType?: string;
     attributes?: Record<string, unknown>;
   };
   assignee: ApiRef | null;
   team: ApiRef | null;
+  category?: ApiRef | null;
+  subcategory?: ApiRef | null;
+  aiClassification?: AiClassification | null;
+  handling?: string;
+  aiClosure?: string | null;
+  slaState?: string | null;
+  slaDueAt?: string | null;
+  integration?: { id: string; slug: string; name: string } | null;
+  externalRef?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ApiWorkflow {
@@ -59,13 +78,25 @@ export interface ApiNote {
   body: string;
   createdAt: string;
   author: ApiRef | null;
+  /** user | ai | system */
+  authorType?: string;
 }
 
 export interface ApiConversation {
   id: string;
   channel: string;
+  /** ai | human | none: who answers the next customer message. */
+  controller?: string;
+  controllerUserId?: string | null;
+  controllerName?: string | null;
   lastMessageAt: string | null;
-  metadata: { visitorName?: string; address?: string };
+  metadata: {
+    visitorName?: string;
+    address?: string;
+    /** WhatsApp: the person's profile name and when they last wrote. */
+    profileName?: string;
+    lastInboundAt?: string;
+  };
   messages: Array<{
     id: string;
     direction: 'inbound' | 'outbound';
@@ -75,6 +106,19 @@ export interface ApiConversation {
     body: string;
     createdAt: string;
     deliveryStatus: string | null;
+    deliveryError?: string | null;
+    attachments?: Array<{ filename: string; size: number; contentType: string }>;
+    metadata?: {
+      ai?: { confidence?: number | null; rules?: string[]; sources?: Array<{ label: string }> };
+      /** `portal`: the customer wrote it in the help center's "My requests". */
+      via?: string;
+      /** The product cards shown with the message; checked against `messageCardSchema`. */
+      cards?: unknown;
+      /** Why the cards went as plain text, when they did. */
+      cardsDropped?: unknown;
+      /** What a voice message says, written down by the AI: `{ text }`, text null when unclear. */
+      transcript?: unknown;
+    };
   }>;
 }
 
@@ -152,6 +196,7 @@ export function toCustomer(c: ApiTicket['customer']): Customer {
     name: c.displayName,
     initials: initials(c.displayName),
     email: c.primaryEmail ?? null,
+    phone: c.primaryPhone ?? null,
     company: typeof company === 'string' && company.trim() ? company : null,
     plan: PLAN_LABELS[c.customerType ?? 'standard'] ?? 'Standard',
   };
@@ -169,11 +214,38 @@ export function toTicket(t: ApiTicket, workflow: Workflow | undefined): Ticket {
     priority: t.priority as Priority,
     assignee: t.assignee ? person(t.assignee) : null,
     team: t.team,
+    categoryLabel: t.category?.name
+      ? [t.category.name, t.subcategory?.name].filter(Boolean).join(' › ')
+      : null,
     channel: t.channel as Channel,
     tags: t.tags,
     createdAt: new Date(t.createdAt),
     updatedAt: new Date(t.updatedAt),
+    aiClassification: t.aiClassification ?? null,
+    handling: (t.handling ?? 'none') as TicketHandling,
+    // A reason this build does not know is shown as no closure rather than as a blank label.
+    aiClosure: AI_CLOSURES.includes(t.aiClosure as AiClosure) ? (t.aiClosure as AiClosure) : null,
+    sla: toSla(t.slaState ?? null, t.slaDueAt ?? null),
+    integration: t.integration?.name ?? null,
+    externalRef: t.externalRef ?? null,
+    metadata: t.metadata ?? {},
   };
+}
+
+/** The queue's SLA view of a ticket: the server's state and minutes to the next deadline. */
+export function toSla(state: string | null, dueAt: string | null, now = new Date()): Ticket['sla'] {
+  if (!state) return null;
+  const minutes = dueAt ? Math.round((new Date(dueAt).getTime() - now.getTime()) / 60_000) : null;
+  const ui: SlaState =
+    state === 'breached'
+      ? 'breached'
+      : state === 'at_risk'
+        ? 'at-risk'
+        : state === 'ok'
+          ? 'on-track'
+          : 'done';
+  const label = state === 'paused' ? 'Paused' : state === 'met' ? 'Met' : undefined;
+  return { state: ui, minutes, label, raw: state };
 }
 
 /**
@@ -197,49 +269,98 @@ export function toThread(
       body: ticket.description,
       at: ticket.createdAt,
       delivery: null,
+      deliveryError: null,
       channel: null,
+      byAi: false,
+      attachments: [],
+      ai: null,
     });
   }
   for (const c of conversations) {
     for (const m of c.messages) {
+      // A draft the agent threw away is not part of the conversation.
+      if (m.deliveryStatus === 'discarded') continue;
       const fromCustomer = m.direction === 'inbound';
+      const byAi = !fromCustomer && m.authorType === 'ai';
       const author = fromCustomer
         ? (c.metadata.visitorName ?? ticket.customer.name)
-        : (m.authorName ?? (m.authorType === 'system' ? 'System' : 'Support'));
+        : byAi
+          ? 'AI agent'
+          : (m.authorName ?? (m.authorType === 'system' ? 'System' : 'Support'));
+      const meta = m.metadata?.ai;
+      const cards = messageCardSchema.array().safeParse(m.metadata?.cards);
+      const cardsDropped = m.metadata?.cardsDropped;
+      // What a voice message says, when the AI has listened to it.
+      const heard = m.metadata?.transcript as { text?: unknown } | undefined;
       messages.push({
         id: m.id,
-        kind: fromCustomer ? 'customer' : m.authorType === 'agent' ? 'agent' : 'system',
+        kind: fromCustomer
+          ? 'customer'
+          : byAi
+            ? 'ai'
+            : m.authorType === 'agent'
+              ? 'agent'
+              : 'system',
         author,
-        initials: initials(author),
+        initials: byAi ? 'AI' : initials(author),
         authorId: m.authorUserId,
         body: m.body,
         at: new Date(m.createdAt),
         delivery: fromCustomer ? null : m.deliveryStatus,
+        deliveryError: fromCustomer ? null : (m.deliveryError ?? null),
         channel: c.channel,
+        byAi,
+        viaPortal: m.metadata?.via === 'portal',
+        attachments: (m.attachments ?? []).map((a, i) => ({
+          filename: a.filename,
+          size: a.size,
+          path: `/messages/${m.id}/attachments/${i}`,
+        })),
+        ...(cards.success ? { cards: cards.data } : {}),
+        ...(heard ? { transcript: typeof heard.text === 'string' ? heard.text : null } : {}),
+        ...(typeof cardsDropped === 'string' && cardsDropped ? { cardsDropped } : {}),
+        ai:
+          byAi && meta
+            ? {
+                confidence: meta.confidence ?? null,
+                rules: meta.rules ?? [],
+                sources: meta.sources ?? [],
+              }
+            : null,
       });
     }
   }
   for (const n of notes) {
-    const author = n.author?.name ?? 'Former user';
+    const byAi = n.authorType === 'ai';
+    const author = byAi ? 'AI agent' : (n.author?.name ?? 'Former user');
     messages.push({
       id: n.id,
       kind: 'note',
       author,
-      initials: initials(author),
+      initials: byAi ? 'AI' : initials(author),
       authorId: n.author?.id ?? null,
       body: n.body,
       at: new Date(n.createdAt),
       delivery: null,
+      deliveryError: null,
       channel: null,
+      byAi,
+      attachments: [],
+      ai: null,
     });
   }
   messages.sort((a, b) => a.at.getTime() - b.at.getTime());
   return {
     messages,
+    aiControlled: conversations.some((c) => c.controller === 'ai'),
     conversations: conversations.map((c): Conversation => ({
       id: c.id,
       channel: c.channel,
       lastMessageAt: c.lastMessageAt ? new Date(c.lastMessageAt) : null,
+      controller: c.controller ?? 'none',
+      controllerUserId: c.controllerUserId ?? null,
+      controllerName: c.controllerName ?? null,
+      lastInboundAt: c.metadata.lastInboundAt ?? null,
     })),
   };
 }
@@ -256,8 +377,10 @@ export const channelLabels: Record<Channel, string> = {
   email: 'Email',
   webchat: 'Web chat',
   whatsapp: 'WhatsApp',
-  voice: 'Phone',
+  voice: 'Voice call',
+  web_form: 'Web form',
   agent: 'Agent-created',
+  api: 'Integration',
 };
 
 export const channelIcons = {
@@ -265,8 +388,29 @@ export const channelIcons = {
   webchat: 'chat',
   whatsapp: 'chat',
   voice: 'phone',
+  web_form: 'list',
   agent: 'user',
+  api: 'layers',
 } as const satisfies Record<Channel, string>;
+
+/**
+ * What to show next to an outbound message. A plain "sent" needs no label;
+ * WhatsApp also reports when a message reached the phone and was read.
+ */
+export function deliveryLabel(delivery: string | null): string | null {
+  switch (delivery) {
+    case 'pending':
+      return 'Sending';
+    case 'delivered':
+      return 'Delivered';
+    case 'read':
+      return 'Read';
+    case 'failed':
+      return 'Not delivered';
+    default:
+      return null;
+  }
+}
 
 /** Minutes between `date` and `now`, never negative. */
 export const minutesSince = (date: Date, now = new Date()) =>

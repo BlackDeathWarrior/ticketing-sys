@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import {
   conversations,
+  customerFlags,
   customerIdentities,
   customers,
   type Database,
@@ -15,13 +16,16 @@ import {
 } from '@tms/db';
 import {
   type CreateCustomerInput,
+  type CustomerFlagKind,
+  type CustomerFlagView,
+  type CustomerTitle,
   type IdentityInput,
   type IdentityType,
   normalizeIdentity,
   type ResolveCustomerInput,
   type UpdateCustomerInput,
 } from '@tms/shared';
-import { and, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, gt, ilike, inArray, isNull, ne, or } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import { isUniqueViolation } from '../common/exception.filter';
@@ -29,6 +33,9 @@ import type { RequestCtx } from '../common/request-context';
 import { DB } from '../infra/tokens';
 
 type Customer = typeof customers.$inferSelect;
+
+/** Identity types that say nothing about a person beyond the number they write from. */
+const PHONE_ONLY_TYPES: readonly string[] = ['phone', 'whatsapp', 'whatsapp_bsuid'];
 
 @Injectable()
 export class CustomersService {
@@ -87,7 +94,101 @@ export class CustomersService {
         .orderBy(desc(tickets.createdAt))
         .limit(20),
     ]);
-    return { ...c, identities, recentTickets };
+    return { ...c, identities, recentTickets, flags: await this.flags(c.id) };
+  }
+
+  /** Every flag on the customer, newest first; cleared ones stay as history. */
+  async flags(customerId: string): Promise<CustomerFlagView[]> {
+    const rows = await this.db
+      .select()
+      .from(customerFlags)
+      .where(eq(customerFlags.customerId, customerId))
+      .orderBy(desc(customerFlags.createdAt))
+      .limit(50);
+    return rows.map((f) => ({
+      id: f.id,
+      kind: f.kind as CustomerFlagKind,
+      ticketId: f.ticketId,
+      createdAt: f.createdAt.toISOString(),
+      clearedAt: f.clearedAt?.toISOString() ?? null,
+      clearNote: f.clearNote,
+    }));
+  }
+
+  /** Whether the customer was flagged since `since` and nobody has cleared it. */
+  async flaggedSince(customerId: string, since: Date): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: customerFlags.id })
+      .from(customerFlags)
+      .where(
+        and(
+          eq(customerFlags.customerId, customerId),
+          isNull(customerFlags.clearedAt),
+          gt(customerFlags.createdAt, since),
+        ),
+      )
+      .limit(1);
+    return !!row;
+  }
+
+  /** Flags a customer in the caller's transaction (the AI closing a conversation for misuse). */
+  async flagInTx(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    customerId: string,
+    flag: {
+      kind: CustomerFlagKind;
+      pattern: string | null;
+      ticketId: string;
+      conversationId: string;
+    },
+  ): Promise<void> {
+    await tx.insert(customerFlags).values({ customerId, ...flag });
+    const data = { kind: flag.kind, pattern: flag.pattern, ticketId: flag.ticketId };
+    await this.audit.record(tx, ctx, {
+      action: 'customer.flagged',
+      targetType: 'customer',
+      targetId: customerId,
+      data,
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'customer.updated',
+      aggregateType: 'customer',
+      aggregateId: customerId,
+      payload: { fields: ['flags'], ...data },
+    });
+  }
+
+  /** A person decides the flag no longer applies. The AI gives the customer warnings again. */
+  async clearFlag(ctx: RequestCtx, customerId: string, flagId: string, note: string) {
+    const c = await this.findActive(this.db, customerId);
+    await this.db.transaction(async (tx) => {
+      const [flag] = await tx
+        .update(customerFlags)
+        .set({ clearedAt: new Date(), clearedBy: ctx.user?.id ?? null, clearNote: note })
+        .where(
+          and(
+            eq(customerFlags.id, flagId),
+            eq(customerFlags.customerId, c.id),
+            isNull(customerFlags.clearedAt),
+          ),
+        )
+        .returning({ id: customerFlags.id, kind: customerFlags.kind });
+      if (!flag) throw new NotFoundException('Flag not found, or already cleared');
+      await this.audit.record(tx, ctx, {
+        action: 'customer.flag_cleared',
+        targetType: 'customer',
+        targetId: c.id,
+        data: { flagId, kind: flag.kind, note },
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'customer.updated',
+        aggregateType: 'customer',
+        aggregateId: c.id,
+        payload: { fields: ['flags'] },
+      });
+    });
+    return this.get(c.id);
   }
 
   async create(ctx: RequestCtx, input: CreateCustomerInput) {
@@ -118,6 +219,32 @@ export class CustomersService {
     return this.get(c.id);
   }
 
+  /**
+   * How the customer chose to be addressed ("Mr.", "Ms."), as an app that
+   * knows them passed it on. Kept in `attributes.title`; the same title again
+   * changes nothing.
+   */
+  async setTitleInTx(tx: DbOrTx, ctx: RequestCtx, id: string, title: CustomerTitle): Promise<void> {
+    const c = await this.findActive(tx, id);
+    if (c.attributes.title === title) return;
+    await tx
+      .update(customers)
+      .set({ attributes: { ...c.attributes, title } })
+      .where(eq(customers.id, c.id));
+    await this.audit.record(tx, ctx, {
+      action: 'customer.updated',
+      targetType: 'customer',
+      targetId: c.id,
+      data: { attributes: { title } },
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'customer.updated',
+      aggregateType: 'customer',
+      aggregateId: c.id,
+      payload: { fields: ['attributes'] },
+    });
+  }
+
   async addIdentity(ctx: RequestCtx, id: string, input: IdentityInput) {
     const c = await this.findActive(this.db, id);
     const value = normalizeIdentity(input.type, input.value);
@@ -132,7 +259,22 @@ export class CustomersService {
           customerId: owner.customerId,
         });
       }
-      if (!owner) await this.insertIdentity(tx, ctx, c.id, input.type, value, input.verified);
+      if (!owner) {
+        await this.insertIdentity(tx, ctx, c.id, input.type, value, input.verified);
+        // A proven phone lets the AI use order tools, so a hand-made one is on record. Never the full number.
+        await this.audit.record(tx, ctx, {
+          action: 'customer.identity_added',
+          targetType: 'customer',
+          targetId: c.id,
+          data: {
+            type: input.type,
+            verified: input.verified,
+            ...(input.type === 'phone' || input.type === 'whatsapp'
+              ? { last4: value.slice(-4) }
+              : {}),
+          },
+        });
+      }
     });
     return this.get(c.id);
   }
@@ -150,13 +292,26 @@ export class CustomersService {
     const existing = await this.findByIdentity(tx, input.type, value);
     if (existing) return { customer: existing, created: false };
 
+    if (input.type === 'whatsapp') {
+      // Meta vouches for the number, so a customer already known by that phone is the same person.
+      const byPhone = await this.findByIdentity(tx, 'phone', value);
+      if (byPhone) {
+        const link = (t: DbOrTx) =>
+          this.insertIdentity(t, ctx, byPhone.id, 'whatsapp', value, true);
+        await (tx !== this.db ? link(tx) : this.db.transaction(link));
+        return { customer: byPhone, created: false };
+      }
+    }
+
     const run = async (t: DbOrTx) => {
       const fallbackName =
         input.type === 'email'
           ? value
           : input.type === 'webchat_session'
             ? 'Web visitor'
-            : `+${value}`;
+            : input.type === 'whatsapp_bsuid'
+              ? 'WhatsApp user'
+              : `+${value}`;
       const c = await this.insertCustomer(t, ctx, {
         displayName: input.displayName || fallbackName,
         customerType: 'standard',
@@ -196,9 +351,107 @@ export class CustomersService {
       .select()
       .from(customerIdentities)
       .where(and(eq(customerIdentities.type, input.type), eq(customerIdentities.value, value)));
-    if (owner) return owner.customerId === customerId;
+    if (owner) {
+      if (owner.customerId === customerId) {
+        if (input.verified && !owner.verified) {
+          await tx
+            .update(customerIdentities)
+            .set({ verified: true })
+            .where(eq(customerIdentities.id, owner.id));
+        }
+        return true;
+      }
+      // A proven address beats one that someone else only typed (into a chat, say):
+      // otherwise typing a stranger's address would keep it from its owner.
+      if (input.type === 'email' && input.verified && !owner.verified) {
+        await this.moveEmail(tx, ctx, owner, customerId, value);
+        return true;
+      }
+      return false;
+    }
     await this.insertIdentity(tx, ctx, customerId, input.type, value, input.verified);
+    if (input.type === 'email') await this.fillPrimaryEmail(tx, ctx, customerId, value);
     return true;
+  }
+
+  /** Gives an unproven email identity to the customer who proved it is theirs. */
+  private async moveEmail(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    owner: { id: string; customerId: string },
+    customerId: string,
+    email: string,
+  ) {
+    await tx
+      .update(customerIdentities)
+      .set({ customerId, verified: true })
+      .where(eq(customerIdentities.id, owner.id));
+    const [cleared] = await tx
+      .update(customers)
+      .set({ primaryEmail: null })
+      .where(and(eq(customers.id, owner.customerId), eq(customers.primaryEmail, email)))
+      .returning({ id: customers.id });
+    await this.recordIdentityMove(tx, ctx, owner.customerId, customerId, 'email', !!cleared);
+    await this.fillPrimaryEmail(tx, ctx, customerId, email);
+  }
+
+  /** Audits and announces an identity moving between two customers, on both. */
+  private async recordIdentityMove(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    fromId: string,
+    toId: string,
+    type: IdentityType,
+    clearedPrimary: boolean,
+    userIds: string[] = [],
+  ) {
+    const primary = type === 'email' ? 'primaryEmail' : 'primaryPhone';
+    const moved = userIds.length ? { userIdsMoved: userIds } : {};
+    for (const [id, data] of [
+      [
+        fromId,
+        { identityMovedTo: toId, type, ...moved, ...(clearedPrimary ? { [primary]: null } : {}) },
+      ],
+      [toId, { identityMovedFrom: fromId, type, ...moved }],
+    ] as const) {
+      await this.audit.record(tx, ctx, {
+        action: 'customer.updated',
+        targetType: 'customer',
+        targetId: id,
+        data,
+      });
+      await this.outbox.publish(tx, ctx, {
+        type: 'customer.updated',
+        aggregateType: 'customer',
+        aggregateId: id,
+        payload: { fields: ['identities'] },
+      });
+    }
+  }
+
+  /**
+   * A customer first known by something else (a chat identity, an app's own
+   * id) gets the first email attached to them as their contact address.
+   */
+  private async fillPrimaryEmail(tx: DbOrTx, ctx: RequestCtx, customerId: string, email: string) {
+    const [filled] = await tx
+      .update(customers)
+      .set({ primaryEmail: email })
+      .where(and(eq(customers.id, customerId), isNull(customers.primaryEmail)))
+      .returning({ id: customers.id });
+    if (!filled) return;
+    await this.audit.record(tx, ctx, {
+      action: 'customer.updated',
+      targetType: 'customer',
+      targetId: customerId,
+      data: { primaryEmail: email },
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'customer.updated',
+      aggregateType: 'customer',
+      aggregateId: customerId,
+      payload: { fields: ['primaryEmail'] },
+    });
   }
 
   /** Moves identities, tickets and conversations from source to target, then retires source. */
@@ -206,54 +459,172 @@ export class CustomersService {
     if (sourceId === targetId) throw new BadRequestException('Cannot merge a customer into itself');
     const source = await this.findActive(this.db, sourceId, false);
     const target = await this.findActive(this.db, targetId, false);
-    await this.db.transaction(async (tx) => {
-      const moved = {
-        identities: (
-          await tx
-            .update(customerIdentities)
-            .set({ customerId: target.id })
-            .where(eq(customerIdentities.customerId, source.id))
-            .returning({ id: customerIdentities.id })
-        ).length,
-        tickets: (
-          await tx
-            .update(tickets)
-            .set({ customerId: target.id })
-            .where(eq(tickets.customerId, source.id))
-            .returning({ id: tickets.id })
-        ).length,
-        conversations: (
-          await tx
-            .update(conversations)
-            .set({ customerId: target.id })
-            .where(eq(conversations.customerId, source.id))
-            .returning({ id: conversations.id })
-        ).length,
-      };
-      await tx
-        .update(customers)
-        .set({ mergedIntoId: target.id })
-        .where(eq(customers.id, source.id));
-      // Earlier merges into the source now point at the target.
-      await tx
-        .update(customers)
-        .set({ mergedIntoId: target.id })
-        .where(eq(customers.mergedIntoId, source.id));
-      const data = { sourceId: source.id, targetId: target.id, moved };
-      await this.audit.record(tx, ctx, {
-        action: 'customer.merged',
-        targetType: 'customer',
-        targetId: target.id,
-        data,
-      });
-      await this.outbox.publish(tx, ctx, {
-        type: 'customer.merged',
-        aggregateType: 'customer',
-        aggregateId: target.id,
-        payload: data,
-      });
-    });
+    await this.db.transaction((tx) => this.mergeInTx(tx, ctx, source, target));
     return this.get(target.id);
+  }
+
+  private async mergeInTx(tx: DbOrTx, ctx: RequestCtx, source: Customer, target: Customer) {
+    const moved = {
+      identities: (
+        await tx
+          .update(customerIdentities)
+          .set({ customerId: target.id })
+          .where(eq(customerIdentities.customerId, source.id))
+          .returning({ id: customerIdentities.id })
+      ).length,
+      tickets: (
+        await tx
+          .update(tickets)
+          .set({ customerId: target.id })
+          .where(eq(tickets.customerId, source.id))
+          .returning({ id: tickets.id })
+      ).length,
+      conversations: (
+        await tx
+          .update(conversations)
+          .set({ customerId: target.id })
+          .where(eq(conversations.customerId, source.id))
+          .returning({ id: conversations.id })
+      ).length,
+    };
+    await tx.update(customers).set({ mergedIntoId: target.id }).where(eq(customers.id, source.id));
+    // Earlier merges into the source now point at the target.
+    await tx
+      .update(customers)
+      .set({ mergedIntoId: target.id })
+      .where(eq(customers.mergedIntoId, source.id));
+    const data = { sourceId: source.id, targetId: target.id, moved };
+    await this.audit.record(tx, ctx, {
+      action: 'customer.merged',
+      targetType: 'customer',
+      targetId: target.id,
+      data,
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'customer.merged',
+      aggregateType: 'customer',
+      aggregateId: target.id,
+      payload: data,
+    });
+  }
+
+  /** Makes `phone` the customer's one proven number, inside the caller's transaction. */
+  async provePhone(tx: DbOrTx, ctx: RequestCtx, customerId: string, phone: string): Promise<void> {
+    const value = normalizeIdentity('phone', phone);
+    const customer = await this.findActive(tx, customerId);
+
+    // Whoever else holds the number loses it: it is now proven to be this customer's.
+    const holders = await tx
+      .selectDistinct({ customerId: customerIdentities.customerId })
+      .from(customerIdentities)
+      .where(
+        and(
+          ne(customerIdentities.customerId, customer.id),
+          eq(customerIdentities.value, value),
+          inArray(customerIdentities.type, ['phone', 'whatsapp']),
+        ),
+      );
+    for (const holder of holders) {
+      const other = await this.findActive(tx, holder.customerId, false);
+      const theirs = await tx
+        .select({ type: customerIdentities.type, value: customerIdentities.value })
+        .from(customerIdentities)
+        .where(eq(customerIdentities.customerId, other.id));
+      // Merging hands over everything they have, so only when that is this number and nothing else.
+      const wholeCustomer =
+        !other.primaryEmail &&
+        theirs.every((i) => PHONE_ONLY_TYPES.includes(i.type)) &&
+        theirs.every((i) => i.type === 'whatsapp_bsuid' || i.value === value);
+      if (wholeCustomer) {
+        // Nothing but this number identified them: they were this person on another channel.
+        await this.mergeInTx(tx, ctx, other, customer);
+        continue;
+      }
+      // WhatsApp finds a sender by user id before the number, so the ids go with it, but
+      // only when this was the only number they wrote from.
+      const writesFromOnlyThis =
+        theirs.some((i) => i.type === 'whatsapp' && i.value === value) &&
+        !theirs.some((i) => i.type === 'whatsapp' && i.value !== value);
+      const userIds = writesFromOnlyThis
+        ? theirs.filter((i) => i.type === 'whatsapp_bsuid').map((i) => i.value)
+        : [];
+      await tx
+        .update(customerIdentities)
+        .set({ customerId: customer.id })
+        .where(
+          and(
+            eq(customerIdentities.customerId, other.id),
+            or(
+              and(
+                eq(customerIdentities.value, value),
+                inArray(customerIdentities.type, ['phone', 'whatsapp']),
+              ),
+              userIds.length
+                ? and(
+                    eq(customerIdentities.type, 'whatsapp_bsuid'),
+                    inArray(customerIdentities.value, userIds),
+                  )
+                : undefined,
+            ),
+          ),
+        );
+      const [cleared] = await tx
+        .update(customers)
+        .set({ primaryPhone: null })
+        .where(and(eq(customers.id, other.id), eq(customers.primaryPhone, value)))
+        .returning({ id: customers.id });
+      await this.recordIdentityMove(tx, ctx, other.id, customer.id, 'phone', !!cleared, userIds);
+    }
+
+    const attached = await this.attachIdentity(tx, ctx, customer.id, {
+      type: 'phone',
+      value,
+      verified: true,
+    });
+    if (!attached) {
+      throw new ConflictException(
+        'This number was just linked to another customer. Ask for a new code.',
+      );
+    }
+    await tx.update(customers).set({ primaryPhone: value }).where(eq(customers.id, customer.id));
+
+    // One proven number per customer: the numbers it replaces go, with their WhatsApp twins.
+    const replaced = await tx
+      .delete(customerIdentities)
+      .where(
+        and(
+          eq(customerIdentities.customerId, customer.id),
+          eq(customerIdentities.type, 'phone'),
+          eq(customerIdentities.verified, true),
+          ne(customerIdentities.value, value),
+        ),
+      )
+      .returning({ value: customerIdentities.value });
+    if (replaced.length) {
+      await tx.delete(customerIdentities).where(
+        and(
+          eq(customerIdentities.customerId, customer.id),
+          eq(customerIdentities.type, 'whatsapp'),
+          inArray(
+            customerIdentities.value,
+            replaced.map((r) => r.value),
+          ),
+        ),
+      );
+    }
+
+    await this.audit.record(tx, ctx, {
+      action: 'customer.phone_verified',
+      targetType: 'customer',
+      targetId: customer.id,
+      data: { last4: value.slice(-4), replaced: replaced.length },
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'customer.updated',
+      aggregateType: 'customer',
+      aggregateId: customer.id,
+      payload: { fields: ['identities', 'primaryPhone'] },
+    });
   }
 
   async findActive(db: DbOrTx, id: string, followMerge = true): Promise<Customer> {
@@ -267,6 +638,109 @@ export class CustomersService {
       current = c.mergedIntoId;
     }
     throw new NotFoundException('Customer not found');
+  }
+
+  /** What outside apps call these customers: their `external_id` identities, by customer id. */
+  async externalIds(ids: string[], db: DbOrTx = this.db): Promise<Map<string, string[]>> {
+    const found = new Map<string, string[]>();
+    if (!ids.length) return found;
+    const rows = await db
+      .select({ customerId: customerIdentities.customerId, value: customerIdentities.value })
+      .from(customerIdentities)
+      .where(
+        and(
+          inArray(customerIdentities.customerId, ids),
+          eq(customerIdentities.type, 'external_id'),
+        ),
+      );
+    for (const r of rows) found.set(r.customerId, [...(found.get(r.customerId) ?? []), r.value]);
+    return found;
+  }
+
+  /** The customer who owns a channel identity, if any. */
+  lookup(type: IdentityType, value: string, db: DbOrTx = this.db) {
+    return this.findByIdentity(db, type, normalizeIdentity(type, value));
+  }
+
+  /**
+   * The customer who proved this number is theirs (a code sent to it), if
+   * anyone did. A number a customer only ever wrote or called from is not proof.
+   */
+  async provenPhoneOwner(
+    phone: string,
+    db: DbOrTx = this.db,
+  ): Promise<{
+    id: string;
+    name: string;
+    email: string | null;
+    attributes: Record<string, unknown>;
+  } | null> {
+    const [row] = await db
+      .select({ customerId: customerIdentities.customerId })
+      .from(customerIdentities)
+      .where(
+        and(
+          eq(customerIdentities.type, 'phone'),
+          eq(customerIdentities.value, normalizeIdentity('phone', phone)),
+          eq(customerIdentities.verified, true),
+        ),
+      );
+    if (!row) return null;
+    return this.contactOf(row.customerId, db);
+  }
+
+  /** Who a customer is, for a tool that acts for them: their name and an email address. */
+  async contactOf(
+    customerId: string,
+    db: DbOrTx = this.db,
+  ): Promise<{
+    id: string;
+    name: string;
+    email: string | null;
+    attributes: Record<string, unknown>;
+  } | null> {
+    const customer = await this.findActive(db, customerId).catch(() => null);
+    if (!customer) return null;
+    let email = customer.primaryEmail;
+    if (!email) {
+      const [identity] = await db
+        .select({ value: customerIdentities.value })
+        .from(customerIdentities)
+        .where(
+          and(eq(customerIdentities.customerId, customer.id), eq(customerIdentities.type, 'email')),
+        )
+        .limit(1);
+      email = identity?.value ?? null;
+    }
+    return { id: customer.id, name: customer.displayName, email, attributes: customer.attributes };
+  }
+
+  /** A number to ring this customer on: one they have proven first, else any on file. */
+  async phoneOf(customerId: string, db: DbOrTx = this.db): Promise<string | null> {
+    const rows = await db
+      .select({ value: customerIdentities.value, verified: customerIdentities.verified })
+      .from(customerIdentities)
+      .where(
+        and(eq(customerIdentities.customerId, customerId), eq(customerIdentities.type, 'phone')),
+      );
+    const usable = rows.filter((r) => /^\d{8,15}$/.test(r.value));
+    return (usable.find((r) => r.verified) ?? usable[0])?.value ?? null;
+  }
+
+  /** The number this customer has proven is theirs (digits, country code included), if any. */
+  async provenPhoneOf(customerId: string, db: DbOrTx = this.db): Promise<string | null> {
+    const [row] = await db
+      .select({ value: customerIdentities.value })
+      .from(customerIdentities)
+      .where(
+        and(
+          eq(customerIdentities.customerId, customerId),
+          eq(customerIdentities.type, 'phone'),
+          eq(customerIdentities.verified, true),
+        ),
+      )
+      .limit(1);
+    return row?.value ?? null;
   }
 
   private async findByIdentity(db: DbOrTx, type: IdentityType, value: string) {

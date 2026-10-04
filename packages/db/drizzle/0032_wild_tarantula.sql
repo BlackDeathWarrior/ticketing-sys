@@ -1,0 +1,1 @@
+ALTER TABLE "voice_calls" ADD COLUMN "pending_approvals" jsonb DEFAULT '[]'::jsonb NOT NULL;

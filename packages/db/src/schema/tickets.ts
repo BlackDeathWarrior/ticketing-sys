@@ -5,6 +5,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -14,6 +15,8 @@ import {
 } from 'drizzle-orm/pg-core';
 import { teams, timestamps, users } from './auth';
 import { customers } from './customers';
+import { integrations } from './integrations';
+import { slaPolicies } from './operations';
 
 export const ticketStatuses = pgTable('ticket_statuses', {
   key: text('key').primaryKey(),
@@ -77,8 +80,16 @@ export const tickets = pgTable(
     status: text('status')
       .notNull()
       .references(() => ticketStatuses.key),
-    /** Filled by the SLA module (Phase 7). */
-    slaPolicyId: uuid('sla_policy_id'),
+    /** The SLA policy whose timers run on this ticket (ADR 0014). */
+    slaPolicyId: uuid('sla_policy_id').references(() => slaPolicies.id, { onDelete: 'set null' }),
+    /** ok | at_risk | breached | paused | met: the most urgent timer, for the queue. */
+    slaState: text('sla_state'),
+    /** When the most urgent running timer is due. */
+    slaDueAt: timestamp('sla_due_at', { withTimezone: true }),
+    /** none | ai | human | handed_over: who is answering right now. */
+    handling: text('handling').notNull().default('none'),
+    /** Why the AI resolved it by itself (customer_confirmed | no_reply); null otherwise. */
+    aiClosure: text('ai_closure'),
     teamId: uuid('team_id').references(() => teams.id, { onDelete: 'set null' }),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     resolution: text('resolution'),
@@ -86,6 +97,16 @@ export const tickets = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    /** What the AI classifier suggested (category, priority, language, intent, sentiment). */
+    aiClassification: jsonb('ai_classification').$type<Record<string, unknown>>(),
+    /** The integration that raised the ticket through the API (ADR 0023). */
+    integrationId: uuid('integration_id').references(() => integrations.id, {
+      onDelete: 'set null',
+    }),
+    /** That system's id for what the ticket is about: an order, a listing, a job. */
+    externalRef: text('external_ref'),
+    /** Context it sent along, shown to agents and given to the AI as data. */
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
     firstResponseAt: timestamp('first_response_at', { withTimezone: true }),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     closedAt: timestamp('closed_at', { withTimezone: true }),
@@ -97,8 +118,12 @@ export const tickets = pgTable(
     index('tickets_team_idx').on(t.teamId),
     index('tickets_customer_idx').on(t.customerId),
     index('tickets_created_idx').on(t.createdAt),
+    index('tickets_sla_idx').on(t.slaState, t.slaDueAt),
+    index('tickets_handling_idx').on(t.handling),
+    index('tickets_resolved_idx').on(t.resolvedAt),
     index('tickets_tags_gin').using('gin', t.tags),
     index('tickets_subject_trgm').using('gin', sql`${t.subject} gin_trgm_ops`),
+    index('tickets_integration_idx').on(t.integrationId, t.externalRef),
   ],
 );
 
@@ -110,6 +135,8 @@ export const internalNotes = pgTable(
       .notNull()
       .references(() => tickets.id, { onDelete: 'cascade' }),
     authorId: uuid('author_id').references(() => users.id, { onDelete: 'set null' }),
+    /** user | ai | system */
+    authorType: text('author_type').notNull().default('user'),
     body: text('body').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

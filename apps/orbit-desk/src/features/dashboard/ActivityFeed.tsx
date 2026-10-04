@@ -1,6 +1,7 @@
 import type { ActivityEvent } from '@tms/shared';
 import { initials, minutesSince } from '../../data/adapters';
-import { relativeTime } from '../../lib/format';
+import { cx, relativeTime } from '../../lib/format';
+import { aiClass, AiMark } from '../ai/AiParts';
 import { Avatar, Card, CardHeader } from '../../components/ui';
 import { describeActivity } from './logic';
 import styles from './ActivityFeed.module.css';
@@ -22,10 +23,25 @@ export function ActivityFeed({
           {events.map((e) => {
             const { actor, action } = describeActivity(e);
             return (
-              <li key={e.id} className={styles.event}>
-                <Avatar initials={initials(actor)} size={28} highlight={e.actor.type === 'ai'} />
+              <li
+                key={e.id}
+                className={cx(styles.event, e.actor.type === 'ai' && aiClass)}
+                data-ai={e.actor.type === 'ai' || undefined}
+              >
+                <Avatar
+                  initials={e.actor.type === 'ai' ? 'AI' : initials(actor)}
+                  size={28}
+                  highlight={e.actor.type === 'ai'}
+                />
                 <p className={styles.text}>
-                  <span className={styles.actor}>{actor}</span> {action}{' '}
+                  <span className={styles.actor}>{actor}</span>
+                  {e.actor.type === 'ai' && (
+                    <>
+                      {' '}
+                      <AiMark />
+                    </>
+                  )}{' '}
+                  {action}{' '}
                   {e.ticket && (
                     <button
                       type="button"

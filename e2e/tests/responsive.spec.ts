@@ -1,3 +1,4 @@
+import { env } from './env';
 import { expect, openTicket, signInOrbit, test } from './fixtures';
 
 test.describe('Orbit Desk at phone width', () => {
@@ -28,5 +29,27 @@ test.describe('Orbit Desk at phone width', () => {
     const drawer = await openTicket(page, ref);
     const box = await drawer.boundingBox();
     expect(Math.round(box!.width)).toBeLessThanOrEqual(390);
+  });
+});
+
+test.describe('Chat widget at phone width', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('the open chat panel fits the screen and the page does not scroll sideways', async ({
+    page,
+  }) => {
+    await page.goto(env.widgetDemo);
+    await page.getByRole('button', { name: 'Chat with us' }).click();
+    const panel = page.getByRole('dialog', { name: 'Chat with Support' });
+    await expect(panel).toBeVisible();
+    const box = (await panel.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(390);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    await expect(panel.getByLabel('Name')).toBeInViewport();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
   });
 });

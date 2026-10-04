@@ -7,17 +7,18 @@ import {
   messages,
   users,
 } from '@tms/db';
-import type {
-  Channel,
-  ChatMessageView,
-  ConversationController,
-  DeliveryStatus,
-  MessageAuthor,
+import {
+  type Channel,
+  type ChatMessageView,
+  type ConversationController,
+  type DeliveryStatus,
+  type MessageAuthor,
+  messageCardSchema,
 } from '@tms/shared';
-import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
-import type { RequestCtx } from '../common/request-context';
+import { type RequestCtx, SYSTEM_CTX } from '../common/request-context';
 import { DB } from '../infra/tokens';
 
 export type Conversation = typeof conversations.$inferSelect;
@@ -73,28 +74,73 @@ export class ConversationsService {
   }
 
   /** The conversation that contains the newest of the given provider message ids. */
-  async findByMessageIds(tx: DbOrTx, channel: Channel, channelMessageIds: string[]) {
+  async findByMessageIds(tx: DbOrTx, channels: readonly Channel[], channelMessageIds: string[]) {
     if (!channelMessageIds.length) return null;
     const [row] = await tx
       .select({ conversation: conversations })
       .from(messages)
       .innerJoin(conversations, eq(conversations.id, messages.conversationId))
       .where(
-        and(eq(messages.channel, channel), inArray(messages.channelMessageId, channelMessageIds)),
+        and(
+          inArray(messages.channel, [...channels]),
+          inArray(messages.channelMessageId, channelMessageIds),
+        ),
       )
       .orderBy(desc(messages.createdAt))
       .limit(1);
     return row?.conversation ?? null;
   }
 
-  async findLatestForTicket(tx: DbOrTx, ticketId: string, channel: Channel) {
+  async findLatestForTicket(tx: DbOrTx, ticketId: string, channels: readonly Channel[]) {
     const [row] = await tx
       .select()
       .from(conversations)
-      .where(and(eq(conversations.ticketId, ticketId), eq(conversations.channel, channel)))
+      .where(
+        and(eq(conversations.ticketId, ticketId), inArray(conversations.channel, [...channels])),
+      )
       .orderBy(desc(conversations.createdAt))
       .limit(1);
     return row ?? null;
+  }
+
+  /** A customer's most recent conversation on a channel (WhatsApp has one thread per person). */
+  async findLatestForCustomer(tx: DbOrTx, channel: Channel, customerId: string) {
+    const [row] = await tx
+      .select()
+      .from(conversations)
+      .where(and(eq(conversations.channel, channel), eq(conversations.customerId, customerId)))
+      .orderBy(desc(conversations.createdAt))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /** When this number last wrote to us on WhatsApp, newest across its conversations. */
+  async lastWhatsappInboundAt(phone: string): Promise<string | null> {
+    const lastInbound = sql<string>`${conversations.metadata}->>'lastInboundAt'`;
+    const [row] = await this.db
+      .select({ at: lastInbound })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.channel, 'whatsapp'),
+          // Digits to digits: a number stored with a leading + still matches.
+          sql`regexp_replace(${conversations.metadata}->>'waPhone', '[^0-9]', '', 'g') = ${phone}`,
+          sql`${lastInbound} is not null`,
+        ),
+      )
+      .orderBy(sql`(${lastInbound})::timestamptz desc`)
+      .limit(1);
+    return row?.at ?? null;
+  }
+
+  /** Adds channel details to a conversation's metadata; undefined values are left alone, null overwrites. */
+  async mergeMetadata(tx: DbOrTx, id: string, patch: Record<string, unknown>) {
+    const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+    if (!Object.keys(defined).length) return;
+    await tx
+      .update(conversations)
+      .set({ metadata: sql`${conversations.metadata} || ${JSON.stringify(defined)}::jsonb` })
+      .where(eq(conversations.id, id));
   }
 
   /** Returns the existing message and its ticket if this provider id was already stored. */
@@ -105,6 +151,11 @@ export class ConversationsService {
       .innerJoin(conversations, eq(conversations.id, messages.conversationId))
       .where(and(eq(messages.channel, channel), eq(messages.channelMessageId, channelMessageId)));
     return row ?? null;
+  }
+
+  /** Whether a provider message id is already stored (a redelivered webhook). */
+  async hasChannelMessage(channel: Channel, channelMessageId: string): Promise<boolean> {
+    return !!(await this.findMessageByChannelId(this.db, channel, channelMessageId));
   }
 
   async create(
@@ -168,6 +219,9 @@ export class ConversationsService {
         channelMessageId: input.channelMessageId ?? null,
         deliveryStatus: input.deliveryStatus ?? null,
         metadata: input.metadata ?? {},
+        // The clock, not the transaction's start time (the column default): two
+        // messages written in one transaction keep the order they were written in.
+        createdAt: sql`clock_timestamp()`,
       })
       .returning();
     await tx
@@ -216,11 +270,14 @@ export class ConversationsService {
 
   /** Conversations of a ticket with their messages and author names, oldest first. */
   async listForTicket(ticketId: string) {
-    const convs = await this.db
-      .select()
+    const convRows = await this.db
+      .select({ conv: conversations, controllerName: users.name })
       .from(conversations)
+      .leftJoin(users, eq(users.id, conversations.controllerUserId))
       .where(eq(conversations.ticketId, ticketId))
       .orderBy(asc(conversations.createdAt));
+    // Who is answering, by name, so everyone (not only people who list users) sees it.
+    const convs = convRows.map((r) => ({ ...r.conv, controllerName: r.controllerName }));
     if (!convs.length) return [];
     const rows = await this.db
       .select({ message: messages, authorName: users.name })
@@ -241,6 +298,40 @@ export class ConversationsService {
     }));
   }
 
+  /** For each ticket, the last message the customer could see, across its conversations. */
+  async lastVisibleMessages(
+    ticketIds: string[],
+  ): Promise<
+    Map<string, { conversationId: string; direction: string; authorType: string; createdAt: Date }>
+  > {
+    if (!ticketIds.length) return new Map();
+    const rows = await this.db
+      .selectDistinctOn([conversations.ticketId], {
+        ticketId: conversations.ticketId,
+        conversationId: conversations.id,
+        direction: messages.direction,
+        authorType: messages.authorType,
+        createdAt: messages.createdAt,
+      })
+      .from(messages)
+      .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+      .where(and(inArray(conversations.ticketId, ticketIds), visibleToCustomer))
+      .orderBy(conversations.ticketId, desc(messages.createdAt));
+    return new Map(rows.map(({ ticketId, ...m }) => [ticketId, m]));
+  }
+
+  /** The tickets a chat session's conversations belong to, oldest first. */
+  async ticketIdsForChatSession(sessionId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ ticketId: conversations.ticketId })
+      .from(conversations)
+      .where(
+        and(eq(conversations.channel, 'webchat'), eq(conversations.externalThreadId, sessionId)),
+      )
+      .orderBy(asc(conversations.createdAt));
+    return [...new Set(rows.map((r) => r.ticketId))];
+  }
+
   /** What a chat visitor sees: every message on their session's conversations. */
   async chatHistory(sessionId: string, limit = 100): Promise<ChatMessageView[]> {
     const rows = await this.db
@@ -249,11 +340,107 @@ export class ConversationsService {
       .innerJoin(conversations, eq(conversations.id, messages.conversationId))
       .leftJoin(users, eq(users.id, messages.authorUserId))
       .where(
-        and(eq(conversations.channel, 'webchat'), eq(conversations.externalThreadId, sessionId)),
+        and(
+          eq(conversations.channel, 'webchat'),
+          eq(conversations.externalThreadId, sessionId),
+          visibleToCustomer,
+        ),
       )
       .orderBy(desc(messages.createdAt))
       .limit(limit);
     return rows.reverse().map((r) => toChatView(r.message, r.authorName));
+  }
+
+  /**
+   * The conversation as the customer saw it (no drafts or discarded drafts),
+   * oldest first, at most `limit` recent messages. Used as AI context.
+   */
+  async transcript(conversationId: string, limit = 30) {
+    const rows = await this.db
+      .select()
+      .from(messages)
+      .where(and(eq(messages.conversationId, conversationId), visibleToCustomer))
+      .orderBy(desc(messages.createdAt))
+      .limit(limit);
+    return rows.reverse();
+  }
+
+  /** The AI's rolling summary and the conversation's language. */
+  async updateAiState(
+    tx: DbOrTx,
+    id: string,
+    state: {
+      summary?: string | null;
+      language?: string | null;
+      metadata?: Record<string, unknown>;
+    },
+  ) {
+    const [current] = await tx.select().from(conversations).where(eq(conversations.id, id));
+    if (!current) return;
+    await tx
+      .update(conversations)
+      .set({
+        ...(state.summary !== undefined ? { summary: state.summary } : {}),
+        ...(state.language !== undefined ? { language: state.language } : {}),
+        ...(state.metadata ? { metadata: { ...current.metadata, ...state.metadata } } : {}),
+      })
+      .where(eq(conversations.id, id));
+  }
+
+  /**
+   * What a voice message says, kept on the message so it is listened to once:
+   * the AI reads it as the customer's words and an agent sees it under the
+   * file. `text` null: nothing could be made out. Derived from the message,
+   * like the AI's summary; what the customer sent is not changed.
+   */
+  async noteTranscript(
+    messageId: string,
+    transcript: { text: string | null; model: string },
+  ): Promise<void> {
+    await this.db
+      .update(messages)
+      .set({ metadata: sql`${messages.metadata} || ${JSON.stringify({ transcript })}::jsonb` })
+      .where(eq(messages.id, messageId));
+  }
+
+  /** Ids of AI drafts still waiting for review on a conversation. */
+  async pendingDraftIds(tx: DbOrTx, conversationId: string): Promise<string[]> {
+    const rows = await tx
+      .select({ id: messages.id })
+      .from(messages)
+      .where(
+        and(eq(messages.conversationId, conversationId), eq(messages.deliveryStatus, 'draft')),
+      );
+    return rows.map((r) => r.id);
+  }
+
+  /** Locks a message row, for draft review. */
+  async lockMessage(tx: DbOrTx, id: string): Promise<Message> {
+    const [row] = await tx.select().from(messages).where(eq(messages.id, id)).for('update');
+    if (!row) throw new NotFoundException('Message not found');
+    return row;
+  }
+
+  /** Marks a draft approved (optionally with edited text) or discarded. Audit and events are the caller's. */
+  async reviewDraft(
+    tx: DbOrTx,
+    id: string,
+    review: { status: 'pending' | 'discarded'; body?: string; reviewedBy: string | null },
+  ) {
+    const current = await this.lockMessage(tx, id);
+    await tx
+      .update(messages)
+      .set({
+        deliveryStatus: review.status,
+        ...(review.body !== undefined ? { body: review.body } : {}),
+        metadata: {
+          ...current.metadata,
+          reviewedBy: review.reviewedBy,
+          reviewedAt: new Date().toISOString(),
+          ...(review.body !== undefined && review.body !== current.body ? { edited: true } : {}),
+        },
+      })
+      .where(eq(messages.id, id));
   }
 
   async getMessage(id: string) {
@@ -281,13 +468,19 @@ export class ConversationsService {
     return row ?? null;
   }
 
-  /** Records the outcome of a delivery attempt. */
+  /**
+   * Records the outcome of a delivery attempt. `channelMessageId` is the id
+   * the provider gave the message, so later status reports can find it;
+   * `metadata` is merged into the message's own in the same write.
+   */
   async markDelivery(
     ctx: RequestCtx,
     messageId: string,
     ticketId: string,
     status: DeliveryStatus,
     error?: string,
+    channelMessageId?: string,
+    metadata?: Record<string, unknown>,
   ) {
     await this.db.transaction(async (tx) => {
       await tx
@@ -296,22 +489,207 @@ export class ConversationsService {
           deliveryStatus: status,
           deliveryError: error ?? null,
           ...(status === 'sent' ? { sentAt: new Date() } : {}),
+          ...(channelMessageId ? { channelMessageId } : {}),
+          ...(metadata && Object.keys(metadata).length
+            ? { metadata: sql`${messages.metadata} || ${JSON.stringify(metadata)}::jsonb` }
+            : {}),
         })
         .where(eq(messages.id, messageId));
-      const data = { messageId, status, ...(error ? { error } : {}) };
-      await this.audit.record(tx, ctx, {
-        action: `message.${status === 'failed' ? 'delivery_failed' : 'delivered'}`,
-        targetType: 'ticket',
-        targetId: ticketId,
-        data,
-      });
-      await this.outbox.publish(tx, ctx, {
-        type: 'message.delivery_updated',
-        aggregateType: 'ticket',
-        aggregateId: ticketId,
-        payload: data,
-      });
+      await this.recordDelivery(tx, ctx, messageId, ticketId, status, error);
     });
+  }
+
+  /**
+   * A provider's report on a message we sent (WhatsApp: sent, delivered, read,
+   * failed). Reports can arrive late or out of order, so a status only ever
+   * moves forward. Returns `unknown` when no message has that provider id.
+   */
+  async applyProviderStatus(
+    channel: Channel,
+    channelMessageId: string,
+    status: 'sent' | 'delivered' | 'read' | 'failed',
+    opts: { at: Date; error?: string },
+  ): Promise<'applied' | 'ignored' | 'unknown'> {
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({ message: messages, ticketId: conversations.ticketId })
+        .from(messages)
+        .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+        .where(
+          and(
+            eq(messages.channel, channel),
+            eq(messages.channelMessageId, channelMessageId),
+            eq(messages.direction, 'outbound'),
+          ),
+        )
+        .for('update', { of: messages });
+      if (!row) return 'unknown';
+      if (!statusAdvances(row.message.deliveryStatus, status)) return 'ignored';
+      const stamp = status === 'delivered' ? 'deliveredAt' : status === 'read' ? 'readAt' : null;
+      await tx
+        .update(messages)
+        .set({
+          deliveryStatus: status,
+          deliveryError: status === 'failed' ? (opts.error ?? 'Delivery failed') : null,
+          ...(row.message.sentAt || status === 'failed' ? {} : { sentAt: opts.at }),
+          ...(stamp
+            ? { metadata: { ...row.message.metadata, [stamp]: opts.at.toISOString() } }
+            : {}),
+        })
+        .where(eq(messages.id, row.message.id));
+      await this.recordDelivery(
+        tx,
+        SYSTEM_CTX,
+        row.message.id,
+        row.ticketId,
+        status,
+        status === 'failed' ? opts.error : undefined,
+      );
+      return 'applied';
+    });
+  }
+
+  /**
+   * Puts a failed message that has cards back to the state a new outbound message
+   * has, and queues it again; the sender then sends it as plain text with the items
+   * listed. This is the one deliberate exception to "statuses only move forward"
+   * (`applyProviderStatus`), and it happens once per message: `cardsDropped` marks
+   * it. A message is left alone (returns false) unless it is outbound and failed,
+   * is not a template, has valid cards and does not have `cardsDropped` yet.
+   * Callers: a failed delivery report from Meta (`WhatsAppService.report`) and a
+   * delivery that failed for good in the worker (`DeliveryHandler`, on the last
+   * attempt or a permanent error). Returns whether it requeued.
+   */
+  async requeueWithoutCards(messageId: string, reason: string): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const message = await this.lockMessage(tx, messageId);
+      if (
+        message.direction !== 'outbound' ||
+        message.deliveryStatus !== 'failed' ||
+        message.metadata.cardsDropped !== undefined ||
+        message.metadata.waTemplate !== undefined ||
+        !messageCardSchema.array().min(1).safeParse(message.metadata.cards).success
+      ) {
+        return false;
+      }
+      const conversation = await this.lock(tx, message.conversationId);
+      await tx
+        .update(messages)
+        .set({
+          deliveryStatus: 'pending',
+          deliveryError: null,
+          channelMessageId: null,
+          sentAt: null,
+          metadata: { ...message.metadata, cardsDropped: reason },
+        })
+        .where(eq(messages.id, messageId));
+      await this.audit.record(tx, SYSTEM_CTX, {
+        action: 'message.requeued_without_cards',
+        targetType: 'ticket',
+        targetId: conversation.ticketId,
+        data: { messageId, reason },
+      });
+      // The event a new outbound message publishes (OutboundService.replyInTx), marked so
+      // integrations are not told about the same message twice (see toWebhookEvent).
+      await this.outbox.publish(tx, SYSTEM_CTX, {
+        type: 'message.outbound',
+        aggregateType: 'ticket',
+        aggregateId: conversation.ticketId,
+        payload: {
+          conversationId: conversation.id,
+          messageId,
+          channel: conversation.channel,
+          requeued: true,
+        },
+      });
+      return true;
+    });
+  }
+
+  private async recordDelivery(
+    tx: DbOrTx,
+    ctx: RequestCtx,
+    messageId: string,
+    ticketId: string,
+    status: DeliveryStatus,
+    error?: string,
+  ) {
+    const data = { messageId, status, ...(error ? { error } : {}) };
+    await this.audit.record(tx, ctx, {
+      action:
+        status === 'failed'
+          ? 'message.delivery_failed'
+          : status === 'read'
+            ? 'message.read'
+            : 'message.delivered',
+      targetType: 'ticket',
+      targetId: ticketId,
+      data,
+    });
+    await this.outbox.publish(tx, ctx, {
+      type: 'message.delivery_updated',
+      aggregateType: 'ticket',
+      aggregateId: ticketId,
+      payload: data,
+    });
+  }
+
+  /**
+   * Per channel: when a customer last wrote, when we last got a message out,
+   * and what failed in the last 24 hours. For the channel status lights.
+   */
+  async channelActivity(): Promise<
+    Record<
+      string,
+      {
+        lastInboundAt: string | null;
+        lastOutboundAt: string | null;
+        failed24h: number;
+        lastFailure: { at: string; reason: string } | null;
+      }
+    >
+  > {
+    const totals = await this.db
+      .select({
+        channel: messages.channel,
+        lastInboundAt: sql<Date | null>`max(${messages.createdAt}) filter (where ${messages.direction} = 'inbound')`,
+        lastOutboundAt: sql<Date | null>`max(${messages.sentAt}) filter (where ${messages.direction} = 'outbound')`,
+        failed24h: sql<number>`(count(*) filter (where ${messages.deliveryStatus} = 'failed' and ${messages.createdAt} > now() - interval '24 hours'))::int`,
+      })
+      .from(messages)
+      .where(sql`${messages.createdAt} > now() - interval '30 days'`)
+      .groupBy(messages.channel);
+    const failures = await this.db
+      .selectDistinctOn([messages.channel], {
+        channel: messages.channel,
+        at: messages.createdAt,
+        reason: messages.deliveryError,
+      })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.deliveryStatus, 'failed'),
+          sql`${messages.createdAt} > now() - interval '24 hours'`,
+        ),
+      )
+      .orderBy(messages.channel, desc(messages.createdAt));
+    const iso = (d: Date | string | null) => (d ? new Date(d).toISOString() : null);
+    return Object.fromEntries(
+      totals.map((t) => {
+        const failure = failures.find((f) => f.channel === t.channel);
+        return [
+          t.channel,
+          {
+            lastInboundAt: iso(t.lastInboundAt),
+            lastOutboundAt: iso(t.lastOutboundAt),
+            failed24h: t.failed24h,
+            lastFailure: failure
+              ? { at: failure.at.toISOString(), reason: failure.reason ?? 'Delivery failed' }
+              : null,
+          },
+        ];
+      }),
+    );
   }
 
   /** Counts, for tests and health: messages still waiting to be delivered. */
@@ -324,13 +702,38 @@ export class ConversationsService {
   }
 }
 
+const STATUS_ORDER: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3 };
+
+/** Whether a provider's status report moves a message forward. Exported for tests. */
+export function statusAdvances(current: string | null, incoming: string): boolean {
+  // Failed is final, and drafts were never sent: neither takes reports.
+  if (current === null || !(current in STATUS_ORDER)) return false;
+  // A message that reached the phone can't fail afterwards.
+  if (incoming === 'failed') return STATUS_ORDER[current]! < STATUS_ORDER.delivered!;
+  return incoming in STATUS_ORDER && STATUS_ORDER[incoming]! > STATUS_ORDER[current]!;
+}
+
+/** Drafts and discarded drafts never reach the customer. */
+const visibleToCustomer = or(
+  isNull(messages.deliveryStatus),
+  notInArray(messages.deliveryStatus, ['draft', 'discarded']),
+);
+
 export function toChatView(m: Message, authorName?: string | null): ChatMessageView {
+  // Cards come from an outside app: only valid ones are shown.
+  const cards = messageCardSchema.array().safeParse(m.metadata.cards);
   return {
     id: m.id,
     body: m.body,
     authorType: m.authorType as MessageAuthor,
-    // Visitors see an agent's first name only.
-    authorName: m.authorType === 'agent' ? (authorName?.split(' ')[0] ?? 'Support') : null,
+    // Visitors see an agent's first name only, and plainly when it's the AI.
+    authorName:
+      m.authorType === 'agent'
+        ? (authorName?.split(' ')[0] ?? 'Support')
+        : m.authorType === 'ai'
+          ? 'AI assistant'
+          : null,
     createdAt: m.createdAt.toISOString(),
+    ...(cards.success && cards.data.length ? { cards: cards.data } : {}),
   };
 }

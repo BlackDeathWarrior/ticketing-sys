@@ -21,6 +21,11 @@
   flex-direction: column;
 }
 
+.padded {
+  padding: var(--spacing-24);
+  overflow-y: auto;
+}
+
 .drawer {
   width: min(560px, 100vw);
   max-width: 100vw;
@@ -51,6 +56,10 @@
 @media (max-width: 560px) {
   .drawer {
     border-radius: 0;
+  }
+
+  .padded {
+    padding: var(--spacing-16);
   }
 }
 

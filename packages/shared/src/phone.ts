@@ -1,0 +1,213 @@
+import { z } from 'zod';
+import { normalizeIdentity } from './customers';
+
+/**
+ * Phone calls on a number rented from Sarvam (ADR 0039). A Sarvam Voice Agent
+ * answers the call by itself; it reaches this desk through a start hook, four
+ * tools and a trigger when the call is over. These are the bodies of those
+ * requests: we choose the field names when the tools are set up in Sarvam.
+ */
+/** Who answers a phone call: each is a hosted voice agent this desk does not run (ADR 0040). */
+export const PHONE_PROVIDERS = ['sarvam', 'elevenlabs'] as const;
+export type PhoneProviderId = (typeof PHONE_PROVIDERS)[number];
+export const PHONE_PROVIDER_NAMES: Record<PhoneProviderId, string> = {
+  sarvam: 'Sarvam',
+  elevenlabs: 'ElevenLabs',
+};
+
+export const PHONE_TOOL_NAMES = [
+  'desk_tool',
+  'list_tools',
+  'search_knowledge',
+  'request_person',
+] as const;
+export type PhoneToolName = (typeof PHONE_TOOL_NAMES)[number];
+
+/**
+ * These bodies are filled in by Sarvam's platform and by its agent's model, on
+ * a live call. Whatever can be read is read: a number where text was meant, a
+ * null, an over-long sentence. Refusing the request would leave the caller in
+ * silence, so only a missing call id is an error.
+ */
+const loose = z.union([z.string(), z.number()]).nullish();
+const clipped = (max: number) =>
+  loose.transform((v) => (v == null ? undefined : String(v).trim().slice(0, max) || undefined));
+
+const interactionId = z
+  .union([z.string(), z.number()])
+  .transform((v) => String(v).trim())
+  .pipe(z.string().min(1).max(200));
+/** The caller's number as Sarvam sends it; null when the network withheld it. */
+const callerPhone = loose
+  .transform((v) => (v == null ? '' : normalizeIdentity('phone', String(v))))
+  .transform((v) => (/^\d{8,15}$/.test(v) ? v : null));
+
+/**
+ * Sarvam gives a caller from the number's own country in national form
+ * (`0XXXXXXXXXX`, seen on the first real call), while proven numbers are stored
+ * in international form (`91XXXXXXXXXX`). The country code is taken from our
+ * own rented number; a number that already carries one is left alone.
+ */
+export function internationalCallerNumber(
+  phone: string | null,
+  agentPhoneNumber: string,
+): string | null {
+  if (!phone) return null;
+  const agent = agentPhoneNumber.replace(/\D/g, '');
+  const countryCode = agent.length > 10 ? agent.slice(0, agent.length - 10) : '';
+  if (!countryCode) return phone;
+  if (phone.length === 11 && phone.startsWith('0')) return countryCode + phone.slice(1);
+  if (phone.length === 10) return countryCode + phone;
+  return phone;
+}
+
+/**
+ * The call's id on the start hook and the tools. Null when there is none: Sarvam's
+ * dashboard sends none when a tool is tried with its "Send" button, and the tool must
+ * still answer there, or its reply cannot be mapped for the agent. A real call always has one.
+ */
+const callId = z
+  .union([z.string(), z.number()])
+  .nullish()
+  .transform((v) => (v == null ? '' : String(v).trim().slice(0, 200)) || null);
+
+export const phoneStartSchema = z.object({ interactionId: callId, phone: callerPhone });
+export type PhoneStartInput = z.output<typeof phoneStartSchema>;
+
+export const phoneToolSchema = z.object({
+  interactionId: callId,
+  phone: callerPhone,
+  /** `desk_tool`: which desk tool, and its arguments: a JSON object, as text or as it is. */
+  name: clipped(200),
+  arguments: z
+    .union([z.string(), z.record(z.unknown())])
+    .nullish()
+    .transform((v) =>
+      v == null ? undefined : typeof v === 'string' ? v.slice(0, 10_000) : JSON.stringify(v),
+    ),
+  /** `search_knowledge`. */
+  query: clipped(500),
+  /** `request_person`: why the caller needs a colleague. */
+  reason: clipped(500),
+});
+export type PhoneToolInput = z.output<typeof phoneToolSchema>;
+
+/**
+ * Sarvam's own webhook body, for an inbound call and for a call this desk placed. Only the
+ * ids and the status are used: the transcript is fetched with our key. A call we placed
+ * that never connected has an attempt id and no interaction id.
+ */
+export const phoneEndedSchema = z
+  .object({
+    interaction_id: callId,
+    user_phone_number: callerPhone,
+    attempt_id: clipped(200),
+    status: clipped(40),
+  })
+  .passthrough();
+export type PhoneEndedInput = z.output<typeof phoneEndedSchema>;
+
+/**
+ * What ElevenLabs posts when a call begins (its "conversation initiation"
+ * webhook). Read as loosely as Sarvam's bodies, for the same reason.
+ */
+export const elevenlabsStartSchema = z
+  .object({ conversation_id: callId, caller_id: callerPhone })
+  .passthrough();
+export type ElevenlabsStartInput = z.output<typeof elevenlabsStartSchema>;
+
+/** ElevenLabs' signed post-call webhook. Only its type and the conversation's id are used. */
+export const elevenlabsEventSchema = z
+  .object({
+    type: z.string().max(100),
+    data: z.object({ conversation_id: interactionId }).passthrough(),
+  })
+  .passthrough();
+export type ElevenlabsEventInput = z.output<typeof elevenlabsEventSchema>;
+
+/**
+ * A named tool's body: that desk tool's arguments, as the agent filled them in. A tool
+ * with no inputs may be called with no body at all.
+ */
+export const phoneNamedToolBodySchema = z.record(z.unknown()).default({});
+
+/** What the last set-up of the ElevenLabs agent did; shown on its card. */
+export interface ElevenlabsSyncState {
+  agentId: string | null;
+  webhookId: string | null;
+  /** The secret at ElevenLabs that holds the hook token. */
+  secretId: string | null;
+  at: string | null;
+  ok: boolean | null;
+  /** ElevenLabs' own message when the run failed. */
+  error: string | null;
+  /** Tools ElevenLabs would not take, with its reason. */
+  skipped: Array<{ tool: string; reason: string }>;
+  tools: number;
+  /** The number the agent answers on, as ElevenLabs lists it; null while none is assigned. */
+  agentNumber: string | null;
+  /** How that number reaches ElevenLabs (twilio, sip_trunk, exotel): it decides how a call is placed. */
+  agentNumberKind: string | null;
+}
+
+// ---- Calls this desk places (ADR 0040) ----
+
+/** Why the desk rings someone: from a ticket, because they asked on the shop, or with an approval's outcome. */
+export const PHONE_CALL_PURPOSES = ['ticket', 'call_me', 'approval'] as const;
+export type PhoneCallPurpose = (typeof PHONE_CALL_PURPOSES)[number];
+
+export const PHONE_CALL_OUTCOMES = ['connected', 'no_answer', 'busy', 'failed'] as const;
+export type PhoneCallOutcome = (typeof PHONE_CALL_OUTCOMES)[number];
+
+/** Why a call was not even tried. */
+export const OUTBOUND_REFUSALS = [
+  'phone_off',
+  'no_number',
+  'outside_hours',
+  'call_in_progress',
+] as const;
+export type OutboundRefusal = (typeof OUTBOUND_REFUSALS)[number];
+export const OUTBOUND_REFUSAL_TEXT: Record<OutboundRefusal, string> = {
+  phone_off: 'Phone calls are not set up for the provider that places calls.',
+  no_number: 'This customer has no phone number on file.',
+  outside_hours: 'Calls are only placed between 09:00 and 21:00 India time.',
+  call_in_progress: 'A call to this customer is already under way.',
+};
+
+/** What the call is about, said to the customer by the phone agent. Written by staff. */
+export const PHONE_CALL_ABOUT_MAX = 300;
+export const requestTicketCallSchema = z.object({
+  about: z.string().trim().max(PHONE_CALL_ABOUT_MAX).optional(),
+});
+export type RequestTicketCallInput = z.infer<typeof requestTicketCallSchema>;
+
+/** One desk tool as the phone agent sees it (the customer argument is hidden). */
+export interface PhoneToolEntry {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+/** What the start hook answers: flat, so Sarvam can map each field to an agent variable. */
+export interface PhoneStartReply {
+  /** How to address a known caller aloud ("Ms. Verma", "Asha"); empty when unknown. */
+  customer_name: string;
+  /** The opening line, with the name when there is one: for the agent's greeting. */
+  greeting: string;
+  known: boolean;
+  company: string;
+  /** The tool catalogue as JSON text. */
+  desk_tools: string;
+  /** `outbound` on a call the desk placed, with what it is about; `inbound` otherwise. */
+  direction: 'inbound' | 'outbound';
+  about: string;
+}
+
+/** What every tool answers: `result` is text for the agent to speak from. */
+export interface PhoneToolReply {
+  ok: boolean;
+  result: string;
+}
+
+/** A tool's answer is cut to this many characters before it goes to the agent. */
+export const PHONE_TOOL_RESULT_MAX = 4_000;

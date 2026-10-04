@@ -14,6 +14,7 @@ export function toDomainEvent(row: OutboxRow): DomainEvent {
     occurredAt: row.createdAt.toISOString(),
     actor: { type: row.actorType as DomainEvent['actor']['type'], id: row.actorId },
     payload: row.payload,
+    trace: row.traceContext,
   };
 }
 

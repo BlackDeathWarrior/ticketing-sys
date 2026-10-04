@@ -1,4 +1,4 @@
-import type { CurrentUser, OverviewReport, Permission } from '@tms/shared';
+import type { Channel, CurrentUser, OverviewReport, Permission, TicketHandling } from '@tms/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, hasSession, logout, qs } from './api/client';
 import { closeAgentSocket, useAgentEvents } from './api/realtime';
@@ -18,10 +18,25 @@ import { DashboardPage } from './features/dashboard/DashboardPage';
 import { NewTicketDialog } from './features/dashboard/NewTicketDialog';
 import { TicketDrawer } from './features/dashboard/TicketDrawer';
 import { ElementsPage } from './features/elements/ElementsPage';
+import { KbPage } from './features/kb/KbPage';
+import { LearningPage } from './features/learning/LearningPage';
+import { ReportsPage } from './features/reports/ReportsPage';
+import { SettingsPage } from './features/settings/SettingsPage';
 import { type Session, SessionContext } from './lib/session';
 import { useGet } from './lib/useGet';
 import { useHashRoute } from './lib/useHashRoute';
 import styles from './App.module.css';
+import { ApprovalsPage } from './features/tools/ApprovalsPage';
+
+const ROUTE_TITLES = {
+  dashboard: 'Overview',
+  elements: 'Elements',
+  settings: 'Settings',
+  kb: 'Knowledge base',
+  approvals: 'Approvals',
+  reports: 'Reports',
+  learning: 'Learning',
+} as const;
 
 /** Most tickets a list view loads at once (the API's page limit). */
 const PAGE = 200;
@@ -78,6 +93,8 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
   const route = useHashRoute();
   const [view, setView] = useState<ViewId>('all');
   const [search, setSearch] = useState('');
+  const [channel, setChannel] = useState<Channel | ''>('');
+  const [handling, setHandling] = useState<TicketHandling | ''>('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -104,32 +121,68 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
   const pathFor = (id: ViewId, extra: Record<string, string | number | undefined> = {}) =>
     ready ? `/tickets${qs({ ...viewById(id).query(openStatuses), ...extra })}` : null;
 
-  const queue = useGet<{ items: ApiTicket[]; total: number }>(pathFor(view, { q, limit: PAGE }));
+  const queue = useGet<{ items: ApiTicket[]; total: number }>(
+    pathFor(view, {
+      q,
+      channel: channel || undefined,
+      handling: handling || undefined,
+      limit: PAGE,
+    }),
+  );
   const open = useGet<{ items: ApiTicket[]; total: number }>(
     ready ? `/tickets${qs({ status: openStatuses.join(','), limit: PAGE })}` : null,
   );
   const overview = useGet<OverviewReport>(can('report:read') ? '/reports/overview' : null);
+  // Approvals are decided by the request's team (ADR 0031): anyone on a team may have some.
+  const mayApprove =
+    can('approval:approve') || can('ticket:any_team') || (user.teams?.length ?? 0) > 0;
+  const approvals = useGet<Array<{ status: string }>>(
+    mayApprove ? '/approvals?status=pending&limit=200' : null,
+  );
+  const pendingApprovals = mayApprove ? approvals.data?.length : undefined;
   const teams =
     useGet<Array<{ id: string; name: string; members: Array<{ id: string }> }>>('/teams');
   const countAll = useGet<{ total: number }>(pathFor('all', { limit: 1 }));
   const countMine = useGet<{ total: number }>(pathFor('mine', { limit: 1 }));
   const countUnassigned = useGet<{ total: number }>(pathFor('unassigned', { limit: 1 }));
   const countUrgent = useGet<{ total: number }>(pathFor('urgent', { limit: 1 }));
+  const countSla = useGet<{ total: number }>(pathFor('sla', { limit: 1 }));
 
-  const refreshers = [queue, open, overview, countAll, countMine, countUnassigned, countUrgent];
+  const refreshers = [
+    queue,
+    open,
+    overview,
+    approvals,
+    countAll,
+    countMine,
+    countUnassigned,
+    countUrgent,
+    countSla,
+  ];
   const refresh = () => refreshers.forEach((r) => void r.reload());
 
-  useAgentEvents(() => {
+  useAgentEvents((events) => {
+    // Knowledge-base events concern the KB page, not the queue.
+    if (events.every((e) => e.type.startsWith('kb.'))) return;
     refresh();
     setLiveTick((n) => n + 1);
   });
 
-  // "/" jumps to search from anywhere that isn't already a text field.
+  // "/" jumps to search from anywhere that isn't already a text field. The box
+  // is in the tickets card, so from another page the dashboard opens first.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === '/' && !isTyping(e.target) && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
-        searchRef.current?.focus();
+        const focus = () => {
+          searchRef.current?.focus();
+          searchRef.current?.scrollIntoView({ block: 'center' });
+        };
+        if (searchRef.current) focus();
+        else {
+          window.location.hash = '#/';
+          setTimeout(focus, 80);
+        }
       }
     };
     window.addEventListener('keydown', onKey);
@@ -168,26 +221,33 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
             mine: countMine.data?.total,
             unassigned: countUnassigned.data?.total,
             urgent: countUrgent.data?.total,
+            sla: countSla.data?.total,
           }}
           teams={teams.data ?? []}
+          pendingApprovals={pendingApprovals}
         />
 
         <div className={styles.main}>
           <StarField className={styles.stars} />
           <TopBar
-            ref={searchRef}
-            title={route === 'elements' ? 'Elements' : 'Overview'}
-            search={search}
-            onSearch={(value) => {
-              setSearch(value);
-              if (value && route !== 'dashboard') window.location.hash = '#/';
-            }}
+            title={ROUTE_TITLES[route]}
             onOpenMenu={() => setMenuOpen(true)}
             onNewTicket={() => setComposerOpen(true)}
+            onOpenTicket={setSelectedId}
           />
           <main id="main" className={styles.content} tabIndex={-1}>
             {route === 'elements' ? (
               <ElementsPage />
+            ) : route === 'settings' ? (
+              <SettingsPage />
+            ) : route === 'kb' ? (
+              <KbPage />
+            ) : route === 'approvals' ? (
+              <ApprovalsPage liveTick={liveTick} onOpenTicket={setSelectedId} />
+            ) : route === 'reports' ? (
+              <ReportsPage onOpenTicket={setSelectedId} />
+            ) : route === 'learning' ? (
+              <LearningPage liveTick={liveTick} onOpenTicket={setSelectedId} />
             ) : (
               <DashboardPage
                 queue={{
@@ -200,11 +260,19 @@ function Workspace({ user, signOut }: { user: CurrentUser; signOut: () => void }
                 openTickets={toTickets(open.data?.items)}
                 overview={overview.data}
                 search={search}
+                onSearch={setSearch}
+                searchRef={searchRef}
+                channel={channel}
+                onChannel={setChannel}
+                handling={handling}
+                onHandling={setHandling}
                 selectedId={selectedId}
                 onOpenTicket={setSelectedId}
                 onShowUrgent={() => selectView('urgent')}
                 onClearFilters={() => {
                   setSearch('');
+                  setChannel('');
+                  setHandling('');
                   setView('all');
                 }}
               />

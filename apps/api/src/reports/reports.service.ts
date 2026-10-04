@@ -11,7 +11,7 @@ import {
   type Priority,
   type StatusCategory,
 } from '@tms/shared';
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, like, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, like, or, sql } from 'drizzle-orm';
 import { DB } from '../infra/tokens';
 
 const OPEN_CATEGORIES = ['open', 'pending'];
@@ -134,7 +134,15 @@ export class ReportsService {
       .from(auditLog)
       .leftJoin(users, sql`${users.id}::text = ${auditLog.actorId}`)
       .leftJoin(tickets, sql`${tickets.id}::text = ${auditLog.targetId}`)
-      .where(and(eq(auditLog.targetType, 'ticket'), like(auditLog.action, 'ticket.%')))
+      .where(
+        and(
+          eq(auditLog.targetType, 'ticket'),
+          or(
+            like(auditLog.action, 'ticket.%'),
+            inArray(auditLog.action, ['ai.handover', 'message.drafted']),
+          ),
+        ),
+      )
       .orderBy(desc(auditLog.id))
       .limit(ACTIVITY_LIMIT);
     return rows.map((r) => ({

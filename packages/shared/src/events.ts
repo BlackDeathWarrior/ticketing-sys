@@ -13,6 +13,12 @@ export const DOMAIN_EVENT_TYPES = [
   'customer.updated',
   'customer.identity_added',
   'customer.merged',
+  /** A verification code was sent to a customer's WhatsApp. The payload never holds the code. */
+  'customer.phone_verification_sent',
+  /** An app, or the desk on a phone call, has an email for a customer; the worker sends it. */
+  'customer.email_requested',
+  /** A caller asked to link their number to an email address; the worker emails the code. Never the code. */
+  'customer.email_code_requested',
   'user.created',
   'user.updated',
   'conversation.created',
@@ -20,11 +26,134 @@ export const DOMAIN_EVENT_TYPES = [
   'message.received',
   'message.outbound',
   'message.delivery_updated',
+  'team.created',
+  'team.updated',
+  'team.deleted',
+  'category.created',
+  'category.updated',
+  'workflow.status_upserted',
+  'workflow.status_deactivated',
+  'workflow.transitions_replaced',
+  /** A secret was created, rotated or deleted. The payload names the key, never the value. */
+  'settings.secret_changed',
+  /** Non-secret settings changed, such as a channel's host or an AI option. */
+  'settings.updated',
+  /** LLM providers, models or roles changed. */
+  'llm.config_changed',
+  /** A KB document was created or its content, visibility or status changed; indexing follows. */
+  'kb.document_changed',
+  'kb.document_deleted',
+  /** Indexing finished (or failed). */
+  'kb.document_indexed',
+  /** Re-embed everything, e.g. after the embedding model changed. */
+  'kb.reindex_requested',
+  /** Someone asked for a knowledge-base connector to sync now (ADR 0033). */
+  'kb.connector_sync_requested',
+  'kb.connector_changed',
+  /** An AI turn finished (sent, drafted, handed over or failed). */
+  'ai.turn_completed',
+  /** The AI handed the conversation to humans. */
+  'ai.handover',
+  /** The classifier set category, priority, language, intent and sentiment. */
+  'ticket.classified',
+  /** An AI reply was stored as a draft for a human to approve. */
+  'message.drafted',
+  /** A draft was approved (and queued for delivery) or discarded. */
+  'message.draft_reviewed',
+  /** An MCP server was added, changed, synced or removed, or a tool's settings changed. */
+  'tool.config_changed',
+  /** A company-system tool ran (or was refused); the payload has status, never secrets. */
+  'tool.called',
+  /** A transactional tool call waits for a supervisor. */
+  'approval.requested',
+  /** A supervisor approved or rejected it; approved calls run next, then the AI follows up. */
+  'approval.decided',
+  /** Nobody decided in time. */
+  'approval.expired',
+  /** A person or the AI asked for a person; the context pack and routing follow. */
+  'handover.requested',
+  /** The context pack for a handover is written. */
+  'handover.context_ready',
+  /** Routing picked a team and possibly an agent. */
+  'ticket.routed',
+  /** A ticket's SLA timers started, paused, resumed or were met. */
+  'sla.updated',
+  /** 80% of an SLA target is used up. */
+  'sla.at_risk',
+  'sla.breached',
+  /** Routing rules, skills or SLA settings changed. */
+  'routing.config_changed',
+  'sla.config_changed',
+  /** An agent went online, away or offline, or changed capacity. */
+  'presence.changed',
+  'notification.created',
+  /** A team lead escalated a ticket. */
+  'ticket.escalated',
+  /** A voice call started, changed hands or ended; the payload has the ticket once there is one. */
+  'voice.call_requested',
+  'voice.call_started',
+  'voice.call_updated',
+  'voice.call_ended',
+  /** A reply that was spoken on a call: stored as sent, never queued for delivery. */
+  'message.spoken',
+  /** An admin granted a role a permission, or took it back. */
+  'role.permissions_changed',
+  /** A customer was asked to rate a resolved ticket (by email or in the chat). */
+  'csat.requested',
+  /** A customer rated a ticket, or changed their rating. */
+  'csat.submitted',
+  /** A rated ticket was put in front of a reviewer, or the reviewer decided. */
+  'learning.review_opened',
+  'learning.review_closed',
+  /** A lesson for the AI was added, changed, switched on or off, or deleted. */
+  'learning.lesson_changed',
+  /** The daily retention run deleted old operational data. */
+  'system.retention_ran',
+  /** An admin retried or removed a background job that had failed for good. */
+  'system.job_retried',
+  'system.job_removed',
+  /** A customer asked for a sign-in link to the portal; the worker emails it. */
+  'portal.link_requested',
+  'portal.signed_in',
+  /** WhatsApp templates were synced from Meta, or Meta changed a template's status. */
+  'whatsapp.templates_changed',
+  /** An integration or one of its API keys was created, changed or revoked. Never the key. */
+  'integration.config_changed',
+  /**
+   * An integration reported a problem (opened), kept reporting it past a
+   * threshold or at a higher severity (updated), or reported the recovery.
+   */
+  'incident.opened',
+  'incident.updated',
+  'incident.resolved',
+  /** An admin asked for a webhook delivery to be sent again. */
+  'webhook.redelivery_requested',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
 
-export type AggregateType = 'ticket' | 'customer' | 'user' | 'conversation';
+export type AggregateType =
+  | 'ticket'
+  | 'customer'
+  | 'user'
+  | 'role'
+  | 'voice_call'
+  | 'conversation'
+  | 'team'
+  | 'category'
+  | 'workflow'
+  | 'settings'
+  | 'llm'
+  | 'kb'
+  | 'tool'
+  | 'approval'
+  | 'routing'
+  | 'sla'
+  | 'user_presence'
+  | 'notification'
+  | 'learning'
+  | 'integration'
+  | 'incident';
 
 export interface DomainEvent<P = Record<string, unknown>> {
   id: string;
@@ -34,9 +163,12 @@ export interface DomainEvent<P = Record<string, unknown>> {
   occurredAt: string;
   actor: Actor;
   payload: P;
+  /** W3C traceparent of the request that caused the event, when tracing is on. */
+  trace?: string | null;
 }
 
-export type ActorType = 'user' | 'system' | 'ai' | 'customer';
+/** `integration`: an outside app acting with an API key; the id is the key's. */
+export type ActorType = 'user' | 'system' | 'ai' | 'customer' | 'integration';
 
 export interface Actor {
   type: ActorType;

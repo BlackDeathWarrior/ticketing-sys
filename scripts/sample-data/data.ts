@@ -929,6 +929,119 @@ export const chats = [
     email: 'lena.vogt@example.net',
     text: 'The size guide for the rain jackets does not load on my phone.',
   },
+  // The AI agent answers these from the knowledge base (or hands over).
+  {
+    name: 'Tom Whitaker',
+    email: 'tom.whitaker@example.com',
+    text: 'When will my refund reach my card? I returned the helmet last week.',
+  },
+  {
+    name: 'Aarav Kulkarni',
+    email: 'aarav.kulkarni@example.in',
+    text: 'मेरा रिफंड कब तक आएगा? मैंने पिछले हफ्ते सामान लौटाया था।',
+  },
+  {
+    name: 'Nina Petrova',
+    email: 'nina.petrova@example.org',
+    text: 'I would like to talk to a real person about my damaged cargo bike, please.',
+  },
+  // Answered from the Demo Store order system (Phase 6 tools). Tools act only for a visitor
+  // the site vouches for, never for a typed email (ADR 0028), so these two are signed in.
+  {
+    name: 'María López',
+    email: 'maria.lopez@example.com',
+    text: 'Hi, where is my order DS-20517?',
+    signedIn: true,
+  },
+  // Asks for a refund: waits in Approvals for a supervisor.
+  {
+    name: 'Kenji Watanabe',
+    email: 'kenji.watanabe@example.org',
+    text: 'I was charged twice for order DS-20533. Can you refund the extra charge?',
+    signedIn: true,
+  },
+];
+
+/**
+ * Chats the AI answers and the customer never comes back to. The loader moves
+ * them back in time, lets the AI resolve them (quiet for more than 72 hours),
+ * and then answers the "How did we do?" question as the visitor would.
+ */
+export const quietChats: Array<{
+  name: string;
+  quietHours: number;
+  rating: number;
+  comment?: string;
+}> = [
+  { name: 'Tom Whitaker', quietHours: 96, rating: 5 },
+  // A low rating of the AI's own answer: it shows up under Learning → To review.
+  {
+    name: 'Aarav Kulkarni',
+    quietHours: 110,
+    rating: 2,
+    comment: 'I asked about a gift card refund, not a card refund.',
+  },
+  { name: 'María López', quietHours: 80, rating: 5 },
+];
+
+/**
+ * A chat the AI passed to a person, who solved it. The visitor rates it 5:
+ * under Learning it is offered as knowledge the AI could have had.
+ */
+export const answeredByPerson = {
+  name: 'Bea Sandoval',
+  agent: 'jonah',
+  rating: 5,
+  comment: 'Jonah fixed it straight away.',
+};
+
+/** Lessons staff wrote for the AI after reading ratings (ADR 0020). */
+export const lessons = [
+  {
+    by: 'priya',
+    body: 'When customers ask how long gift card refunds take, tell them: Gift card refunds go back to the gift card within 2 business days.',
+  },
+];
+
+/**
+ * Ratings customers give in the portal ("My requests") for resolved tickets.
+ * The loader signs each customer in with the link emailed to them.
+ */
+export const ratings: Array<{
+  customer: string;
+  subject: string;
+  rating: number;
+  comment?: string;
+}> = [
+  {
+    customer: 'henrik',
+    subject: 'Order confirmation email never arrived',
+    rating: 5,
+    comment: 'Sorted within the hour, thank you.',
+  },
+  { customer: 'lucia', subject: 'Update billing address on account', rating: 4 },
+  {
+    customer: 'noah',
+    subject: 'Printer ink cartridges back-ordered',
+    rating: 2,
+    comment: 'It took three days to hear back.',
+  },
+  { customer: 'noah', subject: 'Update phone number on account', rating: 5 },
+  {
+    customer: 'sofia',
+    subject: 'Allergen list for spice blends',
+    rating: 5,
+    comment: 'Exactly what I needed.',
+  },
+  { customer: 'yara', subject: 'Return seed trays ordered twice', rating: 3 },
+  { customer: 'grace', subject: 'Quarterly volume discount not applied', rating: 4 },
+  { customer: 'kiri', subject: 'Request for bulk pricing sheet', rating: 5 },
+  {
+    customer: 'ravi',
+    subject: 'Dealer login shows wrong price tier',
+    rating: 1,
+    comment: 'I still see the wrong tier on some products.',
+  },
 ];
 
 /** Customer emails sent to the support mailbox; the worker turns each into a ticket. */
@@ -952,3 +1065,201 @@ export const emails = [
     text: 'I returned order 77421 two weeks ago and I have not received the refund yet.',
   },
 ];
+
+/**
+ * Requests from the help center's public form (channel `web_form`). Fixed
+ * submission ids make a second load return the same tickets, not new ones.
+ */
+export const webForms = [
+  {
+    submissionId: '6f1d2a4e-8c3b-4f0a-9e21-5b7c9d0e1a01',
+    name: 'Lena Fischer',
+    email: 'lena.fischer@example.org',
+    topic: 'Returns',
+    orderNumber: 'DS-48213',
+    subject: 'Wrong jacket size delivered',
+    description:
+      'I ordered the rain jacket in medium and received a small. Can I exchange it for the right size?',
+  },
+  {
+    submissionId: '6f1d2a4e-8c3b-4f0a-9e21-5b7c9d0e1a02',
+    name: 'Tomás Ribeiro',
+    email: 'tomas.ribeiro@example.net',
+    topic: 'Account',
+    subject: 'Cannot change my delivery address',
+    description:
+      'When I save a new delivery address in my account the page reloads and the old address is still there.',
+  },
+];
+
+/**
+ * SLA, routing, skills and presence (Phase 7, ADR 0014). Support hours are
+ * Monday to Saturday, 08:00–20:00 India time; urgent and high tickets are
+ * timed around the clock. The loader backdates timers with their tickets, so
+ * older open tickets show as at risk or breached.
+ */
+export const operations = {
+  hours: {
+    name: 'Support hours (India)',
+    timezone: 'Asia/Kolkata',
+    schedule: [1, 2, 3, 4, 5, 6].map((day) => ({ day, start: '08:00', end: '20:00' })),
+    holidays: [
+      { date: '2026-10-02', name: 'Gandhi Jayanti' },
+      { date: '2026-10-20', name: 'Diwali' },
+    ],
+  },
+  policies: [
+    { name: 'Urgent', priority: 'urgent', firstResponseMinutes: 30, resolutionMinutes: 240 },
+    { name: 'High', priority: 'high', firstResponseMinutes: 60, resolutionMinutes: 480 },
+    {
+      name: 'VIP',
+      customerType: 'vip',
+      firstResponseMinutes: 120,
+      resolutionMinutes: 1440,
+      supportHours: true,
+    },
+    { name: 'Standard', firstResponseMinutes: 240, resolutionMinutes: 2880, supportHours: true },
+  ],
+  /** First match wins. `team` is a team name; conditions use channel, priority, language. */
+  rules: [
+    {
+      name: 'Hindi conversations',
+      conditions: { language: 'hi' },
+      team: 'Orders',
+      strategy: 'least_loaded',
+      requiredSkill: 'hindi',
+    },
+    {
+      name: 'Urgent tickets',
+      conditions: { priority: 'urgent' },
+      team: 'Orders',
+      strategy: 'least_loaded',
+    },
+    {
+      name: 'Web chat',
+      conditions: { channel: 'webchat' },
+      team: 'Orders',
+      strategy: 'round_robin',
+    },
+    {
+      name: 'Email and web forms',
+      conditions: { channel: 'email' },
+      team: 'Returns',
+      strategy: 'least_loaded',
+    },
+    {
+      name: 'Help-center requests',
+      conditions: { channel: 'web_form' },
+      team: 'Returns',
+      strategy: 'least_loaded',
+    },
+  ],
+  skills: { jonah: ['hindi', 'orders'], aiko: ['billing'], nora: ['billing'], sam: ['returns'] },
+  presence: {
+    jonah: { status: 'online', capacity: 6 },
+    maya: { status: 'online', capacity: 4 },
+    aiko: { status: 'online', capacity: 5 },
+    sam: { status: 'online', capacity: 5 },
+    nora: { status: 'away', capacity: 5 },
+    leo: { status: 'offline', capacity: 5 },
+  } as Record<string, { status: 'online' | 'away' | 'offline'; capacity: number }>,
+};
+
+/**
+ * "Demo Store systems": the sample MCP server in apps/fake-providers with
+ * fictional orders and payments (ADR 0013). The token is a public
+ * placeholder the fake server checks, not a credential. The URL is how the
+ * API container reaches it.
+ */
+export const tools = {
+  server: { name: 'Demo Store systems', authHeader: 'Authorization' },
+  token: 'demo-store-token',
+  /** Tools the AI may use; issue_refund keeps its "needs approval" tier. */
+  enable: ['lookup_customer', 'order_status', 'payment_status', 'issue_refund'],
+  /** A custom (HTTP) tool, next to the MCP ones: a plain request to the sample server. */
+  custom: {
+    name: 'systems_status',
+    title: 'Store systems status',
+    description:
+      'Whether the Demo Store order and payment systems are up. Use it when a customer says the shop or checkout is not working.',
+    method: 'GET',
+    path: '/health',
+    parameters: [],
+    tier: 'read',
+    enabled: true,
+  },
+};
+
+/**
+ * The scripted demo LLM (apps/fake-providers), so the AI features work with
+ * no real keys. The "key" is a placeholder: the fake provider ignores it.
+ * LiteLLM reaches the fake at FAKE_LLM_URL (a compose hostname).
+ */
+export const llm = {
+  provider: {
+    provider: 'openai_compatible',
+    label: 'Demo model (scripted)',
+    apiKey: 'not-a-real-key-scripted-demo',
+    budgetUsd: 5,
+    budgetPeriod: 'month',
+  },
+  models: [
+    {
+      model: 'scripted-cheap',
+      label: 'Scripted (fast)',
+      inputCostPerMTok: 0.1,
+      outputCostPerMTok: 0.4,
+      supportsTools: true,
+      supportsJson: true,
+    },
+    {
+      model: 'scripted-premium',
+      label: 'Scripted (premium)',
+      inputCostPerMTok: 3,
+      outputCostPerMTok: 15,
+      supportsTools: true,
+      supportsJson: true,
+    },
+    {
+      model: 'scripted-embed',
+      label: 'Scripted embeddings',
+      mode: 'embedding',
+      inputCostPerMTok: 0.02,
+      outputCostPerMTok: 0,
+    },
+  ],
+  /** A few calls so the Usage tab has something to show. */
+  warmUpCalls: 3,
+} as const;
+
+/**
+ * Knowledge base: files in ./kb (fictional Demo Store policies), uploaded and
+ * approved by the loader. `faqs` come from kb/faq-hi.json; `internal` stays
+ * agent-only; `draft` is left unapproved to show the review step.
+ */
+export const kb = {
+  files: [
+    { file: 'returns-policy.md', contentType: 'text/markdown', visibility: 'public' },
+    { file: 'shipping-faq.md', contentType: 'text/markdown', visibility: 'public' },
+    { file: 'billing-faq.md', contentType: 'text/markdown', visibility: 'public' },
+    { file: 'account-help.html', contentType: 'text/html', visibility: 'public' },
+  ],
+  faqFile: 'faq-hi.json',
+  internal: {
+    title: 'Escalation playbook',
+    content: [
+      '# Escalation playbook',
+      '',
+      '## Refunds above 10,000 rupees',
+      'Refunds above 10,000 rupees need a supervisor to approve them. Add an internal note with the order number and the reason, then assign the ticket to the Billing team.',
+      '',
+      '## Angry or VIP customers',
+      'VIP customers get a call back within 2 hours. Never promise a delivery date the courier has not confirmed.',
+    ].join('\n'),
+  },
+  draft: {
+    title: 'Monsoon delivery delays (draft)',
+    content:
+      'During heavy rain, deliveries in coastal cities may take 2 extra days. Not yet approved.',
+  },
+} as const;

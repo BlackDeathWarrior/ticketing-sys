@@ -1,0 +1,223 @@
+.page {
+  display: grid;
+  gap: var(--spacing-24);
+}
+
+.page > * {
+  min-width: 0;
+}
+
+.hero {
+  padding: var(--spacing-48) 0 var(--spacing-8);
+}
+
+.eyebrow {
+  font-size: var(--text-ui);
+  color: var(--color-fog);
+}
+
+.heading {
+  margin-top: var(--spacing-8);
+  font-family: var(--font-display);
+  font-size: var(--text-heading-sm);
+  line-height: var(--leading-heading-sm);
+  letter-spacing: var(--tracking-heading-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.lede {
+  margin-top: var(--spacing-12);
+  max-width: 720px;
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  color: var(--color-ash);
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--spacing-16);
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+}
+
+.kpiLabel {
+  font-size: var(--text-ui);
+  color: var(--color-ash);
+}
+
+.kpiValue {
+  font-family: var(--font-display);
+  font-size: var(--text-heading-sm);
+  line-height: var(--leading-heading-sm);
+  letter-spacing: var(--tracking-heading-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-lilac-white);
+}
+
+.kpiContext {
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+/* Eight weeks, each a number with its count: few values, so labels beat a chart. */
+.weeks {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: var(--spacing-8);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weeks li {
+  display: grid;
+  gap: 2px;
+  padding: var(--spacing-12);
+  border-radius: var(--radius-buttons);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+}
+
+.weeks li[data-empty] {
+  opacity: 0.5;
+}
+
+.weekValue {
+  font-family: var(--font-display);
+  font-size: var(--text-body-lg);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-lilac-white);
+}
+
+.weekMeta {
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.reviews {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review {
+  display: grid;
+  gap: var(--spacing-12);
+  padding: var(--spacing-16) 0;
+  border-top: 1px solid var(--line-subtle);
+}
+
+.reviewHead {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--spacing-8);
+  margin: 0;
+  font-size: var(--text-ui);
+  color: var(--color-ash);
+}
+
+.kind {
+  color: var(--color-lavender-accent);
+}
+
+.ticketLink {
+  display: flex;
+  gap: var(--spacing-8);
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-lilac-white);
+  font: inherit;
+  font-size: var(--text-body-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ticketLink:hover {
+  color: var(--color-lavender-accent);
+}
+
+.reference {
+  flex: none;
+  color: var(--color-fog);
+  font-variant-numeric: tabular-nums;
+}
+
+.exchange {
+  display: grid;
+  gap: var(--spacing-8);
+  margin: 0;
+  font-size: var(--text-body-sm);
+  line-height: 1.5;
+}
+
+.exchange dt {
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.exchange dd {
+  margin: 2px 0 0;
+  color: var(--color-ash);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reviewActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+}
+
+.lessonBody {
+  margin: 0;
+  font-size: var(--text-body-sm);
+  line-height: 1.5;
+  color: var(--color-lilac-white);
+  overflow-wrap: anywhere;
+}
+
+.cautions {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-body-sm);
+}
+
+.cautions li {
+  display: grid;
+  gap: 2px;
+  padding: var(--spacing-12) 0;
+  border-top: 1px solid var(--line-subtle);
+  color: var(--color-lilac-white);
+}
+
+@media (max-width: 1199px) {
+  .kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .weeks {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .weeks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

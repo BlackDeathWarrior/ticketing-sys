@@ -10,6 +10,11 @@ interface DialogProps {
   labelledBy: string;
   children: ReactNode;
   className?: string;
+  /**
+   * Pads the content and lets it scroll. On by default for modals; off for
+   * drawers and for content that lays out its own header and footer.
+   */
+  padded?: boolean;
 }
 
 /**
@@ -23,6 +28,7 @@ export function Dialog({
   labelledBy,
   children,
   className,
+  padded = variant === 'modal',
 }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
 
@@ -43,7 +49,7 @@ export function Dialog({
         if (e.target === ref.current) onClose();
       }}
     >
-      {open && <div className={styles.body}>{children}</div>}
+      {open && <div className={cx(styles.body, padded && styles.padded)}>{children}</div>}
     </dialog>
   );
 }

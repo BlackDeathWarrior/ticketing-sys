@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Your site: the chat widget with your integration</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 42rem;
+        margin: 3rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+      pre {
+        overflow-x: auto;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 0.25rem 1rem;
+      }
+      dd {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Your site</h1>
+    <p>
+      This page stands in for the website of an app connected in Settings → Integrations. It loads
+      the widget with that integration, your colours and wording, and what the visitor is looking
+      at:
+    </p>
+    <pre><code>TMSChat.init({
+  integration: 'your-integration',
+  theme: { primary: '#7a1f3d' },
+  strings: { launcher: 'Need help?', title: 'Ask us' },
+  context: { product_id: 'DEMO-1001' },
+  on: { ticket: (t) =&gt; console.log('opened', t.reference) },
+});</code></pre>
+    <p>
+      Add <code>?integration=&lt;identifier&gt;</code> to this page's address to try it with one of
+      yours. Optional: <code>primary</code>, <code>position</code> (<code>left</code>),
+      <code>product</code>, <code>name</code>, and <code>server</code> when the helpdesk is on
+      another address.
+    </p>
+    <dl>
+      <dt>Integration</dt>
+      <dd id="integration">none (add ?integration=…)</dd>
+      <dt>Ticket opened</dt>
+      <dd id="ticket">not yet</dd>
+      <dt>Replies received</dt>
+      <dd id="replies">0</dd>
+    </dl>
+
+    <script src="./tms-chat.js"></script>
+    <script>
+      (function () {
+        var q = new URLSearchParams(window.location.search);
+        var integration = q.get('integration') || undefined;
+        var replies = 0;
+        if (integration) document.getElementById('integration').textContent = integration;
+        window.tmsChat = TMSChat.init({
+          server: q.get('server') || undefined,
+          integration: integration,
+          visitor: { name: q.get('name') || undefined },
+          context: { product_id: q.get('product') || 'DEMO-1001', page: window.location.pathname },
+          theme: { primary: q.get('primary') || '#7a1f3d', position: q.get('position') || 'right' },
+          strings: { launcher: 'Need help?', title: 'Ask us' },
+          on: {
+            ticket: function (t) {
+              document.getElementById('ticket').textContent = t.reference;
+            },
+            message: function () {
+              replies += 1;
+              document.getElementById('replies').textContent = String(replies);
+            },
+          },
+        });
+      })();
+    </script>
+  </body>
+</html>

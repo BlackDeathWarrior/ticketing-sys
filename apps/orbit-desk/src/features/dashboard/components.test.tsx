@@ -37,6 +37,8 @@ function withSession(
 }
 
 beforeEach(() => {
+  // The callbacks handed to the components too: a call left by one test must not satisfy the next.
+  vi.clearAllMocks();
   apiMock.mockReset();
 });
 
@@ -52,6 +54,11 @@ describe('TicketTable', () => {
     total: 3,
     loading: false,
     search: '',
+    onSearch: vi.fn(),
+    channel: '' as const,
+    onChannel: vi.fn(),
+    handling: '' as const,
+    onHandling: vi.fn(),
     selectedId: null,
     onSelect: vi.fn(),
     onClearFilters: vi.fn(),
@@ -75,8 +82,35 @@ describe('TicketTable', () => {
     rerender(<TicketTable {...props} tickets={[]} total={0} search="zzz" />);
     expect(screen.getByText('No tickets in this part of the sky')).toBeInTheDocument();
     expect(screen.getByText('zzz')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    // One beside the search that is on, one in the empty state: both reset.
+    const clears = screen.getAllByRole('button', { name: 'Clear filters' });
+    expect(clears).toHaveLength(2);
+    fireEvent.click(clears[1]!);
     expect(props.onClearFilters).toHaveBeenCalled();
+  });
+
+  it('filters by channel', () => {
+    const { rerender } = render(<TicketTable {...props} />);
+    fireEvent.change(screen.getByLabelText('Channel'), { target: { value: 'web_form' } });
+    expect(props.onChannel).toHaveBeenCalledWith('web_form');
+    rerender(<TicketTable {...props} channel="web_form" />);
+    expect(screen.getByText(/Web form only/)).toBeInTheDocument();
+  });
+
+  it('filters by who is handling and shows SLA and handling in rows', () => {
+    const { rerender } = render(<TicketTable {...props} />);
+    fireEvent.change(screen.getByLabelText('Handled by'), { target: { value: 'handed_over' } });
+    expect(props.onHandling).toHaveBeenCalledWith('handed_over');
+    const late = {
+      ...tickets[0]!,
+      handling: 'handed_over' as const,
+      sla: { state: 'breached' as const, minutes: -30, raw: 'breached' },
+    };
+    rerender(<TicketTable {...props} tickets={[late]} handling="handed_over" />);
+    expect(document.querySelector('[data-handling="handed_over"]')).toHaveTextContent(
+      'Handed over',
+    );
+    expect(document.querySelector('[data-sla="breached"]')).toHaveTextContent('30m over');
   });
 
   it('says when the list is capped', () => {

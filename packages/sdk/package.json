@@ -1,0 +1,26 @@
+{
+  "name": "@tms/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Client for the TMS integration API: raise tickets, report incidents, verify webhooks and sign chat identities. No runtime dependencies.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@tms/shared": "workspace:*",
+    "@types/node": "^22.20.0",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

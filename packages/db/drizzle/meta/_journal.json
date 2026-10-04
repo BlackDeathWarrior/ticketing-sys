@@ -36,6 +36,202 @@
       "when": 1790755011828,
       "tag": "0004_outbox_notify",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790773271179,
+      "tag": "0005_settings_llm",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790775782635,
+      "tag": "0006_pgvector",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790775785447,
+      "tag": "0007_kb",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790778522700,
+      "tag": "0008_ai_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790783556912,
+      "tag": "0009_tools",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790786431088,
+      "tag": "0010_handover_routing_sla",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790834630161,
+      "tag": "0011_whatsapp",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790837144727,
+      "tag": "0012_channel_health",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790840131388,
+      "tag": "0013_custom_tools",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790841907386,
+      "tag": "0014_voice",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1790853424081,
+      "tag": "0015_customer_experience",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790857306383,
+      "tag": "0016_learning",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790861221183,
+      "tag": "0017_outbox_trace",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790874351904,
+      "tag": "0018_integrations",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790875375370,
+      "tag": "0019_integration_tickets",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790876178692,
+      "tag": "0020_incidents",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790877009392,
+      "tag": "0021_webhooks",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790979751270,
+      "tag": "0022_user_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790980401365,
+      "tag": "0023_closing_and_reasons",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790981186929,
+      "tag": "0024_guardrails",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790995765826,
+      "tag": "0025_team_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790996643481,
+      "tag": "0026_kb_connectors",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791037732328,
+      "tag": "0027_hesitant_tigra",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791059737549,
+      "tag": "0028_boring_marvex",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791085815020,
+      "tag": "0029_confused_dracula",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791087968348,
+      "tag": "0030_glossy_big_bertha",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791096592732,
+      "tag": "0031_zippy_silhouette",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791096958722,
+      "tag": "0032_wild_tarantula",
+      "breakpoints": true
     }
   ]
 }

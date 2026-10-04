@@ -14,6 +14,17 @@ export class ApiError extends Error {
   }
 }
 
+/** The reply's JSON. A proxy's error page (the API is restarting) becomes a plain message. */
+async function readBody(res: Response): Promise<unknown> {
+  const text = await res.text();
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: `The service isn't answering right now (${res.status}). Try again shortly.` };
+  }
+}
+
 let tokens: AuthTokens | null = readTokens();
 
 function readTokens(): AuthTokens | null {
@@ -62,7 +73,8 @@ async function refresh(): Promise<boolean> {
       body: JSON.stringify({ refreshToken: tokens!.refreshToken }),
     });
     if (!res.ok) {
-      saveTokens(null);
+      // Only a refused token ends the session; a busy or restarting API doesn't.
+      if (res.status === 401 || res.status === 403) saveTokens(null);
       return false;
     }
     saveTokens((await res.json()) as AuthTokens);
@@ -73,14 +85,66 @@ async function refresh(): Promise<boolean> {
   return refreshing;
 }
 
+/** A fresh access token for something that is not an API call (the live socket). False when signed out. */
+export function refreshSession(): Promise<boolean> {
+  return refresh();
+}
+
 export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
   let res = await raw(method, path, body);
   if (res.status === 401 && (await refresh())) res = await raw(method, path, body);
-  if (res.status === 401) window.dispatchEvent(new Event('orbit:logout'));
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : undefined;
-  if (!res.ok) throw new ApiError(res.status, data);
+  if (res.status === 401 && !tokens) window.dispatchEvent(new Event('orbit:logout'));
+  const data = await readBody(res);
+  if (!res.ok) throw new ApiError(res.status, data as ApiError['body']);
   return data as T;
+}
+
+/** POSTs multipart form data (file uploads) with the session's token. */
+export async function apiForm<T = unknown>(path: string, form: FormData): Promise<T> {
+  const send = () =>
+    fetch(`${BASE}${path}`, {
+      method: 'POST',
+      headers: tokens ? { authorization: `Bearer ${tokens.accessToken}` } : {},
+      body: form,
+    });
+  let res = await send();
+  if (res.status === 401 && (await refresh())) res = await send();
+  const data = await readBody(res);
+  if (!res.ok) throw new ApiError(res.status, data as ApiError['body']);
+  return data as T;
+}
+
+/** Opens an authenticated file (e.g. a KB document) in a new tab via a blob URL. */
+export async function openFile(apiPath: string): Promise<void> {
+  const path = apiPath.startsWith(BASE) ? apiPath.slice(BASE.length) : apiPath;
+  let res = await raw('GET', path);
+  if (res.status === 401 && (await refresh())) res = await raw('GET', path);
+  if (!res.ok)
+    throw new ApiError(res.status, { message: `Could not open the file (${res.status})` });
+  const url = URL.createObjectURL(await res.blob());
+  window.open(url, '_blank', 'noopener');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Downloads an authenticated file (e.g. a message attachment) under its own name. */
+/** A file behind the API, fetched with the agent's token (for players and downloads). */
+export async function fetchBlob(apiPath: string): Promise<Blob> {
+  let res = await raw('GET', apiPath);
+  if (res.status === 401 && (await refresh())) res = await raw('GET', apiPath);
+  if (!res.ok)
+    throw new ApiError(res.status, { message: `Could not download the file (${res.status})` });
+  return res.blob();
+}
+
+export async function downloadFile(apiPath: string, filename: string): Promise<void> {
+  const url = URL.createObjectURL(await fetchBlob(apiPath));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export async function login(email: string, password: string): Promise<CurrentUser> {
@@ -89,8 +153,8 @@ export async function login(email: string, password: string): Promise<CurrentUse
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new ApiError(res.status, data);
+  const data = await readBody(res);
+  if (!res.ok) throw new ApiError(res.status, data as ApiError['body']);
   saveTokens(data as AuthTokens);
   return api<CurrentUser>('GET', '/auth/me');
 }

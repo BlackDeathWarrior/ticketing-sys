@@ -1,0 +1,130 @@
+/* The key, shown once after it is created. */
+.keyBox {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--spacing-8);
+  align-items: center;
+  /* Takes its own row of the banner. */
+  flex: 1 1 100%;
+  padding: var(--spacing-12) var(--spacing-16);
+  border-radius: var(--radius-inputs);
+  box-shadow: var(--shadow-rim);
+}
+
+.keyValue {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-ui);
+  color: var(--color-lilac-white);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.scopes {
+  display: grid;
+  gap: var(--spacing-8);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.scopes legend {
+  margin-bottom: var(--spacing-8);
+  padding: 0;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.scopeKey {
+  margin-left: var(--spacing-8);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+/* Context an app sent with a ticket, in the ticket drawer. */
+.context {
+  display: grid;
+  gap: var(--spacing-8);
+  margin: 0;
+}
+
+.context > div {
+  display: grid;
+  grid-template-columns: minmax(96px, 30%) minmax(0, 1fr);
+  gap: var(--spacing-12);
+  font-size: var(--text-body-sm);
+}
+
+.context dt {
+  color: var(--color-fog);
+}
+
+.context dd {
+  margin: 0;
+  color: var(--color-lilac-white);
+  overflow-wrap: anywhere;
+}
+
+/* An incident ticket's episodes: the open one stands out, earlier ones recede. */
+.incidents {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 var(--spacing-12);
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-body-sm);
+  color: var(--color-fog);
+}
+
+.incidents [data-status='open'] {
+  color: var(--color-lilac-white);
+}
+
+/* Webhooks of an integration: one block per address, its log underneath. */
+.hooks {
+  display: grid;
+  gap: var(--spacing-16);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hooks > li {
+  padding-top: var(--spacing-16);
+  border-top: 1px solid var(--line-subtle);
+}
+
+.hookHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-12);
+}
+
+.hookHead > :first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.deliveries {
+  display: grid;
+  gap: var(--spacing-8);
+  margin-top: var(--spacing-12);
+}
+
+/* The embed snippet for a site. */
+.snippet {
+  margin: 0 0 var(--spacing-16);
+  padding: var(--spacing-12) var(--spacing-16);
+  border-radius: var(--radius-inputs);
+  box-shadow: var(--shadow-rim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-ui);
+  line-height: 1.6;
+  color: var(--color-ash);
+  overflow-x: auto;
+  white-space: pre;
+}

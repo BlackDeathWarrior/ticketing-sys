@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { TooManyRequestsException } from './rate-limit';
 
 interface PgLikeError {
   code?: string;
@@ -46,6 +47,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         typeof body === 'string'
           ? { statusCode: status, message: body }
           : { statusCode: status, ...body };
+      if (exception instanceof TooManyRequestsException) {
+        void reply.header('retry-after', String(exception.retryAfter));
+      }
       void reply.status(status).send({ ...payload, requestId: req.id });
       return;
     }

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { initials } from '../../data/adapters';
+import { canOpenSettings } from '../../features/settings/logic';
 import { views, type ViewId } from '../../data/views';
 import { useSession } from '../../lib/session';
 import { cx } from '../../lib/format';
@@ -17,17 +18,28 @@ interface SidebarProps {
   /** Ticket totals per view; undefined while loading. */
   counts: Partial<Record<ViewId, number>>;
   teams: Array<{ id: string; name: string; members: Array<{ id: string }> }>;
+  /** Approvals waiting for a decision; undefined when the user can't approve. */
+  pendingApprovals?: number;
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  admin: 'Administrator',
+  admin: 'Super admin',
   supervisor: 'Supervisor',
   team_lead: 'Team lead',
   agent: 'Agent',
 };
 
-export function Sidebar({ route, view, onSelectView, open, onClose, counts, teams }: SidebarProps) {
-  const { user, signOut } = useSession();
+export function Sidebar({
+  route,
+  view,
+  onSelectView,
+  open,
+  onClose,
+  counts,
+  teams,
+  pendingApprovals,
+}: SidebarProps) {
+  const { user, signOut, can } = useSession();
   const role = ROLE_LABELS[user.roles[0] ?? ''] ?? user.roles[0] ?? 'Agent';
 
   useEffect(() => {
@@ -37,7 +49,7 @@ export function Sidebar({ route, view, onSelectView, open, onClose, counts, team
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  const link = (target: Route, icon: IconName, label: string) => (
+  const link = (target: Route, icon: IconName, label: string, count?: number) => (
     <a
       href={hrefFor(target)}
       className={cx(styles.item, route === target && styles.active)}
@@ -46,6 +58,7 @@ export function Sidebar({ route, view, onSelectView, open, onClose, counts, team
     >
       <Icon name={icon} size={16} />
       <span className={styles.itemLabel}>{label}</span>
+      {count !== undefined && <span className={cx(styles.count, 'tabular')}>{count}</span>}
     </a>
   );
 
@@ -71,7 +84,14 @@ export function Sidebar({ route, view, onSelectView, open, onClose, counts, team
         </div>
 
         <nav className={styles.nav}>
-          <div className={styles.group}>{link('dashboard', 'grid', 'Overview')}</div>
+          <div className={styles.group}>
+            {link('dashboard', 'grid', 'Overview')}
+            {can('kb:read') && link('kb', 'book', 'Knowledge base')}
+            {pendingApprovals !== undefined &&
+              link('approvals', 'check', 'Approvals', pendingApprovals)}
+            {can('report:read') && link('reports', 'chart', 'Reports')}
+            {can('learning:manage') && link('learning', 'target', 'Learning')}
+          </div>
 
           <div className={styles.group}>
             <p className={styles.groupLabel}>Views</p>
@@ -111,6 +131,13 @@ export function Sidebar({ route, view, onSelectView, open, onClose, counts, team
               </span>
             ))}
           </div>
+
+          {canOpenSettings(can) && (
+            <div className={styles.group}>
+              <p className={styles.groupLabel}>Admin</p>
+              {link('settings', 'settings', 'Settings')}
+            </div>
+          )}
 
           <div className={styles.group}>
             <p className={styles.groupLabel}>Design system</p>

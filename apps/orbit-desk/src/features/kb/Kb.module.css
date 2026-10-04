@@ -1,0 +1,292 @@
+.page {
+  display: grid;
+  gap: var(--spacing-24);
+}
+
+.page > *,
+.stack > * {
+  min-width: 0;
+}
+
+.hero {
+  padding: var(--spacing-48) 0 var(--spacing-8);
+}
+
+.eyebrow {
+  font-size: var(--text-ui);
+  color: var(--color-fog);
+}
+
+.heading {
+  margin-top: var(--spacing-8);
+  font-family: var(--font-display);
+  font-size: var(--text-heading-sm);
+  line-height: var(--leading-heading-sm);
+  letter-spacing: var(--tracking-heading-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.lede {
+  margin-top: var(--spacing-12);
+  max-width: 720px;
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  color: var(--color-ash);
+}
+
+.stack {
+  display: grid;
+  gap: var(--spacing-16);
+}
+
+.searchRow {
+  display: flex;
+  gap: var(--spacing-8);
+  align-items: center;
+}
+
+.searchRow > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.hits {
+  display: grid;
+  gap: var(--spacing-12);
+  margin: var(--spacing-16) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hit {
+  display: grid;
+  gap: 6px;
+  padding: var(--spacing-12) var(--spacing-16);
+  border-radius: var(--radius-inputs);
+  background: rgba(3, 0, 20, 0.6);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+}
+
+.hitHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: var(--text-body-sm);
+}
+
+.hitTitle {
+  color: var(--color-lilac-white);
+  font-weight: var(--font-weight-medium);
+}
+
+.hitSection {
+  color: var(--color-ash);
+}
+
+.snippet {
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-ash);
+  overflow-wrap: anywhere;
+}
+
+.hitFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--color-lavender-accent);
+  cursor: pointer;
+}
+
+.muted {
+  color: var(--color-fog);
+}
+
+.note {
+  font-size: var(--text-ui);
+  color: var(--color-fog);
+}
+
+.error {
+  font-size: var(--text-ui);
+  color: var(--color-lilac-white);
+  padding: 10px 12px;
+  border-radius: var(--radius-inputs);
+  background: var(--accent-wash);
+}
+
+/* Documents table */
+.scroller {
+  position: relative;
+  overflow-x: auto;
+  margin: 0 calc(var(--spacing-24) * -1);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-body-sm);
+}
+
+.table th {
+  padding: 10px var(--spacing-12);
+  text-align: left;
+  font-size: var(--text-caption);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fog);
+  white-space: nowrap;
+  border-top: 1px solid var(--line-subtle);
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.table td {
+  padding: 12px var(--spacing-12);
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.table tr > :first-child {
+  padding-left: var(--spacing-24);
+}
+
+.table tr > :last-child {
+  padding-right: var(--spacing-24);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.docTitle {
+  color: var(--color-lilac-white);
+}
+
+.dim {
+  opacity: 0.5;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+/* Review status: glyph shape + label, never colour (DESIGN.md) */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.glyph {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.glyph-draft {
+  box-shadow: inset 0 0 0 1.5px var(--color-ash);
+}
+
+.glyph-approved {
+  background: var(--color-lilac-white);
+}
+
+.glyph-archived {
+  border: 1.5px dashed var(--color-steel);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--spacing-8);
+}
+
+/* Add-document dialog */
+.form {
+  display: grid;
+  gap: var(--spacing-16);
+}
+
+.formRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-12);
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-8);
+  padding-top: var(--spacing-8);
+}
+
+.dialogTitle {
+  font-family: var(--font-display);
+  font-size: var(--text-subheading);
+  line-height: var(--leading-subheading);
+  font-weight: var(--font-weight-medium);
+}
+
+.dialogLede {
+  margin-top: 4px;
+  font-size: var(--text-ui);
+  color: var(--color-fog);
+}
+
+.file {
+  font-size: var(--text-body-sm);
+  color: var(--color-ash);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-body-sm);
+  color: var(--color-ash);
+}
+
+.check input {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: var(--color-lavender-accent);
+}
+
+/* Compact variant used inside the ticket drawer */
+.panel {
+  padding: var(--spacing-20) var(--spacing-24) var(--spacing-24);
+  border-top: 1px solid var(--line-subtle);
+}
+
+.panelTitle {
+  margin-bottom: var(--spacing-12);
+  font-size: var(--text-ui);
+  color: var(--color-ash);
+}
+
+@media (max-width: 560px) {
+  .formRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .scroller {
+    margin: 0 calc(var(--spacing-20) * -1);
+  }
+  .searchRow {
+    flex-wrap: wrap;
+  }
+}

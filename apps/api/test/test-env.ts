@@ -5,15 +5,24 @@ export const testDatabaseUrl = () =>
 
 export const testRedisUrl = () => process.env.TEST_REDIS_URL ?? 'redis://localhost:6379/15';
 
+/** LiteLLM from compose; it reaches the fake LLM at TEST_FAKE_LLM_URL (a compose hostname). */
+export const testLitellmUrl = () => process.env.TEST_LITELLM_URL ?? 'http://localhost:4000';
+/** The sample MCP server as the API process (not LiteLLM) reaches it. */
+export const FAKE_MCP_URL = process.env.TEST_FAKE_MCP_URL ?? 'http://localhost:4010/mcp';
+export const FAKE_MCP_TOKEN = 'demo-store-token';
+
+export const FAKE_LLM_BASE_URL = `${process.env.TEST_FAKE_LLM_URL ?? 'http://fake-providers:4010'}/v1`;
+
 /** Environment for the app under test; applied before the app module is imported. */
 export function applyTestEnv() {
   Object.assign(process.env, {
     NODE_ENV: 'test',
-    LOG_LEVEL: 'silent',
+    LOG_LEVEL: process.env.TEST_LOG_LEVEL || 'silent',
     DATABASE_URL: testDatabaseUrl(),
     REDIS_URL: testRedisUrl(),
     JWT_SECRET: 'test-secret-that-is-definitely-long-enough-123',
-    LITELLM_URL: 'http://127.0.0.1:9',
+    LITELLM_URL: testLitellmUrl(),
+    LITELLM_MASTER_KEY: process.env.TEST_LITELLM_MASTER_KEY ?? 'sk-tms-dev-master-key',
     CORS_ORIGINS: 'http://localhost:5173',
     OUTBOX_POLL_MS: '200',
     S3_ENDPOINT: process.env.TEST_S3_ENDPOINT ?? 'http://localhost:9000',
@@ -21,6 +30,17 @@ export function applyTestEnv() {
     S3_SECRET_KEY: 'tms-dev-secret',
     S3_BUCKET: 'tms-test',
     EMAIL_ENABLED: 'false',
+    // Tests run the channel check themselves, so it never fires in the middle of one.
+    CHANNEL_CHECK_SECONDS: '0',
+    AI_AUTO_RESOLVE_SWEEP_SECONDS: '0',
+    RETENTION_SWEEP_HOURS: '0',
+    // Tests change a cap or switch a model off and expect the very next call to see it.
+    LLM_SNAPSHOT_MS: '0',
+    // No test sends a burst of messages; each waits for one turn and should not wait for the pause before it.
+    AI_SETTLE_MS: '0',
+    // Tests call public routes far faster than a person would; security.int.test.ts turns limits on.
+    RATE_LIMITS: 'off',
+    TOOL_PRIVATE_HOSTS: new URL(FAKE_MCP_URL).hostname,
   });
 }
 

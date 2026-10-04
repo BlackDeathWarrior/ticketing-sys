@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { ADMIN, env } from './env';
 
 export interface Tokens {
@@ -15,6 +16,20 @@ export interface TicketRow {
   channel: string;
   assignee: { id: string; name: string } | null;
   customer: { id: string; displayName: string };
+}
+
+/**
+ * A signed-in visitor's identity, as a site's server signs it for the chat
+ * widget (ADR 0026): the stack's dev secret unless CHAT_IDENTITY_SECRET is set.
+ */
+export function chatIdentity(visitor: { name: string; email: string }): string {
+  const secret =
+    process.env.CHAT_IDENTITY_SECRET ?? 'dev-only-chat-identity-secret-change-me-0123456789';
+  const part = (v: object) => Buffer.from(JSON.stringify(v)).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const claims = { name: visitor.name, email: visitor.email, iat: now, exp: now + 300 };
+  const signed = `${part({ alg: 'HS256', typ: 'JWT' })}.${part(claims)}`;
+  return `${signed}.${createHmac('sha256', secret).update(signed).digest('base64url')}`;
 }
 
 export async function login(email = ADMIN.email, password = ADMIN.password): Promise<Tokens> {

@@ -11,7 +11,7 @@ import type { ChannelSender, DeliveryItem } from './senders';
  */
 @Injectable()
 export class WebchatSender implements ChannelSender {
-  readonly channel = 'webchat';
+  readonly channels = ['webchat'];
 
   constructor(@Inject(EMITTER) private readonly emitter: Emitter) {}
 

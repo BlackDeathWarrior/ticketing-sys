@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import type { MessageEnvelope } from '@tms/shared';
+import { chatIdentitySecretKey, integrationExternalId, type MessageEnvelope } from '@tms/shared';
 import type { Env } from '../config/env';
 import { ENV } from '../infra/tokens';
+import { IntegrationsService } from '../integrations/integrations.service';
+import { SecretsService } from '../settings/secrets.service';
 
 /** A chat visitor's session, carried in a signed token the widget keeps. */
 export interface ChatSession {
@@ -13,6 +15,16 @@ export interface ChatSession {
   /** True when a host website vouched for the email/externalId via an identity token. */
   verified: boolean;
   externalId?: string;
+  /** The integration whose site the widget is on (ADR 0026); its chats are its own tickets. */
+  integrationId?: string;
+  integrationSlug?: string;
+}
+
+/** The handshake names an integration that does not exist or is switched off. */
+export class UnknownIntegrationError extends Error {
+  constructor() {
+    super('This chat is not set up correctly: unknown integration');
+  }
 }
 
 interface SessionClaims extends ChatSession {
@@ -30,23 +42,58 @@ export class ChatSessionService {
   constructor(
     private readonly jwt: JwtService,
     @Inject(ENV) private readonly env: Env,
+    private readonly integrations: IntegrationsService,
+    private readonly secrets: SecretsService,
   ) {}
 
-  /** Resumes a session from its token, or starts a new one from the handshake. */
+  /**
+   * Resumes a session from its token, or starts a new one from the handshake.
+   * A session keeps the integration it started with; a token from another
+   * integration's site starts a new session.
+   *
+   * A session is also resumed only by the person it belongs to. A browser
+   * keeps the session token after the site's user signs out, so the token
+   * alone proves nothing about who is there now:
+   * - a session a host site vouched for needs that site's identity token for
+   *   the same person again (an expired one will do: it was issued to them);
+   * - an anonymous session is not carried into a signed-in chat.
+   * Anything else starts a new session, with no history and no identity.
+   */
   async open(auth: {
     token?: string;
     identityToken?: string;
     name?: string;
     email?: string;
+    integration?: string;
   }): Promise<{ session: ChatSession; token: string }> {
+    const integration = auth.integration
+      ? await this.integrations.activeBySlug(auth.integration)
+      : null;
+    if (auth.integration && !integration) throw new UnknownIntegrationError();
+
+    const presented = auth.identityToken
+      ? await this.verifyIdentity(auth.identityToken, integration?.slug)
+      : null;
     if (auth.token) {
       const resumed = await this.verifySession(auth.token);
-      if (resumed) return { session: resumed, token: auth.token };
+      if (resumed && resumed.integrationId === integration?.id && sameVisitor(resumed, presented)) {
+        return { session: resumed, token: auth.token };
+      }
     }
-    const identity = auth.identityToken ? await this.verifyIdentity(auth.identityToken) : null;
-    const session: ChatSession = identity
-      ? { sid: randomUUID(), ...identity, verified: true }
-      : { sid: randomUUID(), name: auth.name, email: auth.email, verified: false };
+    // A new verified session needs a token that is still valid.
+    const identity = presented && !presented.expired ? presented : null;
+    const session: ChatSession = {
+      sid: randomUUID(),
+      ...(identity
+        ? {
+            externalId: identity.externalId,
+            email: identity.email,
+            name: identity.name,
+            verified: true,
+          }
+        : { name: auth.name, email: auth.email, verified: false }),
+      ...(integration ? { integrationId: integration.id, integrationSlug: integration.slug } : {}),
+    };
     return { session, token: await this.sign(session) };
   }
 
@@ -59,7 +106,13 @@ export class ChatSessionService {
     const session = { type: 'webchat_session' as const, value: s.sid, verified: true };
     if (s.verified && s.externalId) {
       return {
-        identity: { type: 'external_id', value: s.externalId },
+        identity: {
+          type: 'external_id',
+          // The same customer as the one the integration names through its API.
+          value: s.integrationSlug
+            ? integrationExternalId(s.integrationSlug, s.externalId)
+            : s.externalId,
+        },
         displayName: s.name,
         extraIdentities: [
           session,
@@ -71,7 +124,8 @@ export class ChatSessionService {
       return {
         identity: { type: 'email', value: s.email },
         displayName: s.name,
-        extraIdentities: [session],
+        // The host site vouched for the address.
+        extraIdentities: [session, { type: 'email', value: s.email, verified: true }],
       };
     }
     return {
@@ -105,28 +159,75 @@ export class ChatSessionService {
         email: c.email,
         verified: !!c.verified,
         externalId: c.externalId,
+        integrationId: c.integrationId,
+        integrationSlug: c.integrationSlug,
       };
     } catch {
       return null;
     }
   }
 
-  /** Identity tokens are HS256 JWTs signed by the host site with CHAT_IDENTITY_SECRET. */
-  private async verifyIdentity(token: string) {
-    if (!this.env.CHAT_IDENTITY_SECRET) {
-      this.logger.warn('identity token ignored: CHAT_IDENTITY_SECRET is not set');
+  /**
+   * Identity tokens are HS256 JWTs signed by the host site: with its
+   * integration's own secret when it has one, else with CHAT_IDENTITY_SECRET.
+   * A token that does not verify is ignored and the visitor stays anonymous.
+   * An expired token still says who it was issued to (`expired: true`): enough
+   * to resume that person's own session, not to start a new one as them.
+   */
+  private async verifyIdentity(
+    token: string,
+    integrationSlug?: string,
+  ): Promise<PresentedIdentity | null> {
+    const own = integrationSlug
+      ? await this.secrets.get(chatIdentitySecretKey(integrationSlug))
+      : null;
+    const secret = own ?? this.env.CHAT_IDENTITY_SECRET;
+    if (!secret) {
+      this.logger.warn('identity token ignored: no chat identity secret is set');
       return null;
     }
-    try {
+    const read = async (ignoreExpiration: boolean) => {
       const c = await this.jwt.verifyAsync<{ sub?: string; email?: string; name?: string }>(token, {
-        secret: this.env.CHAT_IDENTITY_SECRET,
+        secret,
         algorithms: ['HS256'],
+        ignoreExpiration,
       });
       if (!c.sub && !c.email) return null;
-      return { externalId: c.sub, email: c.email?.toLowerCase(), name: c.name };
+      return {
+        externalId: c.sub,
+        email: c.email?.toLowerCase(),
+        name: c.name,
+        expired: ignoreExpiration,
+      };
+    };
+    try {
+      return await read(false);
     } catch (err) {
+      if ((err as Error).name === 'TokenExpiredError') {
+        try {
+          return await read(true);
+        } catch {
+          return null;
+        }
+      }
       this.logger.warn(`invalid chat identity token: ${(err as Error).message}`);
       return null;
     }
   }
+}
+
+interface PresentedIdentity {
+  externalId?: string;
+  email?: string;
+  name?: string;
+  expired: boolean;
+}
+
+/** Whether the person presenting `identity` (or none) is the one the stored session belongs to. */
+function sameVisitor(session: ChatSession, identity: PresentedIdentity | null): boolean {
+  if (!session.verified) return identity === null;
+  if (!identity) return false;
+  return session.externalId || identity.externalId
+    ? session.externalId === identity.externalId
+    : !!session.email && session.email === identity.email;
 }

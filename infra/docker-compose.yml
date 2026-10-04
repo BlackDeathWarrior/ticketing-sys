@@ -8,9 +8,24 @@ x-app-env: &app-env
   REDIS_URL: redis://redis:6379
   LITELLM_URL: http://litellm:4000
   LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-tms-dev-master-key}
+  # Encrypts stored channel/tool secrets (ADR 0009). Dev default only; generate with
+  # `openssl rand -base64 32` for anything shared.
+  TMS_SECRETS_KEY: ${TMS_SECRETS_KEY:-ZGV2LW9ubHktdG1zLXNlY3JldHMta2V5LTMyYnl0ZXM=}
   # Dev default only. Set JWT_SECRET in the environment for anything shared.
   JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me-0123456789abcdef}
-  CORS_ORIGINS: http://localhost:8080,http://localhost:8081
+  # Dev default only: what a site signs a signed-in chat visitor's identity with. The sample
+  # data's two chats that use tools are signed with it. Set your own for anything shared.
+  CHAT_IDENTITY_SECRET: ${CHAT_IDENTITY_SECRET:-dev-only-chat-identity-secret-change-me-0123456789}
+  # Add the address of your own app's pages here when they call the API or show the chat.
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:8081}
+  # MCP servers may live on these compose hosts (the sample Demo Store server in fake-providers).
+  TOOL_PRIVATE_HOSTS: ${TOOL_PRIVATE_HOSTS:-fake-providers}
+  # Webhook receivers may run on the machine that runs Docker (a local app, the E2E tests).
+  # Everything else must be a public https address.
+  WEBHOOK_PRIVATE_HOSTS: ${WEBHOOK_PRIVATE_HOSTS:-host.docker.internal}
+  # Knowledge sources may be the stack's own object store; folder sources need KB_CONNECTOR_PATHS.
+  KB_CONNECTOR_PRIVATE_HOSTS: ${KB_CONNECTOR_PRIVATE_HOSTS:-objectstore}
+  KB_CONNECTOR_PATHS: ${KB_CONNECTOR_PATHS:-}
   API_DOCS: ${API_DOCS:-true}
   # Object storage (SeaweedFS S3 API)
   S3_ENDPOINT: http://objectstore:8333
@@ -27,6 +42,8 @@ x-app-env: &app-env
   EMAIL_IMAP_USER: ${EMAIL_IMAP_USER:-support@tms.local}
   EMAIL_IMAP_PASSWORD: ${EMAIL_IMAP_PASSWORD:-support}
   EMAIL_POLL_SECONDS: ${EMAIL_POLL_SECONDS:-30}
+  # Tracing is off unless this is set, e.g. http://otel-collector:4318 with --profile observability.
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
   EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-mailpit}
   EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-1025}
   EMAIL_SMTP_SECURE: ${EMAIL_SMTP_SECURE:-false}
@@ -120,6 +137,40 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # First start runs LiteLLM's own migrations, which takes a minute or two.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
+
+  # Scripted stand-ins for external providers (an OpenAI-compatible LLM for
+  # now), so the demo and the tests work with no real API keys. LiteLLM
+  # reaches it at http://fake-providers:4010/v1.
+  fake-providers:
+    profiles: ['app', 'fake']
+    build: { context: .., dockerfile: Dockerfile, target: fake-providers }
+    ports:
+      - '4010:4010'
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4010/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   # ---- TMS application (profile "app": `pnpm docker:up`) ----
 
@@ -144,6 +195,9 @@ services:
     profiles: ['app']
     build: { <<: *build, target: api }
     environment: *app-env
+    # Docker Desktop provides this name; on Linux it has to be mapped.
+    extra_hosts: &host-gateway
+      - 'host.docker.internal:host-gateway'
     ports:
       - '3000:3000'
     restart: unless-stopped
@@ -157,6 +211,7 @@ services:
     profiles: ['app']
     build: { <<: *build, target: worker }
     environment: *app-env
+    extra_hosts: *host-gateway
     restart: unless-stopped
     depends_on:
       <<: *app-deps

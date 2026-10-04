@@ -23,6 +23,7 @@ Status: accepted (2026-09-30)
 ## Consequences
 
 - A new channel (WhatsApp in Phase 8, voice later) is an adapter plus a sender; ticket logic doesn't change.
+- Since the AI answers customers, a new channel is also one block in `apps/api/src/channels/channel-traits.ts`: what the AI and the automatic notices do there. It does not compile until the block is written.
 - Delivery status is visible per message, and failures are auditable.
 - The mailbox is read by one worker at a time (Redis lock), so scaling workers doesn't duplicate intake.
 - Dev mail uses GreenMail as the support mailbox (IMAP) and Mailpit to view outgoing replies. Production points `EMAIL_*` at the real mailbox; Microsoft Graph / Gmail API adapters can replace IMAP later without touching the pipeline.

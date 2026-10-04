@@ -19,18 +19,45 @@ export class RealtimeFanoutHandler implements DomainEventHandler {
 
   handles(type: DomainEventType): boolean {
     return (
-      type.startsWith('ticket.') || type.startsWith('message.') || type.startsWith('conversation.')
+      type.startsWith('ticket.') ||
+      type.startsWith('message.') ||
+      type.startsWith('conversation.') ||
+      type.startsWith('kb.') ||
+      type.startsWith('ai.') ||
+      type.startsWith('approval.') ||
+      type.startsWith('handover.') ||
+      type.startsWith('sla.') ||
+      type.startsWith('voice.') ||
+      type === 'csat.submitted' ||
+      type.startsWith('learning.') ||
+      type === 'ticket.routed' ||
+      type === 'presence.changed' ||
+      type === 'notification.created' ||
+      type === 'tool.called'
     );
   }
 
   async handle(event: DomainEvent): Promise<void> {
-    const p = event.payload as { conversationId?: string; messageId?: string };
+    const p = event.payload as {
+      conversationId?: string;
+      messageId?: string;
+      documentId?: string;
+      ticketId?: string;
+    };
     const payload: AgentEvent = {
       type: event.type,
-      ticketId: event.aggregateType === 'ticket' ? event.aggregateId : undefined,
+      // Approval events are about an approval; their payload names the ticket.
+      ticketId: event.aggregateType === 'ticket' ? event.aggregateId : p.ticketId,
       conversationId: p.conversationId,
       messageId: p.messageId,
+      documentId: event.aggregateType === 'kb' ? (p.documentId ?? undefined) : undefined,
     };
+    // A notification is for one person only.
+    if (event.type === 'notification.created') {
+      const userId = (event.payload as { userId?: string }).userId;
+      if (userId) this.emitter.of(AGENT_NAMESPACE).to(`user:${userId}`).emit('event', payload);
+      return;
+    }
     this.emitter.of(AGENT_NAMESPACE).to(AGENTS_ROOM).emit('event', payload);
   }
 }

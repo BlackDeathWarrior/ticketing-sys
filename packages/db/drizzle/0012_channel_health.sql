@@ -1,0 +1,1 @@
+CREATE INDEX "messages_channel_created_idx" ON "messages" USING btree ("channel","created_at");

@@ -1,0 +1,122 @@
+/* AI work is told apart by shape, label and opacity, never by colour (DESIGN.md). */
+
+.byAi {
+  opacity: 0.72;
+}
+
+.byAi:hover,
+.byAi:focus-within {
+  opacity: 1;
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 20px;
+  border-radius: var(--radius-badges);
+  font-size: 11px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-lilac-white);
+  box-shadow:
+    inset 0 0 0 1px var(--color-iris),
+    var(--shadow-md);
+}
+
+.meta {
+  margin-top: 6px;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+/* A draft needs a person, so it is not dimmed and carries the attention accent. */
+.draft {
+  margin-top: var(--spacing-8);
+  padding: var(--spacing-12);
+  border-radius: var(--radius-buttons);
+  background: var(--accent-wash);
+  box-shadow: inset 2px 0 0 var(--color-lavender-accent);
+}
+
+.draftLabel {
+  font-size: var(--text-caption);
+  color: var(--color-lilac-white);
+}
+
+.draftActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+  margin-top: var(--spacing-8);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--spacing-24) var(--spacing-16);
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.panel {
+  padding: var(--spacing-16) var(--spacing-24) var(--spacing-24);
+  border-top: 1px solid var(--line-subtle);
+}
+
+.summary {
+  cursor: pointer;
+  font-size: var(--text-ui);
+  color: var(--color-ash);
+}
+
+.runs {
+  display: grid;
+  gap: var(--spacing-8);
+  margin: var(--spacing-12) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run {
+  display: grid;
+  gap: 2px;
+  font-size: var(--text-caption);
+  color: var(--color-fog);
+}
+
+.runHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-ui);
+  color: var(--color-ash);
+}
+
+/* Decision glyphs: filled = sent, ring = drafted, dashed ring = handed over. */
+.glyph {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.glyph-sent {
+  background: var(--color-lilac-white);
+}
+
+.glyph-drafted {
+  box-shadow: inset 0 0 0 1.5px var(--color-ash);
+}
+
+.glyph-handover,
+.glyph-error {
+  border: 1.5px dashed var(--color-lavender-accent);
+}
+
+.glyph-skipped {
+  box-shadow: inset 0 0 0 1.5px var(--color-steel);
+}

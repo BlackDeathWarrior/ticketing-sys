@@ -1,0 +1,31 @@
+# ADR 0036: An AI helper for the tool forms
+
+Status: accepted (2026-10-04).
+
+## Context
+
+Custom tools (ADR 0017) and MCP servers (ADR 0013) are added through forms that ask for a method, an address with placeholders, typed parameters, a risk tier and the parameter that carries the customer's email. A person who knows what the tool should do, but not what those words mean, cannot fill them in. The user asked for a small AI helper beside the forms: the person describes what they want and the AI does the form for them.
+
+## Decision
+
+- **The helper fills in the form; the person saves it.** `AiToolHelperService` (`apps/api/src/ai/ai-tool-helper.service.ts`) takes what the person wrote, the form as it stands, and answers with the fields it could fill in, a short message and a list of what is still needed. It stores nothing and creates nothing. Saving goes through the existing routes, with their checks: the address check on every save, the cross-field rules of `createCustomToolSchema`, the permissions.
+- **It never switches a tool on.** The draft has no `enabled` field. A new tool starts switched off, as before.
+- **It never takes a key.** The prompt forbids putting a key in the answer and tells the person not to paste one; a message that carries something shaped like a key is replaced (`leaksInternals`). Keys are saved after the tool exists, by someone with `settings:secrets` (ADR 0009).
+- **It never invents an address.** The prompt tells the model to leave the address out and ask for it. The questions in `missing` are written for a person who will pass them on to whoever runs the system.
+- **The model's answer is data.** It is parsed with `customToolDraftSchema` or `mcpServerDraftSchema` (`packages/shared/src/tool-helper.ts`): a field that does not fit is left out, never passed to the form. A suggested name that is already taken is removed and asked for again.
+- **Two routes, the forms' own permissions.** `POST /ai/tool-helper/custom-tool` needs `tool:create`; `POST /ai/tool-helper/mcp-server` needs `tool:manage`. So the helper is offered exactly to the people who may save the form.
+- **The `copilot` role.** The helper assists staff, like the reply suggestion, so it uses the same model role and needs no new model setting. Prompt version `tool-helper-v1`. Calls are in `llm_calls` like every model call; there is no `ai_runs` row, because nothing happens to a ticket.
+- **In Orbit Desk** the helper is one component, `ToolHelper`, shown at the top of the custom tool dialog (new and edit) and above the "Add an MCP server" form. It keeps the exchange for the open form only; a second description changes the form instead of starting again.
+
+- **The helper finds out what it can instead of asking** (prompt `tool-helper-v2`, after the user's first try: it had asked a non-technical person for an address, a parameter name and a header). `knownSystems` (`apps/api/src/tools/tool-discovery.ts`) reads the hosts the custom tools already call and what their tools share: the folder their requests live in, the key header, the parameter that carries the customer's email. `ToolsService.catalogue` then asks each system what it can do: an OpenAPI 3 document at `<that folder>/openapi.json` or `<origin>/openapi.json`, read with the key the desk already holds, address-checked like every call, redirects refused. The model gets both and is told to copy an operation's address and parameters exactly, to use the system's conventions, and to ask only for what neither the person nor the systems tell it. When a system lists operations and none fits, it must say that the system cannot do this yet and give one sentence to forward to its developers: it never makes an address up.
+- **A new tool can use the key the desk already has for its system.** The helper's answer names a tool on the same host whose key is saved (`keyFrom`, chosen by the desk from the address, never by the model). Saving with `keyFromToolId` copies that key on the server, for an address on the same host only, and the audit entry says which tool it came from. So someone who may not handle keys (`settings:secrets`) can add a tool to a system the desk already talks to; a key still never reaches a new host without a person who may handle keys.
+- **A taken name is replaced, not asked about.** The person did not choose the name; `_2`, `_3`, … is tried.
+- **"Check connection" changes nothing.** `ToolsService.checkCustom` asks whether the address in the form answers, saved or not: a lookup (GET) is sent with "test" in place of each value, and for anything else the system is only asked whether the address is there (OPTIONS). `checkServer` connects to an MCP server and counts the tools it lists, storing nothing. Both check the address like a save does, refuse redirects, and send a saved key only to the host it was saved for. The answer is a plain sentence plus the technical detail.
+- **"Diagnose with AI" explains a failed check and saves it as a bug.** `AiToolHelperService.diagnose` gives the model what was tried and what came back, and asks for a likely cause and a few steps in plain words. The failure is then saved as a ticket through `InboundService.handle()`: channel `agent`, tag `tool-bug`, `metadata.kind = 'tool_problem'`, AI off, never classified, the sender a built-in "Tool checks (automatic reports)" customer. The address is the thread, so another failed try joins the same ticket while it is open. With no model available the check's own words stand in and the ticket is still made. A routing rule on the tag sends these tickets to whoever looks after integrations.
+
+## Consequences
+
+- With no model for the `copilot` role the helper answers that it is not available, and the forms work as before.
+- What the person writes goes to the model provider. The panel says not to paste keys or passwords.
+- The helper can be wrong about the risk tier or the customer parameter. The form shows both, and the prompt tells the model to choose the more careful tier when in doubt; the person who saves is responsible, as with a form filled in by hand.
+- The work shipped compile-only, with no tests and no golden, by the user's standing decision. Treat it as untested until it has been tried by hand.

@@ -6,10 +6,36 @@ export const createTeamSchema = z.object({
   description: z.string().trim().max(500).optional(),
 });
 
+/**
+ * Any of the fields; `memberIds` replaces the whole member list and
+ * `adminIds` says which of them are the team's admins (ADR 0031). A team's
+ * own admins may change those two; renaming needs `team:manage`.
+ */
+export const updateTeamSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    description: z.string().trim().max(500).nullable(),
+    memberIds: z.array(z.string().uuid()).max(500),
+    adminIds: z.array(z.string().uuid()).max(100),
+  })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, { message: 'Provide at least one field to update' });
+export type UpdateTeamInput = z.infer<typeof updateTeamSchema>;
+
 export const createCategorySchema = z.object({
   name: z.string().trim().min(1).max(100),
   parentId: z.string().uuid().optional(),
 });
+
+/** Rename a category, or switch it off: it stays on old tickets but can't be chosen. */
+export const updateCategorySchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    isActive: z.boolean(),
+  })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, { message: 'Provide at least one field to update' });
+export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 
 export const upsertStatusSchema = z.object({
   key: z
@@ -33,6 +59,8 @@ export const auditQuerySchema = z.object({
   targetType: z.string().optional(),
   targetId: z.string().optional(),
   actorId: z.string().uuid().optional(),
+  /** user | ai | system | customer: separate what the AI did from what people did. */
+  actorType: z.enum(['user', 'ai', 'system', 'customer']).optional(),
   action: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
   before: z.coerce.number().int().positive().optional(),

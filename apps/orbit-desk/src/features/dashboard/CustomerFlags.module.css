@@ -1,0 +1,32 @@
+.flags {
+  display: grid;
+  gap: var(--spacing-8);
+  margin-top: var(--spacing-12);
+}
+
+.flag {
+  display: grid;
+  gap: var(--spacing-8);
+  padding: var(--spacing-12);
+  border-radius: var(--radius-inputs);
+  background: var(--accent-wash);
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-ui);
+  color: var(--color-lilac-white);
+}
+
+.clear {
+  display: grid;
+  gap: var(--spacing-8);
+}
+
+.buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-8);
+}

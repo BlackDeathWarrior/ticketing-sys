@@ -4,10 +4,10 @@
 
 **Theme:** dark
 
-> **Repo note:** This is the style reference the Orbit Desk frontend (`frontend/`) is built from. The tokens live in
-> `frontend/src/styles/tokens.css`. The three multi-kilobyte star-field `box-shadow` literals (`--shadow-subtle`,
+> **Repo note:** This is the style reference the Orbit Desk frontend (`apps/orbit-desk/`) is built from. The tokens live in
+> `apps/orbit-desk/src/styles/tokens.css`. The three multi-kilobyte star-field `box-shadow` literals (`--shadow-subtle`,
 > `--shadow-subtle-2`, `--shadow-subtle-3`) from the original export are left out here. The `StarField` component
-> (`frontend/src/components/ui/StarField.tsx`) generates the same effect from a seeded PRNG.
+> (`apps/orbit-desk/src/components/ui/StarField.tsx`) generates the same effect from a seeded PRNG.
 > Fonts: AeonikPro is substituted with **DM Sans 500** and Inter V with **Inter (variable)**, both self-hosted via `@fontsource`.
 
 Source measurements are normalized; roles and recommendations are interpreted. Font summary lists are independent, not paired by position. HTML examples are reconstructions, not source components.
@@ -170,8 +170,17 @@ Thin horizontal or vertical line using the Aurora gradient — transparent at en
 - Do not add the brand accent color to large fills, backgrounds, or hero sections — it dilutes the monochromatic quiet
 - Do not use border-radius values other than the defined set (5/16/32/999px) — do not default to 8px or 12px for buttons or 24px for cards
 - Do not use pure white #ffffff for body text — always use the lavender-tinted #f4f0ff to maintain color harmony with the violet canvas
-- Do not introduce semantic colors (red/green/yellow) for status — the system is intentionally achromatic, if states are needed use opacity changes and the lavender accent
+- Do not introduce semantic colors (red/green/yellow) for status — the system is intentionally achromatic, if states are needed use opacity changes and the lavender accent. The one exception is connection lights (below)
 - Do not use multiple accent hues — the single lavender #9382ff is the only chromatic voice; introducing a second accent breaks the constellation metaphor
+
+### Connection lights (exception, 2026-10-01)
+
+The product owner asked for a green light when a channel is connected and working. Connection health is the one place semantic colour is allowed (ADR 0016):
+
+- Only the `StatusLight` component uses it, with the tokens `--signal-ok` (green), `--signal-warn` (amber), `--signal-down` (red) and `--signal-off` (grey).
+- A light is a 10px dot. Colour never fills a card, a button or text.
+- Every light has a text label ("Working", "Needs attention", "Not working", "Off"), so colour is never the only signal.
+- Ticket status, priority and SLA stay achromatic.
 
 ## Surfaces
 

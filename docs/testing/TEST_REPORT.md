@@ -1,10 +1,1210 @@
-# Test report: consolidated main, live run on sample data
+# Test report
+
+## 4 October 2026: the suite brought up to date, measured and trimmed
+
+Run on 4 October 2026 on branch `release/template`, locally in Docker (`bash scripts/check-in-docker.sh`, and Playwright against a freshly reset stack loaded with `pnpm sample:load`) and in CI on the pull request.
+
+**Result: every step of the gate passes.** Phases 14c to 14z had been built without running the suite, so this run started red. The tests were repaired, tests were added for the paths that had none, and the suite was then measured and trimmed.
+
+| Step                                              | Result                                                                                     |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                                       |
+| `pnpm test`                                       | 502 passed (api 286, Orbit Desk 113, shared 47, fake providers 35, SDK 11, help center 10) |
+| `pnpm test:int`                                   | 318 passed (28 files) in 134 s                                                             |
+| `pnpm e2e`                                        | 95 passed in 3.7 min; 9 screenshot-only specs skipped as designed                          |
+| `pnpm audit --prod`, `pnpm audit`                 | pass in CI                                                                                 |
+| `pnpm kb:eval`, `pnpm ai:eval`                    | not run: they need a model key                                                             |
+
+### What was out of date
+
+49 tests still described the product as it was before phase 14c: 8 unit, 28 integration and 13 browser tests. The rules they had missed:
+
+- a request for a person gets one offer of help before a handover;
+- an approval decision needs a reason written for the customer, and belongs to the tool's approving team or the ticket's team;
+- company tools act only for a visitor the site vouches for, never for a typed email;
+- an attempt to get the AI's instructions ends the conversation before any model is asked;
+- Settings is open to everyone (their own settings, the teams), and teams have their own tab;
+- the AI resolves a ticket after the channel's own quiet time (10 minutes on web chat and WhatsApp, 30 on email);
+- a conversation opens with a welcome that names the company.
+
+The sample data loader had the same problem: its two chats that use the order tools came from a visitor who had only typed an email. They now come from a signed-in visitor, signed with the stack's `CHAT_IDENTITY_SECRET`.
+
+### New tests
+
+| File                                                                  | Tests | What they cover                                                                                                                                                 |
+| --------------------------------------------------------------------- | ----: | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared/src/auth.test.ts`                                    |    10 | Who may act on a team's ticket, decide an approval and manage a team's members (ADR 0031)                                                                       |
+| `packages/shared/src/closing.test.ts`                                 |     4 | The quiet time per channel: the channel's default, an admin's value, the general setting, 0 for never                                                           |
+| `apps/api/src/tools/tool-discovery.test.ts`                           |    10 | Systems grouped by host; a saved key offered only for its own host; a system's OpenAPI document read into tool drafts                                           |
+| `apps/api/src/channels/ai-answering.test.ts`                          |     6 | The one rule for "the assistant is answering"                                                                                                                   |
+| `apps/api/src/channels/phone/elevenlabs/elevenlabs-signature.test.ts` |    11 | The signature on an ElevenLabs call event: tampered body, wrong secret, a request sent again after half an hour, malformed headers                              |
+| `apps/api/src/channels/phone/phone-access.test.ts`                    |     7 | The address list for Sarvam's hooks; calling hours at their boundaries                                                                                          |
+| `apps/api/test/whatsapp.int.test.ts` (phone codes)                    |     7 | The scope; no code without a template or an open window; the code works once; five wrong tries; one code a minute; ten minutes; one app's code is not another's |
+| `apps/api/test/phone.int.test.ts`                                     |     4 | The phone hooks are 404 while off, 401 without the saved token, and refuse a staff token; an unsigned ElevenLabs event is refused                               |
+| `apps/api/test/team-access.int.test.ts`                               |     3 | On the real routes: another team's member is refused, reading and notes stay open, a super admin and a ticket with no team are open                             |
+| `apps/api/test/integration-customers.int.test.ts`                     |     4 | An app links a phone number to its customer and looks it up by email; the scope; a number moves to the customer it was linked to last                           |
+
+### Bugs found and fixed
+
+1. **An answer from the answer cache skipped the hold-back for badly rated documents.** A cached answer was judged without the sources it had first been given on, so "customers rated answers from this document badly: a person sees it first" (ADR 0020) did not reach it for as long as the cache kept it. It had been masked by the 1.2 second wait before an AI turn, during which the ticket usually got a category that held the answer back. The cached answer's own sources are now checked.
+2. **Settings, Channels scrolled sideways on a phone.** The hook addresses on the Sarvam phone card did not wrap at 390 px. Two browser tests failed for it.
+3. **The README said supervisors approve and that 72 hours of silence resolves a ticket.** Both had changed with ADR 0031 and the per-channel quiet times.
+
+### Measured and trimmed
+
+The suite was timed on a quiet machine, every test file was read for what it would catch, and the waste was cut.
+
+| Suite       | Before               | After                | What changed                                                                                                                                     |
+| ----------- | -------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Unit        | 501 tests, about 7 s | 502 tests, about 7 s | Already lean                                                                                                                                     |
+| Integration | 318 tests, 219 s     | 318 tests, 134 s     | No test removed: the 1.2 s wait before an AI turn is a setting (`AI_SETTLE_MS`, 0 in tests); 13 fixed sleeps wait for the work to finish instead |
+| Browser     | 104 tests, 260 s     | 95 tests, 222 s      | Nine tests another test already makes are gone (four never opened a page)                                                                        |
+
+Two settings exist for the tests' sake and keep their defaults in production: `LLM_SNAPSHOT_MS` (how old the model routing settings a call uses may be, 3000) and `AI_SETTLE_MS` (1200).
+
+About 14 tests could not fail, or did not check what their title said: the chunker's overlap, a copilot suggestion "without storing anything", "leads told" after an escalation, events relayed "in order", a jailbreak attempt stopped "before any model sees it", and two golden conversations that were answered from the answer cache and never reached the model. Each now has an assertion that goes red when the code is broken.
+
+### Known limits
+
+- Not done from the trimming plan: moving shared setup into `beforeAll` in the SLA, tools, settings and handover integration files (they pass only in file order); the fixed sleeps in the voice unit tests; one phone-width browser test per page instead of one table; one "what each role sees" browser test.
+- The browser tests sign in through the API once per test; a stored session per role would save an estimated 20 to 40 seconds.
+- WhatsApp, Sarvam and ElevenLabs are tested up to their HTTP boundary, never against the real services.
+
+## Phase 11: hardening
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-11-hardening`.
+
+**Result: every step of the gate passed.** The first full run had one failure, a real bug (number 5 below); it was fixed, the stack was reset again and everything was rerun. The figures are from the last run, after the chat fix (number 8).
+
+| Step                                              | Result                                                                            |
+| ------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                              |
+| `pnpm test`                                       | 340 passed (api 178, Orbit Desk 97, shared 34, fake providers 21, help center 10) |
+| `pnpm test:int`                                   | 220 passed (20 files)                                                             |
+| `pnpm e2e`                                        | 97 passed; 9 screenshot-only specs skipped as designed                            |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                        |
+| `pnpm ai:eval`                                    | 14 of 14 golden conversations passed (4 of them red-team)                         |
+| `pnpm audit --prod`                               | no known vulnerabilities                                                          |
+| `pnpm audit` (with tooling)                       | 3 moderate, in development tools only (accepted, ADR 0021)                        |
+
+### What was and wasn't tested
+
+- **Tested:** rate limits and the sign-in lockout through the real routes and sockets with Redis; that a made-up `X-Forwarded-For` doesn't change who is counted; retention against rows of every kind, old and new; a job that really fails, shown, retried and removed; the output guard with a model scripted to give in; one trace followed by hand from the API through the worker to the model call, in the collector's log.
+- **Not tested:** the limits under real load (no load test); the red-team conversations against a real model (needs keys: `pnpm ai:eval`); traces arriving in a real tracing backend; the trust rule behind a proxy on a public address (the demo's proxies are on a private network).
+
+### New tests
+
+| Where                                          | Tests | Covers                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------------- | ----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/common/client-address.test.ts`   |     5 | Which addresses count as our own proxies; the caller's address with no proxy, one, two; a header the caller wrote themselves; nonsense                                                                                                                                                            |
+| `apps/api/src/telemetry/tracing.test.ts`       |     6 | Off: nothing happens. On: a span is active across awaits, nests, continues a trace handed over from another process, records a failure                                                                                                                                                            |
+| `apps/api/src/ai/ai.test.ts`                   |    +1 | A reply that repeats the AI's instructions is never sent                                                                                                                                                                                                                                          |
+| `apps/fake-providers/src/agent-script.test.ts` |    +1 | The scripted model gives in when asked for its instructions (so the guard is what the other tests exercise)                                                                                                                                                                                       |
+| `apps/orbit-desk/.../admin/logic.test.ts`      |    +1 | What a retention run deleted, in words                                                                                                                                                                                                                                                            |
+| `apps/api/test/security.int.test.ts`           |    13 | See below                                                                                                                                                                                                                                                                                         |
+| `apps/api/test/ai.int.test.ts`                 |    +6 | The four red-team goldens, a leaked prompt dropped end to end, and a poisoned knowledge base article that tells the AI to promise refunds                                                                                                                                                         |
+| `apps/api/test/kb.int.test.ts`                 |    +1 | Two indexing jobs for one document overlap and it still ends up indexed once (fails without the fix)                                                                                                                                                                                              |
+| `apps/api/test/evals/redteam.yaml`             |     4 | Asked for its instructions; a fake system message in a customer message; another customer's details; posing as staff to get money                                                                                                                                                                 |
+| `apps/api/test/ai.int.test.ts` (chat fix)      |    +3 | A draft on chat tells the visitor once that a person will reply, is not a first response, and the draft stays last in the timeline; a greeting is answered; a message with no question is asked for one and the real question is then answered by the AI alone; email senders get no such message |
+| `apps/fake-providers/src/agent-script.test.ts` |    +2 | Greetings, and messages with nothing to look up                                                                                                                                                                                                                                                   |
+| `e2e/tests/system.spec.ts`                     |     6 | See below                                                                                                                                                                                                                                                                                         |
+
+`security.int.test.ts` (rate limits switched on for this file only):
+
+- **Lockout:** ten wrong passwords lock that account for that address, also for the right password, with `Retry-After`; another account still signs in; the lock is audited; a successful sign-in clears earlier mistakes; an address with no account gets the same answers.
+- **Public routes:** the 61st call to the rating page in a minute gets 429 with `Retry-After` and a sentence; the request form and portal sign-in count separately; signed-in work is not limited.
+- **Who is counted:** straight from the internet, a different made-up `X-Forwarded-For` on every call changes nothing; through our proxy each customer has their own count, and what they wrote in front of the proxy's entry is ignored.
+- **Chat:** the 61st new chat from one address in a minute is refused, another address is not; messages are counted per address across all its chats.
+- **Headers:** helmet's headers are on API responses.
+- **Retention:** admins only; defaults and limits; a run deletes the old model call, notification, delivered event and sign-in link, keeps the new ones and an old event that was never delivered, and is on record with what it deleted.
+- **Failed jobs:** listed with the reason and identifiers, never the content (a card number in the job's data is not in the answer or the audit entry); retry and remove work, are audited, and are refused to agents.
+
+`system.spec.ts`: an admin sees a job that failed, retries it (it fails again) and removes it; changes a retention period, reloads, runs the clean-up and sees the last run; a supervisor has no System tab and is refused by the API; the page on a phone; ten wrong passwords and the sign-in page says to wait, while others still sign in; the security headers.
+
+### Bugs found and fixed
+
+1. **Rate limits could be dodged with a made-up `X-Forwarded-For`.** The API believed the header from anyone. It now believes it only from proxies on a private network.
+2. **The chat's message limit reset on reconnect.** It was per connection. New chats and messages are now also counted per address.
+3. **All voice callers behind the proxy shared one allowance**, because the limit counted the proxy's address.
+4. **After the API container was recreated, nginx answered 502 until it was restarted** (it kept the old address), and Orbit Desk showed a JSON parse error on sign-in. nginx now looks the address up again, and Orbit Desk shows a plain sentence when a proxy answers instead of the API.
+5. **A document could be indexed twice.** A new version and a "re-index everything" job reaching one document at the same moment each deleted the old chunks and inserted their own, so search returned every passage twice. It showed up as one integration test failing once. The swap now locks the document first.
+6. **Retrying or removing a failed job left no audit entry.** Both are recorded now.
+7. **Known vulnerabilities in dependencies** (9 high in what we ship: Fastify, nodemailer, OpenTelemetry's Jaeger propagator). Upgraded; `pnpm audit` now runs in CI.
+
+8. **A chat visitor whose question the AI was unsure about saw nothing at all.** The answer became a draft for an agent, and nobody told the visitor. Found by the product owner typing "hi" into the help center chat. On chat and WhatsApp the visitor now gets one automatic line saying a member of the team will reply; it is not counted as a first response. The scripted demo model also greets back and asks what the visitor needs when a message holds no question, instead of drafting an unrelated passage.
+9. **Two messages written in one transaction had the same timestamp**, so their order in the timeline was random (it showed as one integration test failing once). Messages are now stamped with the clock at the moment they are written.
+
+### Known limits
+
+- The scripted demo model is not a language model: it answers on its own only when the question's words match a knowledge base passage, from the passage that shares most words with the question. That can still be the wrong passage: with the sample data, "Can I return an item after 20 days?" gets the refund-timing passage. Free conversation and reliable answers need a real provider key in Settings.
+- Limits are per network address: an office behind one address shares them.
+- The failed-jobs view shows the 25 most recent per queue and has no alert; someone has to look.
+- Retention deletes logs, not customer data: erasing a customer on request is not built.
+- The demo collector only prints spans; there is no trace viewer, metrics or dashboards.
+- SSO and MFA come after the demo.
+
+### Screenshots
+
+Settings → System, with one failed job:
+
+![System settings](screenshots/orbit-system-jobs.png)
+
+After a retention run:
+
+![Retention](screenshots/orbit-system-retention.png)
+
+On a phone:
+
+![System settings on a phone](screenshots/orbit-system-phone.png)
+
+Sign-in after ten wrong passwords:
+
+![Sign-in locked](screenshots/orbit-sign-in-locked.png)
+
+---
+
+## Phase 10b: learning from ratings
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-10b-learning-loop`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                            |
+| ------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                              |
+| `pnpm test`                                       | 323 passed (api 166, Orbit Desk 96, shared 34, fake providers 17, help center 10) |
+| `pnpm test:int`                                   | 197 passed (19 files)                                                             |
+| `pnpm e2e`                                        | 91 passed; 9 screenshot-only specs skipped as designed                            |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                        |
+| `pnpm ai:eval`                                    | 10 of 10 golden conversations passed                                              |
+
+### What was and wasn't tested
+
+- **Tested:** the whole loop with the scripted model: ratings become feedback, three bad ratings make the AI draft instead of send, a reviewer writes a lesson and the AI's next answer follows it, a well-rated human answer becomes a knowledge base draft, and the switch turns it all off.
+- **Not tested:** how well a real model follows a free-form lesson. The scripted model follows lessons only in the form "When customers ask about X, tell them: Y". With real keys, `pnpm ai:eval` runs the new golden conversation against the configured model.
+
+### Sample data
+
+- One of the three AI-resolved chats is now rated 2 with a comment: it waits under Learning → To review.
+- The chat Jonah took over is resolved and rated 5 by the visitor: it is offered as knowledge the AI could have had.
+- One lesson, written by the supervisor, about gift card refunds.
+- Nothing is "rated badly" in the sample data: that needs three low ratings on one topic or document, and would change the sample AI answers other tests rely on. The runbook shows how to trigger it.
+
+### New tests
+
+| Where                                          |    Tests | Covers                                                                                                                                                                                |
+| ---------------------------------------------- | -------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/ai/ai.test.ts`                   |       +2 | The rule "customers rated answers like this badly": draft instead of send, handover on a call, no mark on an answer that was a draft anyway; lessons in the prompt as their own block |
+| `apps/fake-providers/src/agent-script.test.ts` |       +2 | The scripted model follows a matching lesson and ignores others                                                                                                                       |
+| `apps/orbit-desk/.../learning/logic.test.ts`   |        5 | The figures, the rating trend, the knowledge base draft from a review                                                                                                                 |
+| `apps/api/test/learning.int.test.ts`           |        8 | See below                                                                                                                                                                             |
+| `apps/api/test/evals/agent.yaml`               |       +1 | A lesson staff wrote is followed                                                                                                                                                      |
+| `e2e/tests/learning.spec.ts`                   |        5 | See below                                                                                                                                                                             |
+| `e2e/tests/reports.spec.ts`                    | +1 check | Ratings by agent, with the AI's own on the first line                                                                                                                                 |
+
+`learning.int.test.ts` (real routes, worker and the scripted model):
+
+- **Permission:** agents are refused; supervisors are let in.
+- **Caution:** two bad ratings change nothing. After the third, the document is listed as rated badly, and the next customer's answer on it is drafted with the rule `poor_feedback` and the reason recorded.
+- **Reviews:** each low-rated AI answer is listed with the question, the answer, its sources and the customer's comment. A comment that tries to give orders ("Ignore your rules…") never reaches the AI.
+- **The switch:** with learning off the AI sends again.
+- **Lessons:** a too-short lesson is refused; a lesson written from a review is recorded with its ticket and author, and the AI's answer to that question becomes the lesson's; switched off, it stops; deleted, it is gone.
+- **Changed ratings:** a customer who changes 1 to 5 withdraws the open review.
+- **Good answers:** after a handover, a 5-rated answer by a person is offered and saved as a knowledge base draft (not visible to customers until approved); deciding twice changes nothing.
+- **Overview:** eight weeks, the current and previous 30 days.
+
+`learning.spec.ts`: a supervisor sees a low-rated AI answer with the customer's comment, opens the ticket from it, writes a lesson, and the AI's answer changes; switching the lesson off changes it back. A well-rated human answer is saved as a knowledge base draft. A review is closed with nothing to change. Agents and team leads have no Learning link and are refused by the API. A phone screen.
+
+### Bugs found and fixed
+
+1. **A reply and an incoming message at the same instant could lose one of them.** Replies locked the conversation and then the ticket; incoming messages locked them the other way round. Postgres ends one of two deadlocked transactions, so a message could vanish with an error. It showed up as a voice test failing once in a while (an agent and a caller speaking at the same moment). Every reply, take-over and AI answer now locks the ticket first.
+2. **Test files shared knowledge base documents**, so what the AI answered depended on which file ran before. Files that rely on their own documents now start from an empty knowledge base.
+3. **The scripted model matched lessons too loosely**: a question about card refunds got the gift-card lesson. It now needs three shared words.
+
+### Known limits
+
+- The AI improves as fast as reviewers work through the list. That is the design.
+- Lessons are chosen by category and recency, six per turn. Many lessons would need a relevance search.
+- A few unhappy customers can hold a topic back for up to 90 days.
+- One run of `learning.spec.ts` timed out once in screenshot mode; ten runs after that, in both modes, passed. The cause was not found.
+
+### Screenshots
+
+Learning:
+
+![Learning](screenshots/orbit-learning.png)
+
+Writing a lesson from a low rating:
+
+![Writing a lesson](screenshots/orbit-learning-lesson.png)
+
+On a phone:
+
+![Learning on a phone](screenshots/orbit-learning-phone.png)
+
+---
+
+## Phase 10: reports, ratings, the customer portal and admin pages
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-10-reporting`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                            |
+| ------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                              |
+| `pnpm test`                                       | 314 passed (api 164, Orbit Desk 91, shared 34, fake providers 15, help center 10) |
+| `pnpm test:int`                                   | 188 passed (18 files)                                                             |
+| `pnpm e2e`                                        | 86 passed; 9 screenshot-only specs skipped as designed                            |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                        |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed                                                |
+
+### Sample data
+
+- Three chats the AI answered are moved back in time by the loader (dev-only, like the existing backdating), resolved by the AI's "quiet for 72 hours" rule through the API, and rated by the visitor in the chat.
+- Nine resolved tickets are rated in the portal. The loader signs each customer in the real way: it asks for a link and opens the one that arrives in Mailpit.
+- So Reports shows real numbers on a fresh stack: 3 of 22 resolved tickets by the AI alone, 12 ratings, SLA and cost per provider.
+
+### New tests
+
+| Where                                       | Tests | Covers                                                                                                                     |
+| ------------------------------------------- | ----: | -------------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared/src/reports.test.ts`       |    11 | Report periods, dates that don't exist, rates, CSV quoting and formula defusing, rating and portal schemas, who may export |
+| `apps/api/src/common/signed-token.test.ts`  |     4 | Link tokens: refused when changed, cut, signed with another key or made for another purpose; the survey email text         |
+| `apps/orbit-desk/.../reports/logic.test.ts` |     8 | Filters, formatting, the key figures, the three-way split, the side-by-side rows                                           |
+| `apps/orbit-desk/.../admin/logic.test.ts`   |     7 | The user form (only what changed is sent), status keys, workflow changes and warnings, the new settings tabs               |
+| `apps/help-center/src/portal-logic.test.ts` |     5 | Page routes from the URL, the session in the browser tab, author names                                                     |
+| `apps/api/test/portal.int.test.ts`          |     8 | See below                                                                                                                  |
+| `apps/api/test/performance.int.test.ts`     |    10 | See below                                                                                                                  |
+| `e2e/tests/reports.spec.ts`                 |     6 | See below                                                                                                                  |
+| `e2e/tests/admin.spec.ts`                   |     7 | See below                                                                                                                  |
+| `e2e/tests/portal.spec.ts`                  |     5 | See below                                                                                                                  |
+
+`portal.int.test.ts` (real routes, worker and mail server):
+
+- **Sign-in:** the link arrives by email and works once; a changed token is refused; an unknown address gets the same answer and no email; the sixth request for one address in 15 minutes is refused.
+- **Separation:** a staff token is refused by the portal and a portal token by the staff API.
+- **My requests:** a customer sees their own tickets from every channel; an agent's reply shows with the first name only; internal notes never appear; another customer's ticket answers 404 by reference and by id, for reading, replying and rating.
+- **Replies:** a reply joins the ticket, marked as from the portal, and reopens a resolved ticket. On a ticket without an email thread it starts one, and the agent's answer reaches the customer's inbox. Closed tickets can't be answered.
+- **Ratings:** an open ticket can't be rated; staff have no route to rate; the survey email arrives once per ticket; its link rates only that ticket; the customer can change the rating in the portal; a rating of 2 notifies the assignee; the audit trail names the customer as the actor.
+- **Chat:** the widget is asked when the ticket is resolved, and again when the visitor comes back; the answer is stored with source `chat`.
+- **Switches:** with the portal and surveys off, sign-in is refused and no survey is sent.
+
+`performance.int.test.ts` (figures checked on one team, so other tests don't change them):
+
+- **The report:** created, resolved by the AI, by the AI then a person, and by a person; resolution, deflection and handover rates; ratings and SLA split between the AI and people; cost per provider; per channel; the time-saved estimate following the admin's setting.
+- **Filters:** channel, explicit dates, and refusals for a bad period.
+- **Ticket list and CSV:** paging, the "handled by" filter, the export for team leads but not agents, a formula-like subject defused, and the audit entry.
+- **The AI resolves what it answered:** after 72 quiet hours, not before, not when the customer had the last word, not after a person took over; the AI is the actor in the audit trail; the waiting time follows the setting and 0 switches it off.
+- **Admin:** rename a team and replace its members; a team with open tickets or routing rules can't be deleted; rename a category and switch it off, after which the request form no longer offers it.
+
+`reports.spec.ts`: the key figures, the chart with its legend and table view, the side-by-side table and AI cost on the sample data; filters; opening a ticket from the list and seeing its rating; the CSV download; no Reports link for agents; a phone screen.
+
+`admin.spec.ts`: an admin adds a user and a team, changes them and switches the user off (who can then no longer sign in); can't demote themselves; categories; a new status with its moves and the workflow warnings; the customer settings changing the report's estimate; permissions; a phone screen.
+
+`portal.spec.ts`: a customer signs in from the emailed link, replies, and rates the solved request while the agent sees each step; an unknown address and someone else's request; the survey link; the rating question in the chat widget; a phone screen.
+
+### Bugs found and fixed
+
+1. **The AI never resolved a ticket.** It answered and left tickets waiting for the customer for ever, so "resolved by the AI" would always have been zero. Tickets the AI answered now resolve after 72 quiet hours (a setting; 0 switches it off).
+2. **On the rating form a click could choose another rating.** The five hidden radio inputs sat on top of each other. Found by the browser test.
+3. **The ticket report failed** because the database driver returns timestamps as text. Found by the integration test before the page existed.
+4. **30 February was accepted as a date** (and read as 2 March). Dates are now checked for real.
+5. **First-reply times were measured from message timestamps**, which disagreed with the ticket's own first-response time (the one SLA uses). The report now uses the ticket's time and the message only to tell who replied.
+6. **Action buttons in the new admin tables broke the row lines.** They now sit inside proper table cells.
+
+### Known limits
+
+- Reports are live queries. A very long period reads many rows; fact tables are the next step if it gets slow.
+- "Time saved" is an estimate from a number an admin sets, not a measurement.
+- Survey emails and sign-in links need the email channel. WhatsApp and voice tickets are not asked for a rating (the portal still allows one).
+- Sign-in links are limited per address, not per network address (Phase 11).
+- The retention settings page moved to Phase 11, with the jobs it controls.
+- Report charts use the console's two tones (accent for the AI, neutral for people), as the design rules require. A palette check passes them for contrast and colour-blind separation and notes that the neutral reads as grey; labels, the legend and a table view carry the meaning.
+
+### Screenshots
+
+Reports:
+
+![Reports](screenshots/orbit-reports.png)
+
+The customer's rating on a ticket:
+
+![Rating on a ticket](screenshots/orbit-ticket-rating.png)
+
+Settings → People:
+
+![People](screenshots/orbit-settings-people.png)
+
+Settings → Tickets, the allowed moves:
+
+![Workflow](screenshots/orbit-settings-workflow.png)
+
+Settings → Customers:
+
+![Customers](screenshots/orbit-settings-customers.png)
+
+The portal, "My requests":
+
+![My requests](screenshots/portal-requests.png)
+
+A request in the portal, with the rating form:
+
+![A request](screenshots/portal-request.png)
+
+The page behind the survey email:
+
+![Rate your request](screenshots/portal-rate.png)
+
+The rating question in the chat widget:
+
+![Rating in the chat](screenshots/widget-rating.png)
+
+On a phone:
+
+![Reports on a phone](screenshots/orbit-reports-phone.png)
+
+![A request on a phone](screenshots/portal-request-phone.png)
+
+---
+
+## Phase 9: voice calls in the browser
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-9-voice`.
+
+**Result: every step of the gate passed. Voice has not been run against Sarvam itself** (see below).
+
+| Step                                              | Result                                                                           |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                             |
+| `pnpm test`                                       | 279 passed (api 160, Orbit Desk 76, shared 23, fake providers 15, help center 5) |
+| `pnpm test:int`                                   | 170 passed (16 files)                                                            |
+| `pnpm e2e`                                        | 68 passed; 9 screenshot-only specs skipped as designed                           |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                       |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed                                               |
+
+### What was and wasn't tested
+
+There is no stand-in for Sarvam, and no Sarvam key on the test stack.
+
+- **Tested:** everything on our side of the speech provider. The Sarvam client talks to a WebSocket server created inside its unit test, using the message formats from Sarvam's documentation. Whole calls run through the real `/voice` and `/agent` sockets, the AI agent, handover, recording and retention, with speech scripted by the test (it says what was heard, and records what was spoken).
+- **Not tested:** a call with real audio. No speech has been recognised or spoken by Sarvam, and nobody has heard a call. The browser microphone and playback code has unit tests for its maths only.
+- **First things to check with a real key:** that Sarvam accepts `linear16` output at 16 kHz on the streaming speech socket (its guide lists it; its API reference mentions MP3 only), and how the delay before the AI starts speaking feels.
+
+### Sample data
+
+Unchanged. The three sample tickets with channel "Voice call" are tickets an agent logged after a phone call; they have no transcript or recording, because none were made.
+
+### New tests
+
+| Where                                               |   Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------------------------- | ------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/channels/voice/voice.test.ts`         |      20 | WAV building and reading, sentence chunks, the stereo recorder (alignment, cut on interruption, size limit), the voice rule "no drafts on a call", the call state machine (greeting, a turn, English when the language has no voice, barge-in, waiting for a person, an agent joining, the time limit, a failed answer, ending once), the Sarvam client (messages sent, transcripts, speech signals, audio out, abort, a refused key) |
+| `apps/api/src/channels/health/health-rules.test.ts` | updated | The Voice light follows the key, the last connection test and the free lines                                                                                                                                                                                                                                                                                                                                                          |
+| `apps/orbit-desk/.../voice/voice.test.ts`           |       5 | Call summary lines, who answered, downsampling 48 kHz to 16 kHz, 100 ms frames, playback samples, loudness                                                                                                                                                                                                                                                                                                                            |
+| `apps/api/test/voice.int.test.ts`                   |       9 | See below                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `e2e/tests/voice.spec.ts`                           |       5 | See below                                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+`voice.int.test.ts` covers:
+
+- **Before setup:** a caller is told calls are not available; a start without accepting the recording notice is refused.
+- **A call answered by the AI:** greeting, a question answered from the knowledge base and spoken, a ticket with channel `voice`, the transcript with AI messages stored as sent, audit entries, the call record, and a stereo recording in S3.
+- **Language:** a Hindi caller is answered in Hindi.
+- **Barge-in:** speech stops and the caller's page is told to drop queued audio.
+- **Handover:** "talk to a real person" plays the hold line and hands the ticket over. An agent joins; a second agent is refused; a typed reply is refused; audio flows both ways; both sides are transcribed; the AI stays quiet. Agents can't play the recording, supervisors can, and listening is audited.
+- **Retention:** recordings older than 30 days are deleted and the transcript stays.
+- **Endings:** closing the page ends the call; a call where nobody spoke leaves no ticket.
+- **Refusals:** every line busy, and a speech provider that refuses the key.
+- **Status:** the Voice light and its lines in channel status.
+
+`voice.spec.ts` covers:
+
+- The call page shows the recording notice, and Start call answers "Voice calls are not available right now" without opening the microphone.
+- The chat demo links to the call page.
+- An admin saves the voice settings; the light turns red with "Sarvam key: Not saved. Calls cannot start."
+- Agents are refused recordings.
+- The call page fits a phone screen.
+
+### Bugs found and fixed
+
+1. **A typed reply on a voice call was accepted** and stored as sent, although the caller could never see it. It is now refused with "Join the call to talk to the caller", and the ticket offers only an internal note.
+2. **The greeting field showed the first few words only.** It is now a text area across the form.
+3. **A settings test counted audit entries made by other test files** and failed once the voice tests also saved a Sarvam key. It now counts what its own step adds.
+
+### Known limits
+
+- Not yet run against Sarvam (above).
+- Live calls are held in one API process: with several instances an agent can only join a call on the instance their socket reached, and a restart ends its calls.
+- The AI's reply is spoken after the whole turn finishes, not word by word.
+- Browser calls only. Real phone numbers are not built.
+
+### Screenshots
+
+The call page (`/widget/voice.html`):
+
+![Call page](screenshots/voice-call-page.png)
+
+On a phone:
+
+![Call page on a phone](screenshots/voice-call-page-phone.png)
+
+Voice settings, switched on without a key:
+
+![Voice settings](screenshots/orbit-settings-voice.png)
+
+---
+
+## Phase 8c: custom tools and custom MCP servers
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-8c-custom-tools`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                           |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                             |
+| `pnpm test`                                       | 254 passed (api 140, Orbit Desk 71, shared 23, fake providers 15, help center 5) |
+| `pnpm test:int`                                   | 161 passed (15 files)                                                            |
+| `pnpm e2e`                                        | 63 passed; 9 screenshot-only specs skipped as designed                           |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                       |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed                                               |
+
+### How custom tools and custom MCP servers were tested
+
+The integration test starts its own "company systems" inside the test: a small HTTP API and an MCP server written with the MCP SDK. Nothing in it uses the bundled Demo Store sample, so it shows that any HTTP API and any streamable-HTTP MCP server work, not only ours.
+
+### Sample data
+
+One custom tool is added: "Store systems status", a GET to the sample server's health address.
+
+### New tests
+
+| Where                                        | Tests | Covers                                                                                                                                                                                           |
+| -------------------------------------------- | ----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/api/src/tools/http-tool.test.ts`       |    13 | Building the request (placeholders escaped, query or JSON body, key header), answers (JSON, text, empty, 4xx, 5xx, 429), no redirects, private addresses, definition rules, the generated schema |
+| `apps/orbit-desk/.../tools/logic.test.ts`    |    +3 | The custom tool form round trip                                                                                                                                                                  |
+| `apps/orbit-desk/.../settings/logic.test.ts` |    +1 | The Tools tab for someone who may only create custom tools                                                                                                                                       |
+| `apps/api/test/custom-tools.int.test.ts`     |    14 | See below                                                                                                                                                                                        |
+| `e2e/tests/custom-tools.spec.ts`             |     4 | See below                                                                                                                                                                                        |
+
+`custom-tools.int.test.ts` covers:
+
+- **Permission:** agents, team leads and supervisors are refused until an admin grants `tool:create`. A granted team lead can create tools but still can't see MCP servers or set keys. Revoking stops it. Only delegable permissions can be granted, and the administrator role can't be changed. Grants are audited.
+- **Definitions:** metadata and private addresses, undeclared placeholders, bad names and duplicate names are refused.
+- **Calls:** a new tool starts off; a test call sends the key, the escaped path value and the query; missing or unexpected arguments are refused before any request; a 404 is reported as the system's answer; POST sends a JSON body; a redirect is not followed.
+- **Outages:** after repeated 503s the tool is paused without another request, and other custom tools keep working.
+- **Lifecycle:** edit and switch on keep the name; an unused tool can be deleted; a used one can't; the holder of custom tools can't be removed as a server.
+- **The AI:** it answers "Where is my order?" from a custom tool, with the customer's email filled in by TMS, not by the model. A transactional custom tool waits for a supervisor, and runs only after approval.
+- **A custom MCP server:** added with an `X-Api-Key` key; a sync without the key fails and the reason is kept; with the key its tools arrive switched off, with tier and customer argument guessed from the server's hints; a call returns its result; a tool error and invalid arguments are reported; an unreachable server records why the sync failed.
+
+`custom-tools.spec.ts` covers:
+
+- An admin creates a tool in the dialog (an internal address and a missing value are refused with reasons), tests it, switches it on, edits it, and is told a used tool can only be switched off.
+- A team lead is refused until the admin ticks the role. The lead then sees one Settings tab with custom tools only, creates a tool, and still can't reach keys or MCP servers. Unticking removes access.
+- An admin adds a second MCP server through the form: sync fails without the key, then succeeds, tools arrive switched off, and a test call returns the order.
+- The dialog fits a phone screen.
+
+### Bugs found and fixed
+
+1. **Every Settings dialog had no padding and could not scroll** (providers, models, routing rules, SLA, tool tests, handover reasons). Content sat flush against the edge, and a tall form was cut off. Found on the new tool dialog; fixed once in the shared dialog component.
+2. **Checkbox labels in Models and SLA settings were laid out as rows with a top border.** The Phase 8b status lights reused the class name `check`. The lights now use their own class.
+3. **The role checkbox did not react until the server answered.** It now changes at once.
+
+### Known limits
+
+- A custom tool is one request: no pagination, no response mapping, no extra headers besides the key.
+- A role with `tool:create` can make the AI send customer data to any public address that role chooses. Grant it with that in mind.
+- A grant can take up to ten seconds to reach other API instances.
+
+### Screenshots
+
+Custom tools in Settings → Tools & MCP:
+
+![Custom tools](screenshots/orbit-custom-tools.png)
+
+The new custom tool dialog:
+
+![New custom tool](screenshots/orbit-custom-tool-new.png)
+
+Who can create custom tools:
+
+![Tool creators](screenshots/orbit-tool-creators.png)
+
+---
+
+## Phase 8b: channel status lights and one-step WhatsApp connect
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-8b-channel-health`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                           |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                             |
+| `pnpm test`                                       | 237 passed (api 127, Orbit Desk 67, shared 23, fake providers 15, help center 5) |
+| `pnpm test:int`                                   | 147 passed (14 files)                                                            |
+| `pnpm e2e`                                        | 59 passed; 9 screenshot-only specs skipped as designed                           |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                       |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed                                               |
+
+### What was and wasn't tested
+
+- **Tested for real:** the email light against GreenMail (reading and sending, and a refused SMTP login), web chat and the help-center form, the worker check, the monitor and its notification, and every screen.
+- **Answered inside the test process:** Meta's replies during the connect flow and the WhatsApp checks, as in Phase 8.
+- **Not tested:** a green WhatsApp light against Meta's servers. That needs a Meta app.
+
+### What the sample stack shows
+
+Settings → Channels on the Docker stack: email, web chat and the help-center form are green; WhatsApp and voice are grey (off). The sample data is unchanged.
+
+### New tests
+
+| Where                                                  | Tests | Covers                                                                                                       |
+| ------------------------------------------------------ | ----: | ------------------------------------------------------------------------------------------------------------ |
+| `apps/api/src/channels/health/health-rules.test.ts`    |    17 | Every rule behind the lights, for each channel: green, amber, red and grey, and the sentence shown for each  |
+| `packages/shared/src/channel-health.test.ts`           |     5 | Worst-check state, labels, the connect form's validation                                                     |
+| `apps/orbit-desk/.../settings/channel-health.test.tsx` |     8 | Overview wording, the light always saying its state in words, tiles, check lists, the verify-token generator |
+| `apps/api/test/channel-health.int.test.ts`             |    13 | See below                                                                                                    |
+| `e2e/tests/channel-health.spec.ts`                     |     4 | See below                                                                                                    |
+
+`channel-health.int.test.ts` covers:
+
+- **Access:** the lights and the connect form are refused for agents and for anonymous calls.
+- **All channels:** five lights; web chat green with the worker running; voice off.
+- **Email:** green once the mailbox is watched and the mail server answers. With a wrong SMTP port it turns red, names sending as the failing half while reading stays green, and the help-center form turns red with it.
+- **Connect WhatsApp:**
+  - invalid IDs and a missing token are refused before Meta is called;
+  - a rejected token saves nothing and explains why;
+  - a number that is not under the business account saves nothing and lists the numbers Meta does see;
+  - a good form connects: it checks, saves, subscribes, and no key appears in any response;
+  - the light is amber until Meta verifies or calls the webhook, then green;
+  - reconnecting without keys keeps the saved ones; a PIN registers the number; a wrong PIN is reported without undoing the connection.
+- **Monitor:** when Meta stops accepting the token the light turns red and admins get one notification; agents get none; a second failed check sends nothing more.
+- **Subscription:** the light is red when Meta sends the account's messages to no app.
+- **Off and missing token:** grey when switched off, red when the token is removed.
+
+`channel-health.spec.ts` covers:
+
+- The overview shows five lights; after **Check now** email and web chat are working, WhatsApp is off, and the email card explains each check. A tile scrolls to its card.
+- The Connect WhatsApp form asks for the token and rejects a phone number typed as an ID, without calling Meta. **Generate** fills a 48-character verify token and shows it.
+- Agents are refused by the API.
+- The page fits a phone screen.
+
+`whatsapp.spec.ts` now also checks the red light and its reason when WhatsApp is switched on without a token.
+
+### Bugs found and fixed
+
+1. **Tiles that jumped to a channel's card left the Settings page.** They were links to `#channel-card-…`, and Orbit Desk uses the address after `#` as its route. They are now buttons that scroll. Found by the browser test.
+2. **A test locator matched two rows**, because the "Deliveries" reason also contained the words "access token". The tests now match a check by its exact label.
+
+### Known limits
+
+- A light can be up to five minutes old between checks; **Check now** refreshes it.
+- A green WhatsApp light proves the token, the number and the subscription. Only a call from Meta proves the webhook address is right, which is why the light stays amber until Meta has called once.
+- The web chat visitor count is for one API instance.
+- Voice shows grey until Phase 9.
+
+### Screenshots
+
+Channel status, with the email card's checks:
+
+![Channel status](screenshots/orbit-channel-status.png)
+
+The Connect WhatsApp form. The API has just rejected a phone number typed as an ID:
+
+![Connect WhatsApp](screenshots/orbit-settings-whatsapp.png)
+
+WhatsApp switched on without an access token: a red light and the reason:
+
+![WhatsApp not working](screenshots/orbit-settings-whatsapp-red.png)
+
+Channel status at phone width:
+
+![Channel status on a phone](screenshots/orbit-channel-status-phone.png)
+
+---
+
+## Phase 8: WhatsApp
+
+Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-8-whatsapp`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                           |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                             |
+| `pnpm test`                                       | 209 passed (api 110, Orbit Desk 61, shared 18, fake providers 15, help center 5) |
+| `pnpm test:int`                                   | 134 passed (13 files)                                                            |
+| `pnpm e2e`                                        | 55 passed; 9 screenshot-only specs skipped as designed                           |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                       |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed                                               |
+
+### What was and wasn't tested
+
+There is no Meta app yet, and by decision there is no simulator or fake Graph API (ADR 0015). So:
+
+- **Tested for real:** the public webhook route, signature and handshake checks, the queue, the worker, tickets and customers, media into object storage, the sender's request to Meta, delivery reports, the 24-hour rule, templates, and every screen.
+- **Answered inside the test process:** calls to `graph.facebook.com` in the integration tests. The code under test is the real client; only Meta's replies are supplied by the test.
+- **Not tested:** a round trip with Meta's servers. That needs a Meta app and a public HTTPS address (`docs/runbooks/phase-8-demo.md`).
+
+### Sample data
+
+Unchanged. The four sample WhatsApp tickets are still tickets with the WhatsApp label and no conversation. Sample WhatsApp conversations would need either Meta credentials or pretend deliveries, and the channel is off until someone connects a real number.
+
+### New tests
+
+| Where                                             | Tests | Covers                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------- | ----: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/channels/whatsapp/whatsapp.test.ts` |    41 | The ported code: phone and identity helpers, signature and verify-token checks, Graph requests (phone or user-id recipient, templates, error envelope, media host and size limits, template paging), error explanations and retry decisions, template components, webhook parsing, status order |
+| `packages/shared/src/whatsapp.test.ts`            |     7 | 24-hour window, template variables and preview, send and start-conversation schemas                                                                                                                                                                                                             |
+| `apps/orbit-desk/.../whatsapp/logic.test.ts`      |    10 | Window note, template picker fields and request, setup checklist, delivery labels                                                                                                                                                                                                               |
+| `apps/api/test/whatsapp.int.test.ts`              |    21 | See below                                                                                                                                                                                                                                                                                       |
+| `e2e/tests/whatsapp.spec.ts`                      |     4 | See below                                                                                                                                                                                                                                                                                       |
+
+`whatsapp.int.test.ts` covers:
+
+- **Before setup:** the handshake and every delivery are refused, including one signed with an empty key.
+- **Webhook security:** the handshake answers only for the saved verify token; unsigned, wrongly signed and tampered bodies get 401 and create nothing.
+- **Connection test:** shows the number, its name and quality; a rejected token is explained.
+- **Inbound:**
+  - a first message opens a ticket and a customer, and the next one joins it;
+  - a redelivered webhook stores nothing twice;
+  - a photo is saved as a downloadable attachment;
+  - a message whose file can't be fetched is still stored;
+  - reactions and other phone numbers on the same app are ignored.
+- **Outbound:**
+  - an agent reply reaches Meta with the right address, token and body, and Meta's message id is saved;
+  - reports arriving out of order (read, then delivered, then failed) leave the message read;
+  - a failed report shows Meta's reason;
+  - an error a retry can't fix fails after one attempt, and a temporary one is retried.
+- **Username-only senders:** filed under the user id, answered with `recipient`; when Meta later shows the phone number, it is the same customer and ticket.
+- **Templates and the 24-hour window:**
+  - sync is admin-only, and agents see approved templates only;
+  - Meta's status webhooks add and remove templates from that list;
+  - free text after 24 hours gets a 409, a template with too few values gets a 400, and a complete one is sent with its components;
+  - once the customer answers, free text works again;
+  - an unapproved template is refused;
+  - a ticket can be opened on WhatsApp with a template, and the customer's reply lands on it.
+- **AI:** a WhatsApp question is answered by the AI and sent through Meta.
+- **No token:** an agent's reply is refused with "not connected".
+
+`whatsapp.spec.ts` covers:
+
+- The webhook's handshake and a refused forged call, against the running stack.
+- Settings → Channels: the webhook address, the "Still to do" list, the empty template list, and the reason a sync can't run yet.
+- A customer message opens a ticket in the queue. The AI's answer shows "Not delivered" with the reason, and an agent's reply is refused with the same explanation.
+- A message older than 24 hours leaves the reply box with templates only, checked at phone width.
+
+### Bugs found and fixed
+
+1. **A known customer writing on WhatsApp for the first time broke the inbound message.** A customer saved with a phone number has a `phone` identity. Their first WhatsApp message tried to create a second customer with the same number and hit the unique index. They are now recognised as the same person and linked. Found while testing conversations started by an agent.
+2. **A refused webhook handshake answered 500 instead of 403.** The plain-text content type was set before the error was written. Found by the integration test.
+3. **A message arriving just after the channel was switched on could be dropped.** The worker kept the old "off" setting for up to five seconds. WhatsApp settings are now read fresh every time.
+4. **Buttons in the WhatsApp settings card were stretched** to the height of the neighbouring column. Fixed for every channel card.
+
+### Known limits
+
+- WhatsApp is off until a Meta app is connected, and Meta needs a public HTTPS address for the webhook.
+- Agents send text and templates, not files. The AI doesn't read customers' files.
+- One WhatsApp number.
+- Reactions are ignored, and customers don't get read receipts.
+- Templates are written in WhatsApp Manager; TMS only syncs and sends them.
+
+### Screenshots
+
+Settings → Channels → WhatsApp (as rebuilt in Phase 8b: switched on without an access token, so the light is red):
+
+![WhatsApp settings](screenshots/orbit-settings-whatsapp-red.png)
+
+A WhatsApp ticket. The AI's answer could not be sent, and the reason is shown under it:
+
+![WhatsApp conversation](screenshots/orbit-whatsapp-conversation.png)
+
+More than 24 hours after the customer's last message, at phone width:
+
+![WhatsApp template picker](screenshots/orbit-whatsapp-template-phone.png)
+
+---
+
+## Phase 7: handover, routing, SLA and notifications
+
+Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-7-handover-sla`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                          |
+| ------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                            |
+| `pnpm test`                                       | 151 passed (api 69, Orbit Desk 51, fake providers 15, shared 11, help center 5) |
+| `pnpm test:int`                                   | 113 passed (12 files)                                                           |
+| `pnpm e2e`                                        | 51 passed; 9 screenshot-only specs skipped as designed                          |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                      |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed                                              |
+
+### What the sample data shows
+
+- **SLA states** after the loader and one sweep: 13 tickets breached (old open ones), 19 met, 14 on track, 7 paused while waiting on the customer.
+- **Handover:** Nina Petrova's request for a person (TMS-46) was handed over by the AI. Routing gave it to Jonah Reyes (online, Orders team, web chat taken in turns), and the context pack was written by the model.
+
+### New tests
+
+| Where                                        | Tests | Covers                                                                                                                                                                     |
+| -------------------------------------------- | ----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/sla/sla.test.ts`               |     6 | Business-time maths: always open; nights, weekends and holidays; add and count agree; Berlin across the October DST change. Policy specificity; routing condition matching |
+| `apps/api/src/routing/routing.test.ts`       |     3 | Least loaded; round robin; skills, exclusions, team queue, offline                                                                                                         |
+| `apps/orbit-desk/.../handover/logic.test.ts` |     3 | Lanes with switch markers, who-is-replying text, SLA timer lines, history labels                                                                                           |
+| `apps/orbit-desk/.../components.test.tsx`    |    +1 | Handled-by filter, SLA countdown and "Handed over" in queue rows                                                                                                           |
+| `apps/api/test/sla.int.test.ts`              |     5 | See below                                                                                                                                                                  |
+| `apps/api/test/handover.int.test.ts`         |     9 | See below                                                                                                                                                                  |
+| `e2e/tests/handover.spec.ts`                 |     6 | See below                                                                                                                                                                  |
+
+`sla.int.test.ts` covers:
+
+- SLA settings are admin-only and validated (unknown time zone, backwards window).
+- Hours and policies are created, and hours still in use can't be deleted.
+- Timers start with the ticket; the first response is met by a reply; resolution pauses while pending and resumes when the customer writes.
+- A priority change switches to the most specific policy.
+- At 80% the ticket is at risk (and appears in the `sla=at_risk` list); at 100% it is breached, once. The assignee and team lead are notified, and the lead gets the breach by email.
+- Reading clears the unread count.
+
+`handover.int.test.ts` covers:
+
+- Routing and presence permissions; rules are kept in order.
+- A Hindi request for a person goes to the online agent with the "hindi" skill, who is notified. The context pack is written by the model.
+- History filtered to the AI shows only AI entries.
+- Round robin spreads work and skips offline agents.
+- Two simultaneous take-overs give one 200 and one 409 naming the winner. The ticket is assigned to the winner and In Progress, and the AI stays quiet.
+- Hand-back lets the AI answer the waiting question, and a second hand-back gets 409.
+- An agent handover to another team waits in that team's queue.
+- The copilot suggests a reply.
+- Team leads can escalate; agents can't.
+- Handling and audit actor filters.
+
+`handover.spec.ts` covers:
+
+- A widget visitor asks for a person: context pack, take over, reply delivered, AI | People lanes with a switch marker, hand back.
+- A second person trying to take over is told who has it.
+- A notification opens its ticket.
+- The SLA at risk view and the drawer's timers.
+- Handled-by filter and History by actor.
+- Settings → Routing and SLA, and phone width.
+
+### Bugs found and fixed
+
+1. **The reply box could stay on "Internal note"** (found by the new browser test). The composer chose its mode on first render, before the ticket's conversations had loaded. It now switches to replying once that is possible, unless the agent already picked a mode.
+2. **Take-over left the routed agent assigned.** Found while testing; the person who takes over now owns the ticket.
+3. **Take-over and hand-back needed transitions the default workflow doesn't have** (AI Handling → In Progress, In Progress → AI Handling). They now step through Human Assigned, which the workflow allows.
+4. **The sample loader showed 31 breached tickets instead of 13.** Its backdating set first-response and resolution times in the database without settling the timers. The loader now marks them met, or breached when late.
+5. **The handover test depended on the AI tests' knowledge base.** Run alone, the AI couldn't answer. The test now seeds its own FAQ.
+
+### Known limits
+
+- Presence is set by hand (online, away, offline), with no automatic offline on disconnect.
+- SLA states update every 30 seconds (the sweep interval).
+- Notification emails go to agents' addresses through the email channel's SMTP (Mailpit in the dev stack).
+
+### Screenshots
+
+The queue on the SLA at risk view, with countdowns and the Handled-by filter:
+
+![SLA queue](screenshots/orbit-sla-queue.png)
+
+A ticket handed over by the AI, waiting for a person:
+
+![Handover](screenshots/orbit-handover.png)
+
+The same conversation as AI | People lanes:
+
+![Lanes](screenshots/orbit-lanes.png)
+
+The notification bell:
+
+![Notifications](screenshots/orbit-notifications.png)
+
+Settings → Routing and Settings → SLA:
+
+![Routing settings](screenshots/orbit-settings-routing.png)
+
+![SLA settings](screenshots/orbit-settings-sla.png)
+
+---
+
+## Phase 6: company tools and approvals
+
+Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-6-tools`.
+
+**Result: every step of the gate passed.**
+
+| Step                                              | Result                                                                          |
+| ------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                            |
+| `pnpm test`                                       | 138 passed (api 60, Orbit Desk 47, fake providers 15, shared 11, help center 5) |
+| `pnpm test:int`                                   | 99 passed (10 files)                                                            |
+| `pnpm e2e`                                        | 45 passed; 8 screenshot-only specs skipped as designed                          |
+| `pnpm kb:eval`                                    | recall@5 = 1.00 (18 of 18)                                                      |
+| `pnpm ai:eval`                                    | 9 of 9 golden conversations passed (6 agent, 3 new tool goldens)                |
+
+### What the sample data shows
+
+- **TMS-47:** María López asks "where is my order DS-20517?". The AI calls `order_status` and answers with the carrier and tracking number. The source is shown as Demo Store systems · Order status.
+- **TMS-48:** Kenji Watanabe was charged twice. The AI calls `issue_refund`, which waits in **Approvals**, and tells him the request is with the team.
+
+### New tests
+
+`tools.int.test.ts` has 15 tests:
+
+- Access: only admins manage tools, and only supervisors see approvals.
+- Addresses: a metadata address is refused.
+- Registration: the token is write-only; sync fails without the token and records why, then succeeds with it; new tools are off, tiers are guessed, and the customer argument is bound.
+- Tests: read tools can be tested; bad arguments are refused; transactional tools can't be tested.
+- Settings validation.
+- AI lookups: the AI answers from the customer's own order, the email is injected by TMS, and the source is recorded. Another customer's order is not found, so the AI hands over.
+- Dry runs run read tools only and store nothing.
+- Refund approved: it waits, agents get 403, a supervisor approves, the worker refunds, the AI tells the customer, a second decision gets 409, and the audit trail is complete.
+- Refund rejected: the customer gets a polite no, and the internal note is not leaked.
+- Refund expired: the AI hands over, and a late decision gets 409.
+- Person in charge: the AI leaves a note instead of replying.
+- Three tool goldens.
+
+Other new tests:
+
+| Where                                              | Tests | Covers                                                                                                                                                                                                                                               |
+| -------------------------------------------------- | ----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/fake-providers/src/demo-store.test.ts`       |     6 | Orders are visible only to their owner; sandbox shoppers; duplicate charges refunded once, with a refund cap; scripted agent: order lookup, refund request then outcome, knowledge questions untouched                                               |
+| `apps/api/src/ai/ai.test.ts`                       |    +1 | The prompt explains company tools and approval updates only when they apply; web-form replies use the email style                                                                                                                                    |
+| `apps/orbit-desk/src/features/tools/logic.test.ts` |     4 | Argument rows without the customer binding, schema argument names, time left, test-argument parsing                                                                                                                                                  |
+| `e2e/tests/approvals.spec.ts`                      |     4 | A widget order question answered from the order system, with Company actions in the drawer; a refund approved by a supervisor in `#/approvals` and the customer told in the widget; admins test a tool in Settings while agents get 403; phone width |
+
+### Bugs found and fixed
+
+1. **Web-form replies were written in the chat style.** The Phase 5b channel had no prompt style of its own, so replies meant for email came out as chat. Web forms now use the email style (prompt `agent-v2`).
+2. **The fake-providers image had no dependencies.** Found when the MCP SDK failed to load in the container. The image now installs production dependencies with `pnpm deploy`, like the API.
+3. **Order numbers downgraded tool-backed replies to drafts.** The "facts need a source" rule counted only knowledge-base citations. Successful tool results, and requests accepted for approval, now count as sources.
+4. **Refunds could run out between test runs.** The sample store keeps refunds in memory, so repeated runs would have exhausted the demo orders. There is now a reset endpoint, and sandbox shoppers for fresh orders.
+5. **The drawer's Company actions section had no panel padding** (seen in the screenshots). It now matches the other drawer panels.
+
+### Known limits
+
+- Chat visitors' emails are unverified. If an address already belongs to another customer, it does not attach to the new chat customer. Customer-bound tools then refuse, and the AI hands over. This is the right behaviour, but a returning chat customer who isn't signed in on the host site can't use order tools.
+- In dry runs, a refund request becomes a draft rather than sent (confidence 0.79), because nothing was actually submitted.
+
+### Screenshots
+
+The approvals inbox (supervisor):
+
+![Approvals](screenshots/orbit-approvals.png)
+
+A refund waiting in the drawer, with inline approve:
+
+![Drawer approval](screenshots/orbit-drawer-approval.png)
+
+An order lookup, with the reply's source and the call:
+
+![Drawer lookup](screenshots/orbit-drawer-lookup.png)
+
+Settings → Tools & MCP:
+
+![Tools settings](screenshots/orbit-tools-settings.png)
+
+---
+
+## Phase 5b: help-center request form and channel audit
+
+Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-5b-contact-form`.
+
+**Result: every step of the gate passed.**
+
+| Step                | Result                                                                         |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `pnpm format:check` | pass                                                                           |
+| `pnpm lint`         | pass                                                                           |
+| `pnpm build`        | pass                                                                           |
+| `pnpm typecheck`    | pass                                                                           |
+| `pnpm test`         | 127 passed (api 59, Orbit Desk 43, help center 5, shared 11, fake providers 9) |
+| `pnpm test:int`     | 84 passed (9 files)                                                            |
+| `pnpm e2e`          | 40 passed; 7 screenshot-only specs skipped as designed                         |
+| `pnpm kb:eval`      | recall@5 = 1.00 (18 of 18)                                                     |
+| `pnpm ai:eval`      | 6 of 6 golden conversations passed                                             |
+
+The widget phone-width test was added after the full run. It passed on its own, together with the channel and form specs (6 of 6).
+
+One full run had a single failure in `auth.spec.ts`: the browser context closed during teardown, not an assertion. It passed 9 of 9 on repeat and in the next full run, so it is recorded as a flake.
+
+### What was built
+
+- **Help center** at http://localhost:8080/help/ (`apps/help-center`):
+  - a "Submit a request" form with name, email, topic, order number, subject, description and up to 3 files of 10 MB each;
+  - a "Chat with us" card that opens the existing widget;
+  - after sending, the page shows the ticket reference.
+- **Channel `web_form`:** the form goes through `InboundService` like every channel.
+  - A resubmission returns the same ticket. A honeypot field rejects naive bots.
+  - The worker emails an acknowledgement with the reference.
+  - Agent and AI replies go out by email, and the customer's email replies thread back onto the same ticket.
+  - The AI drafts replies by default, as it does for email.
+- **Orbit Desk:**
+  - a channel filter on the queue;
+  - attachments in the drawer, with download;
+  - the ticket's category in the drawer;
+  - message paragraphs kept.
+
+### Channel audit: tests and UI per channel
+
+| Channel            | Built?                                                 | Integration tests                                                | Browser tests                                                          | Agent UI (Orbit Desk)                                                             | Customer UI                                     |
+| ------------------ | ------------------------------------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Web chat (chatbot) | Yes                                                    | `chat.int` (5), `ai.int` (chat answers, drafts, handover)        | `channels.spec`, `ai.spec` (3 chat flows), **new:** widget at 390px    | Channel label and filter, reply by chat, AI marks and drafts                      | Widget labels AI replies; now tested on a phone |
+| Email              | Yes                                                    | `email.int`, `ai.int` (email drafts), `web-form.int` (threading) | `channels.spec`, `ai.spec` (draft approved and mailed), `console.spec` | **Fixed:** attachments were not shown in the drawer, and paragraphs ran together  | The customer's own mail client                  |
+| Web form           | Yes (this PR)                                          | `web-form.int` (6)                                               | `web-form.spec` (2)                                                    | Channel filter, attachments, category                                             | Help center, desktop and phone                  |
+| WhatsApp           | Yes, since Phase 8 (off until a Meta app is connected) | `whatsapp.int` (21 tests), `whatsapp.test` (41 unit tests)       | `whatsapp.spec` (4 tests)                                              | Delivery labels and failure reasons, 24-hour note, template picker, Settings card | `orbit-whatsapp-*`, `orbit-settings-whatsapp`   |
+| Voice              | No, Phase 9 (in the browser, as agreed)                | None yet                                                         | Only a "Phone call" ticket logged by an agent (`new-ticket.spec`)      | "Phone call" in New ticket, and the Settings → Channels Sarvam fields             | None yet                                        |
+
+WhatsApp and voice get their adapters, tests and screens in their own phases:
+
+- **WhatsApp:** done in Phase 8 (see the top of this report). There is no simulated Meta API; the tests post signed webhooks to the real route.
+- **Voice:** `voice.int` and `voice.spec` with a fake microphone and fake Sarvam, plus a live call card in Orbit Desk.
+
+### New tests
+
+| Where                                     | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------- | ----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/api/test/web-form.int.test.ts`      |     6 | Public form config; a submission with 2 files, category and order number; acknowledgement email (subject, greeting, sent once even when retried, not a first response); customer reply threads onto the same conversation; agent reply by email; no duplicate on resubmit; JSON without files; validation messages, honeypot, unknown topic, too many files; a file over 10 MB is refused and no ticket is created |
+| `apps/help-center/src/logic.test.ts`      |     5 | Sizes, file checks, shared-schema validation messages, API error messages, submission ids                                                                                                                                                                                                                                                                                                                          |
+| `apps/orbit-desk/.../components.test.tsx` |    +1 | Queue channel filter                                                                                                                                                                                                                                                                                                                                                                                               |
+| `e2e/tests/web-form.spec.ts`              |     2 | Customer submits with a file → reference → acknowledgement in Mailpit → agent filters by Web form, downloads the file, replies → email arrives; inline validation and no sideways scroll at 390px                                                                                                                                                                                                                  |
+| `e2e/tests/responsive.spec.ts`            |    +1 | Chat widget panel fits a 390px screen                                                                                                                                                                                                                                                                                                                                                                              |
+
+### Bugs found and fixed
+
+1. **Email attachments were invisible to agents.** The API stored and served them, but Orbit Desk never showed them. The drawer now lists them as download chips.
+2. **Orbit Desk collapsed line breaks** in every message, so multi-paragraph emails ran together. Bodies now keep their paragraphs.
+3. **The drawer never showed a ticket's category**, so a customer's chosen topic sat unseen next to the AI's suggestion. It now has a Category row.
+4. **The chat demo page scrolled sideways on phones.** Its code sample overflowed; the block now scrolls on its own. The widget itself fit.
+5. **Help-center spacing:** a padding shorthand removed the space under the header. Found in the screenshots and fixed.
+
+### Screenshots
+
+The help center:
+
+![Help center](screenshots/help-center.png)
+
+A request ready to send, with a file:
+
+![Help center, filled in](screenshots/help-center-filled.png)
+
+After sending:
+
+![Request received](screenshots/help-center-receipt.png)
+
+On a phone:
+
+![Help center on a phone](screenshots/help-center-phone.png)
+
+The request in Orbit Desk, with its category, file chip and the acknowledgement:
+
+![Web-form ticket in Orbit Desk](screenshots/orbit-web-form.png)
+
+---
+
+## Phase 5: AI agent
+
+Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-5-ai-agent`.
+
+**Result: every step of the gate passed.**
+
+| Step                | Result                                                 |
+| ------------------- | ------------------------------------------------------ |
+| `pnpm format:check` | pass                                                   |
+| `pnpm lint`         | pass                                                   |
+| `pnpm build`        | pass                                                   |
+| `pnpm typecheck`    | pass                                                   |
+| `pnpm test`         | 121 passed                                             |
+| `pnpm test:int`     | 78 passed                                              |
+| `pnpm e2e`          | 38 passed; 6 screenshot-only specs skipped as designed |
+| `pnpm kb:eval`      | recall@5 = 1.00 (18 of 18)                             |
+| `pnpm ai:eval`      | 6 of 6 golden conversations passed                     |
+
+Everything ran against the scripted demo model. It shows the wiring (routing, tools, rules, drafts, handover) works. It does not show answer quality: its confidence comes from word overlap, so it sometimes picks a loosely related passage. Run `pnpm ai:eval` with a real model for that.
+
+### What the AI does with the sample traffic
+
+The loader sends web chats and emails through the real channels, and the AI takes them as they arrive:
+
+- Tom Whitaker (refund timing) and Aarav Kulkarni (the same question in Hindi) are answered from the knowledge base.
+- Nina Petrova asks for a person, so the chat is handed over with an AI note.
+- Every email gets a draft for an agent to review, because email is drafts-only.
+- Questions the knowledge base barely covers are drafted.
+
+### New tests
+
+| Where                                           | Tests | Covers                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------- | ----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/ai/ai.test.ts`                    |    16 | Send, draft and hand-over thresholds; draft-only channels; factual replies without a source; unsupported promises; repeated failures; handover texts (English and Hindi); prompt tagging and injection stripping; tool argument validation; JSON extraction; language guess; requests for a person |
+| `apps/fake-providers/src/agent-script.test.ts`  |     5 | The scripted agent (search then reply, confidence by overlap, handover, Hindi) and classifier                                                                                                                                                                                                      |
+| `apps/orbit-desk/src/features/ai/logic.test.ts` |     4 | Confidence, classification text, rule labels, reply source line                                                                                                                                                                                                                                    |
+| `apps/api/test/ai.int.test.ts`                  |    18 | See below                                                                                                                                                                                                                                                                                          |
+| `e2e/tests/ai.spec.ts`                          |     5 | See below                                                                                                                                                                                                                                                                                          |
+
+`ai.int.test.ts` covers:
+
+- A chat is taken, answered from the knowledge base, delivered, labelled "AI assistant", audited as `ai` and moved to Pending Customer.
+- The ticket is classified.
+- A follow-up goes back to the AI.
+- Unsure answers become drafts that are hidden from the visitor; an edited draft is approved, delivered and audited.
+- A person's reply supersedes a waiting draft, and a draft can be discarded.
+- Asking for a person hands over, with a note and a customer message.
+- A person replying silences the AI.
+- A budget running out hands over.
+- No usable model leaves the conversation to humans.
+- Email is drafted, and the approved draft is emailed.
+- AI settings: permissions, validation, "off".
+- Six golden conversations.
+
+`ai.spec.ts` covers:
+
+- A widget answer labelled "AI assistant", with the AI mark, confidence, source, classification and AI activity in Orbit Desk.
+- An agent edits and sends a draft; the visitor gets the edited text.
+- A handover, with the AI note.
+- An email draft, approved and delivered to Mailpit.
+- An admin tries the agent in Settings; an agent gets 403.
+
+### Bugs found and fixed
+
+1. **A stale AI draft could be sent after a person had already replied** (seen on a sample ticket). A person's reply now discards waiting drafts on that conversation, audited as `superseded`.
+2. **Integration tests assumed an empty knowledge base.** The AI tests leave approved documents behind. The KB tests now look for their own document instead of expecting none, or expecting it first.
+3. **The drawer's collapsed "AI activity" list was in the DOM and quoted customer text**, which broke an existing E2E text lookup. It now renders only when opened.
+4. **Plural words didn't match in the fake agent's scoring** ("card" and "cards"). Simple plural folding fixed it.
+
+### Screenshots
+
+A chat answered by the AI, with its source and the AI activity:
+
+![AI answered](screenshots/orbit-ai-answered.png)
+
+An email draft waiting for review:
+
+![AI draft](screenshots/orbit-ai-draft.png)
+
+Settings → AI behaviour, with a dry run:
+
+![AI settings](screenshots/orbit-ai-settings.png)
+
+---
+
+## Phase 4: knowledge base
+
+Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-4-kb`.
+
+**Result: every step of the gate passed.**
+
+| Step                | Result                                                 |
+| ------------------- | ------------------------------------------------------ |
+| `pnpm format:check` | pass                                                   |
+| `pnpm lint`         | pass                                                   |
+| `pnpm build`        | pass                                                   |
+| `pnpm typecheck`    | pass                                                   |
+| `pnpm test`         | 96 passed                                              |
+| `pnpm test:int`     | 60 passed                                              |
+| `pnpm e2e`          | 33 passed; 5 screenshot-only specs skipped as designed |
+| `pnpm kb:eval`      | recall@5 = 1.00 (18 of 18 labelled questions)          |
+
+The check steps ran through `scripts/check-in-docker.sh` as before. `pnpm e2e` ran natively with `CHROMIUM_PATH`.
+
+### New tests
+
+| Where                                           | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------------------------------------- | ----: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/kb/kb.test.ts`                    |    13 | Heading trails and chunk sizes with overlap; sentence splitting; file-type detection; HTML headings kept and navigation dropped; PDF text without page markers; private, loopback and metadata addresses refused; rank fusion; section trails without the title; snippets                                                                                                                                                                     |
+| `apps/orbit-desk/src/features/kb/logic.test.ts` |     4 | Index state labels, review actions per status, quoting a result with its source, file sizes                                                                                                                                                                                                                                                                                                                                                   |
+| `apps/api/test/kb.int.test.ts`                  |     7 | Upload a generated PDF → indexed → not searchable as a draft → approved and found with vector and keyword matches and a file citation. Customer audience sees public documents only; team documents only for members. A new version replaces the old chunks. Keyword fallback without an embedding model. Unsafe URLs, unsupported files and non-managers refused. Audit rows and chunk deletion. Recall@5 ≥ 0.8 on the sample knowledge base |
+| `e2e/tests/kb.spec.ts`                          |     5 | Agent search with citations (no drafts, no management); supervisor adds, indexes and approves an FAQ entry; an uploaded Markdown file takes its title from its heading; the ticket drawer inserts a cited answer into the reply; no horizontal scroll at 390px                                                                                                                                                                                |
+
+### Bugs found and fixed
+
+1. **Indexing jobs never ran.** BullMQ rejects job ids containing `:`, and the error only showed in worker logs.
+   - **Fix:** ids use `--` as the separator.
+   - **Tooling:** `TEST_LOG_LEVEL` now surfaces worker logs in integration tests, and `RUN=...` runs a single test file in the container.
+2. **Embeddings came back as 256 numbers instead of 1024.** The `openai` SDK asks for base64 embeddings by default and decoded the float arrays wrongly.
+   - **Fix:** the client asks for `encoding_format: 'float'`, and the fake provider handles both formats.
+3. **Keyword search found almost nothing for questions.** `websearch_to_tsquery` requires every word.
+   - **Fix:** keyword matching ORs the meaningful words and ranks with `ts_rank_cd`.
+4. **Uploads without a title were named after the file** ("returns-policy").
+   - **Fix:** indexing replaces the file name with the document's first heading or HTML title.
+5. **Section trails repeated the document title**, and the top bar said "Overview" on the knowledge base page. Both fixed, and covered by the unit test and the screenshot below.
+
+### Screenshot
+
+Knowledge base search and documents:
+
+![Knowledge base](screenshots/orbit-kb.png)
+
+---
+
+## Phase 3: LLM platform and Settings keys
+
+Run on 30 September 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-3-llm-settings`.
+
+**Result: every step of the gate passed.**
+
+| Step                | Result                                                 |
+| ------------------- | ------------------------------------------------------ |
+| `pnpm format:check` | pass                                                   |
+| `pnpm lint`         | pass                                                   |
+| `pnpm build`        | pass                                                   |
+| `pnpm typecheck`    | pass                                                   |
+| `pnpm test`         | 79 passed                                              |
+| `pnpm test:int`     | 53 passed                                              |
+| `pnpm e2e`          | 28 passed; 4 screenshot-only specs skipped as designed |
+
+### How it was run
+
+- The check steps ran through `bash scripts/check-in-docker.sh`: a Node 22 Linux container on the compose network, the same as the CI `check` job.
+  - On this Windows host, `@swc/core` refuses to load because its cache folder under `AppData\Local` inherits permissions it treats as unsafe.
+- `pnpm e2e` ran natively against the Docker stack, with `CHROMIUM_PATH` pointing at an installed Chromium.
+- LiteLLM and `fake-providers` were part of the stack. The integration tests register real providers and models in LiteLLM, pointing at the scripted fake LLM.
+
+### New tests
+
+| Where                                                 | Tests | Covers                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------- | ----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/llm/llm-router.test.ts`                 |     9 | Cheapest-first ordering by blended price, unknown prices last, cap skipping (including a $0 cap), capability filtering, disabled providers and models, fixed order, allowlists, pinned embeddings, warnings                                                                                              |
+| `apps/api/src/settings/secret-crypto.test.ts`         |     7 | AES-GCM round trip, fresh IVs, tamper detection, key-name binding, wrong master key, masking                                                                                                                                                                                                             |
+| `apps/fake-providers/src/llm.test.ts`                 |     4 | Scripted replies and deterministic embeddings                                                                                                                                                                                                                                                            |
+| `apps/orbit-desk/src/features/settings/logic.test.ts` |     7 | Tabs by permission, money and price formatting, masking, budget parsing, reordering                                                                                                                                                                                                                      |
+| `apps/api/test/settings.int.test.ts`                  |    15 | 401/403 for agents and supervisors; secrets encrypted, never echoed or audited in clear, rotated and deleted with audit rows; channel validation and test results; providers through LiteLLM; routing, caps, fallback after a scripted failure, "over budget" error, fixed order, key rotation, deletion |
+| `e2e/tests/settings.spec.ts`                          |     5 | The demo provider is masked and tests "Connected"; add a provider and a model in the UI, and cheapest-first routing picks it; a channel secret is stored write-only; hidden from agents and team leads (403); no horizontal scroll at 390px                                                              |
+
+### Bugs found and fixed
+
+1. **Integration run failed on unhandled Redis errors.** All 38 tests passed on `main`, but vitest reported 24 unhandled rejections, so the run exited 1.
+   - **Cause:** `RedisIoAdapter.close()` runs once per Socket.IO namespace, and the second call quit connections that were already closed.
+   - **Fix:** the adapter quits its clients once, and ignores expected shutdown errors.
+2. **Orbit Desk Settings widened the page at 390px by 83px.**
+   - **Cause:** visually-hidden table header labels are absolutely positioned. Their containing block was the card, outside the table's scroll box, so they escaped its clipping. A grid item with `min-width: auto` made it worse.
+   - **Fix:** the scroll box is `position: relative`, and grid children get `min-width: 0`.
+   - **Guard:** the phone-width spec in `settings.spec.ts`.
+3. **The sample loader raced LiteLLM on a fresh stack.** LiteLLM runs its own migrations on first start and had no healthcheck.
+   - **Fix:** compose has a LiteLLM healthcheck, and the loader waits until `/health/ready` reports LiteLLM up.
+4. **Integration tests couldn't reach LiteLLM through Turbo.** Turbo strips undeclared environment variables.
+   - **Fix:** `TEST_LITELLM_URL`, `TEST_LITELLM_MASTER_KEY` and `TEST_FAKE_LLM_URL` are declared in `turbo.json`.
+
+### Screenshots
+
+Settings, AI providers:
+
+![Settings providers](screenshots/orbit-settings-providers.png)
+
+Settings, models and roles:
+
+![Settings models](screenshots/orbit-settings-models.png)
+
+---
+
+## Earlier: consolidated main
 
 Run on 30 September 2026, 11:46–11:48 UTC, against a freshly reset Docker stack.
 
 **Result: 113 of 113 tests passed.** That covers 52 unit and component tests, 38 API integration tests and 23 browser end-to-end tests. Three screenshot-only specs were skipped in the main run and run separately to capture the images below.
 
-## What was tested
+### What was tested
 
 `main` now combines both earlier Claude branches:
 
@@ -20,7 +1220,7 @@ Changes made on top of the merge:
 - **Sample data loader.** `pnpm sample:load` fills the stack with fictional records.
 - **E2E suite and CI.** Added a Playwright suite in `e2e/` and an `e2e` job in CI.
 
-## Environment
+### Environment
 
 | Piece          | Detail                                                                                                        |
 | -------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -31,7 +1231,7 @@ Changes made on top of the merge:
 | Runtime        | Node 22, pnpm 9.15                                                                                            |
 | Not started    | LiteLLM. Its phase (Phase 3) hasn't begun, so `/health/ready` reports it as `down` as expected                |
 
-## Sample data (fictional, written for this run)
+### Sample data (fictional, written for this run)
 
 The loader lives in `scripts/sample-data/`. Every person and company is invented, and all email domains use the reserved `example.*` TLDs.
 
@@ -55,9 +1255,9 @@ Dashboard figures after the full test run, which adds its own tickets on top of 
 - **Open tickets by channel:** 18 email, 10 web chat, 3 WhatsApp, 3 phone, 2 agent.
 - **Mailpit:** 10 outgoing messages.
 
-## Results
+### Results
 
-### Unit and component tests (`pnpm test`): 52 passed
+#### Unit and component tests (`pnpm test`): 52 passed
 
 | Package           | Tests | Covers                                                                                                                                                                                  |
 | ----------------- | ----: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -65,7 +1265,7 @@ Dashboard figures after the full test run, which adds its own tickets on top of 
 | `@tms/api`        |    14 | Email parsing and threading, workflow rules                                                                                                                                             |
 | `@tms/orbit-desk` |    27 | API adapters, status glyphs, allowed transitions, thread merging, queue ordering, triage, KPIs, activity text, chart scale, and components: queue table, new ticket form, ticket drawer |
 
-### API integration tests (`pnpm test:int`, real Postgres, Redis, S3 and GreenMail): 38 passed
+#### API integration tests (`pnpm test:int`, real Postgres, Redis, S3 and GreenMail): 38 passed
 
 | File                       | Tests | Covers                                                                                                                |
 | -------------------------- | ----: | --------------------------------------------------------------------------------------------------------------------- |
@@ -75,7 +1275,7 @@ Dashboard figures after the full test run, which adds its own tickets on top of 
 | `outbox-relay.int.test.ts` |     4 | Outbox relay and delivery                                                                                             |
 | `reports.int.test.ts`      |     3 | New endpoint: permission gate (401/403/200), exact deltas after create/assign/resolve, customer fields on ticket rows |
 
-### End-to-end tests (`pnpm e2e`, Playwright against the Docker stack): 23 passed
+#### End-to-end tests (`pnpm e2e`, Playwright against the Docker stack): 23 passed
 
 Every test also fails if the browser logs an unexpected console error.
 
@@ -105,7 +1305,7 @@ Every test also fails if the browser logs an unexpected console error.
 | 22  | RBAC                | API refuses assignment by an agent (403)                                                         | Pass   |
 | 23  | Phone width (390px) | No horizontal scroll on first paint or after load; menu drawer opens; drawer fits the screen     | Pass   |
 
-## Bugs found and fixed while testing live
+### Bugs found and fixed while testing live
 
 1. **Orbit Desk: horizontal scroll on phones while the dashboard loads.**
    - **Cause:** the volume chart rendered 640px wide until its ResizeObserver fired, adding 286px of horizontal scroll at 390px.
@@ -122,14 +1322,14 @@ Every test also fails if the browser logs an unexpected console error.
 
 A few first-run failures came from the tests themselves: the wrong error wording, a duplicate text match and a float rounding. Those tests were corrected, and the app was not changed for them.
 
-## Known limits
+### Known limits
 
 - **No SLA or CSAT figures.** The backend has no data for them until the SLA phase, so Orbit Desk no longer shows invented numbers. The "SLA at risk" view is gone for the same reason.
 - **Day boundaries are UTC.** The volume chart groups days in UTC.
 - **Queue lists are capped.** A view shows at most 200 rows, the API page limit, and says so when capped.
 - **Tests leave data behind.** The E2E tests create their own tickets and can be re-run on the same data, but each run adds records. Reset with `docker compose -f infra/docker-compose.yml --profile app down -v`.
 
-## Reproduce
+### Reproduce
 
 ```bash
 pnpm install
@@ -143,7 +1343,7 @@ pnpm e2e                           # E2E; HTML report in e2e/playwright-report
 SCREENSHOTS=1 pnpm --filter @tms/e2e e2e tests/screenshots.spec.ts   # refresh the images below
 ```
 
-## Screenshots
+### Screenshots
 
 Orbit Desk dashboard on sample data:
 

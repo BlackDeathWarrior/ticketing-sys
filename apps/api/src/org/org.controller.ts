@@ -1,6 +1,23 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { createCategorySchema, createTeamSchema } from '@tms/shared';
+import {
+  createCategorySchema,
+  createTeamSchema,
+  type UpdateCategoryInput,
+  updateCategorySchema,
+  type UpdateTeamInput,
+  updateTeamSchema,
+} from '@tms/shared';
 import type { z } from 'zod';
 import { Ctx, type RequestCtx, RequirePermission } from '../common/request-context';
 import { ZodPipe } from '../common/zod.pipe';
@@ -27,6 +44,23 @@ export class OrgController {
     return this.org.createTeam(ctx, body);
   }
 
+  @Patch('teams/:id')
+  @RequirePermission('ticket:read')
+  updateTeam(
+    @Ctx() ctx: RequestCtx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(updateTeamSchema)) body: UpdateTeamInput,
+  ) {
+    return this.org.updateTeam(ctx, id, body);
+  }
+
+  @Delete('teams/:id')
+  @HttpCode(204)
+  @RequirePermission('team:manage')
+  deleteTeam(@Ctx() ctx: RequestCtx, @Param('id', ParseUUIDPipe) id: string) {
+    return this.org.deleteTeam(ctx, id);
+  }
+
   @Get('categories')
   @RequirePermission('ticket:read')
   listCategories() {
@@ -40,5 +74,15 @@ export class OrgController {
     @Body(new ZodPipe(createCategorySchema)) body: z.infer<typeof createCategorySchema>,
   ) {
     return this.org.createCategory(ctx, body);
+  }
+
+  @Patch('categories/:id')
+  @RequirePermission('settings:categories')
+  updateCategory(
+    @Ctx() ctx: RequestCtx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(updateCategorySchema)) body: UpdateCategoryInput,
+  ) {
+    return this.org.updateCategory(ctx, id, body);
   }
 }

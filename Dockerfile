@@ -6,6 +6,7 @@
 #   migrate  one-shot: applies DB migrations, then the idempotent seed
 #   web      nginx serving the console and chat widget, proxying /api and /socket.io
 #   orbit-desk  nginx serving the Orbit Desk dashboard, proxying /api and /socket.io
+#   fake-providers  scripted stand-ins for LLM (and later WhatsApp/Sarvam) APIs, for offline demos
 #
 # Behind a TLS-intercepting proxy, pass its CA as a build secret:
 #   docker build --secret id=extra_ca,src=/path/to/ca.pem ...
@@ -29,10 +30,13 @@ FROM base AS build
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/db/package.json packages/db/
+COPY packages/sdk/package.json packages/sdk/
 COPY apps/api/package.json apps/api/
 COPY apps/chat-widget/package.json apps/chat-widget/
+COPY apps/help-center/package.json apps/help-center/
 COPY apps/web/package.json apps/web/
 COPY apps/orbit-desk/package.json apps/orbit-desk/
+COPY apps/fake-providers/package.json apps/fake-providers/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     --mount=type=secret,id=extra_ca,required=false \
     if [ -f /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; \
@@ -46,7 +50,8 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     --mount=type=secret,id=extra_ca,required=false \
     if [ -f /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; \
     pnpm --filter @tms/api deploy --prod /out/api && \
-    pnpm --filter @tms/db deploy --prod /out/db
+    pnpm --filter @tms/db deploy --prod /out/db && \
+    pnpm --filter @tms/fake-providers deploy --prod /out/fake-providers
 
 # ---- runtime images ----
 FROM ${NODE_IMAGE} AS runtime
@@ -74,9 +79,16 @@ FROM ${NGINX_IMAGE} AS web
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 COPY --from=build /repo/apps/chat-widget/dist /usr/share/nginx/html/widget
+COPY --from=build /repo/apps/help-center/dist /usr/share/nginx/html/help
 EXPOSE 80
 
 FROM ${NGINX_IMAGE} AS orbit-desk
 COPY apps/orbit-desk/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/orbit-desk/dist /usr/share/nginx/html
 EXPOSE 80
+
+# Plain node:http plus the MCP SDK for the sample Demo Store server.
+FROM runtime AS fake-providers
+COPY --from=build --chown=node:node /out/fake-providers ./
+EXPOSE 4010
+CMD ["node", "dist/main.js"]

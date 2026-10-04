@@ -1,6 +1,15 @@
 import { z } from 'zod';
 
-export const CHANNELS = ['email', 'whatsapp', 'webchat', 'voice', 'agent'] as const;
+/** `api`: tickets an integration creates through the API (ADR 0023). */
+export const CHANNELS = [
+  'email',
+  'whatsapp',
+  'webchat',
+  'voice',
+  'web_form',
+  'agent',
+  'api',
+] as const;
 export const channelSchema = z.enum(CHANNELS);
 export type Channel = z.infer<typeof channelSchema>;
 
@@ -52,8 +61,42 @@ export const DEFAULT_TRANSITIONS: Array<[from: string, to: string]> = [
   ['pending_customer', 'resolved'],
   ['pending_customer', 'closed'],
   ['resolved', 'in_progress'],
+  // A customer who writes again after the AI closed their request gets the AI again.
+  ['resolved', 'ai_handling'],
+  // The AI ends a conversation for misuse without calling it solved.
+  ['ai_handling', 'closed'],
   ['resolved', 'closed'],
 ];
+
+/**
+ * Why the AI resolved a ticket by itself (`tickets.ai_closure`); null when a
+ * person did, or it is not resolved.
+ */
+export const AI_CLOSURES = [
+  'customer_confirmed',
+  'no_reply',
+  // A phone call the phone agent answered, with nothing left for a person (ADR 0039).
+  'phone_call_ended',
+  // Closed for conduct (ADR 0029): closed for good at once, and never asked for a rating.
+  'jailbreak',
+  'abuse',
+  'spam',
+  'off_topic',
+] as const;
+export type AiClosure = (typeof AI_CLOSURES)[number];
+
+export const AI_CLOSURE_LABELS: Record<AiClosure, string> = {
+  customer_confirmed: 'Closed by the AI: the customer needed nothing else',
+  no_reply: 'Closed by the AI: no reply from the customer',
+  phone_call_ended: 'Closed by the AI: the phone call ended with nothing left to do',
+  jailbreak: 'Closed by the AI: an attempt to override its instructions',
+  abuse: 'Closed by the AI: abusive language',
+  spam: 'Closed by the AI: spam',
+  off_topic: 'Closed by the AI: nothing to do with the company, after a warning',
+};
+
+/** The closures that are for conduct: the conversation was ended, not finished. */
+export const CONDUCT_CLOSURES: AiClosure[] = ['jailbreak', 'abuse', 'spam', 'off_topic'];
 
 /** Statuses that assignment moves a ticket out of, into `human_assigned`. */
 export const UNASSIGNED_STATUSES = ['new', 'ai_handling'] as const;
@@ -71,7 +114,19 @@ export function parseTicketNumber(ref: string): number | null {
 
 // ---- API contracts ----
 
-const tag = z.string().trim().min(1).max(50);
+export const ticketTagSchema = z.string().trim().min(1).max(50);
+const tag = ticketTagSchema;
+
+/** The other system's id for what the ticket is about (an order, a listing, a job). */
+export const externalRefSchema = z.string().trim().min(1).max(200);
+
+export const TICKET_METADATA_MAX_BYTES = 8192;
+/** Context from the system that raised the ticket: a small JSON object, shown to agents. */
+export const ticketMetadataSchema = z
+  .record(z.unknown())
+  .refine((m) => JSON.stringify(m).length <= TICKET_METADATA_MAX_BYTES, {
+    message: `Metadata must be at most ${TICKET_METADATA_MAX_BYTES} bytes of JSON`,
+  });
 
 export const createTicketSchema = z.object({
   customerId: z.string().uuid(),
@@ -83,6 +138,8 @@ export const createTicketSchema = z.object({
   priority: prioritySchema.default('normal'),
   teamId: z.string().uuid().optional(),
   tags: z.array(tag).max(20).default([]),
+  externalRef: externalRefSchema.optional(),
+  metadata: ticketMetadataSchema.optional(),
 });
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
 
@@ -128,6 +185,10 @@ export const listTicketsQuerySchema = z.object({
   categoryId: z.string().uuid().optional(),
   tag: z.string().optional(),
   q: z.string().trim().max(200).optional(),
+  /** Who is answering: none | ai | human | handed_over (comma-separated for several). */
+  handling: z.string().max(60).optional(),
+  /** `at_risk` also includes breached tickets; `breached` only breached ones. */
+  sla: z.enum(['at_risk', 'breached']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });

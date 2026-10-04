@@ -25,6 +25,10 @@ export const conversations = pgTable(
       onDelete: 'set null',
     }),
     state: text('state').notNull().default('open'),
+    /** Rolling summary of older messages, kept by the AI agent for long conversations. */
+    summary: text('summary'),
+    /** The customer's language on this conversation (BCP-47 base code, e.g. hi). */
+    language: text('language'),
     /** Channel details: email {address, subject}, webchat {sessionId}. */
     metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
@@ -59,7 +63,7 @@ export const messages = pgTable(
     attachments: jsonb('attachments').$type<MessageAttachment[]>().notNull().default([]),
     /** Provider message id; unique per channel so webhook retries are idempotent. */
     channelMessageId: text('channel_message_id'),
-    /** Outbound only: pending | sent | failed. */
+    /** Outbound only: pending | sent | delivered | read | failed | draft | discarded. */
     deliveryStatus: text('delivery_status'),
     deliveryError: text('delivery_error'),
     sentAt: timestamp('sent_at', { withTimezone: true }),
@@ -68,6 +72,8 @@ export const messages = pgTable(
   },
   (t) => [
     index('messages_conversation_idx').on(t.conversationId, t.createdAt),
+    /** Recent traffic per channel, for the channel status lights. */
+    index('messages_channel_created_idx').on(t.channel, t.createdAt),
     uniqueIndex('messages_channel_msg_uq').on(t.channel, t.channelMessageId),
   ],
 );
