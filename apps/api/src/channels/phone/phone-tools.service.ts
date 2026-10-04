@@ -274,10 +274,14 @@ export class PhoneToolsService {
 
   /** The caller's number in the form proven numbers are stored in (with the country code). */
   private async caller(phone: string | null, provider: PhoneProviderId): Promise<string | null> {
-    // Sarvam gives a national number, read against its rented number's country. ElevenLabs
-    // passes the number as the telephone network gave it, with the country code.
-    if (provider !== 'sarvam') return phone;
-    return internationalCallerNumber(phone, (await this.channels.phone())?.agentPhoneNumber ?? '');
+    // A number from the provider's own country can arrive in national form (`0XXXXXXXXXX`,
+    // seen on Sarvam's first real call; Exotel and SIP trunks do the same). It takes the
+    // country code of the number the agent answers on.
+    const agentNumber =
+      provider === 'sarvam'
+        ? (await this.channels.phone())?.agentPhoneNumber
+        : (await this.channels.elevenlabsSync())?.agentNumber;
+    return internationalCallerNumber(phone, agentNumber ?? '');
   }
 
   private async answer(

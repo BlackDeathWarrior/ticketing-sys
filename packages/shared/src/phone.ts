@@ -135,6 +135,8 @@ export interface ElevenlabsSyncState {
   /** Tools ElevenLabs would not take, with its reason. */
   skipped: Array<{ tool: string; reason: string }>;
   tools: number;
+  /** The number the agent answers on, as ElevenLabs lists it; null while none is assigned. */
+  agentNumber: string | null;
 }
 
 /** One desk tool as the phone agent sees it (the customer argument is hidden). */
