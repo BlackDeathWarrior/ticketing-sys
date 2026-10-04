@@ -56,7 +56,9 @@ const OWN_TOOLS: PhoneToolEntry[] = [
 /** A name ElevenLabs accepts (letters, digits, `_`, `-`), unique among this agent's tools. */
 export function elevenLabsToolName(qualifiedName: string, toolId: string, taken: Set<string>) {
   const base = qualifiedName.replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 56) || 'tool';
-  const name = taken.has(base) ? `${base}_${toolId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6)}` : base;
+  const name = taken.has(base)
+    ? `${base}_${toolId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6)}`
+    : base;
   taken.add(name);
   return name;
 }
@@ -117,7 +119,9 @@ export class ElevenLabsAgentSync {
   ) {}
 
   async state(): Promise<ElevenlabsSyncState> {
-    return (await this.settings.get(ELEVENLABS_SYNC_KEY, syncStateSchema, { fresh: true })) ?? EMPTY;
+    return (
+      (await this.settings.get(ELEVENLABS_SYNC_KEY, syncStateSchema, { fresh: true })) ?? EMPTY
+    );
   }
 
   /**
@@ -149,7 +153,10 @@ export class ElevenLabsAgentSync {
 
       // 3. The post-call webhook, made once: its secret is only ever shown at creation.
       if (!state.webhookId || !config.webhookSecret) {
-        const hook = await this.client.createWebhook('Orbit Desk: call ended', this.address('events'));
+        const hook = await this.client.createWebhook(
+          'Orbit Desk: call ended',
+          this.address('events'),
+        );
         await this.secrets.set(SYSTEM_CTX, 'elevenlabs.webhook_secret', hook.secret);
         state.webhookId = hook.id;
       }
@@ -251,7 +258,9 @@ export class ElevenLabsAgentSync {
           .set({ name: tool.name, hash, syncedAt: new Date() })
           .where(eq(phoneAgentTools.id, row.id));
       } catch (err) {
-        this.logger.warn(`tool ${tool.label} was not synced to ElevenLabs: ${(err as Error).message}`);
+        this.logger.warn(
+          `tool ${tool.label} was not synced to ElevenLabs: ${(err as Error).message}`,
+        );
         state.skipped.push({ tool: tool.label, reason: (err as Error).message.slice(0, 300) });
       }
     }
