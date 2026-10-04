@@ -40,7 +40,9 @@ export interface PhoneAgentProvider {
    * Rings a number. Returns the provider's id for the call when it gives one at once, or
    * its id for the attempt, which its later report carries. Throws when it refuses.
    */
-  placeCall(call: OutboundCall): Promise<{ providerCallId: string | null; attemptId: string | null }>;
+  placeCall(
+    call: OutboundCall,
+  ): Promise<{ providerCallId: string | null; attemptId: string | null }>;
 }
 
 /** `Hindi` or `hi-IN` → `hi`; a language we have no name for is left out. */

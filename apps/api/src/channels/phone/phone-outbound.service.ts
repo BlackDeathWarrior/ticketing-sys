@@ -133,7 +133,8 @@ export class PhoneOutboundService {
     if (!call || call.status === 'ended') return null;
     if (status === 'connected' && interactionId) {
       // The agent's tools may already have tied the call to this id.
-      const mine = call.providerCallId ?? (await this.calls.linkProviderCall(call.id, interactionId));
+      const mine =
+        call.providerCallId ?? (await this.calls.linkProviderCall(call.id, interactionId));
       if (!mine) {
         // Another record holds the id (a tool reached us without the customer's number):
         // that one becomes the ticket, this one only says the call went through.
