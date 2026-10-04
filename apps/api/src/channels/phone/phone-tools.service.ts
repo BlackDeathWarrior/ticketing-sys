@@ -518,7 +518,13 @@ export class PhoneToolsService {
     if (!i.phone) return CONFIRMATION_NOT_SENT;
     const outcome = await this.links.sendNotice({ ...i, phone: i.phone });
     if (outcome.sent) return CONFIRMATION_SENT;
-    const emailed = await this.email({ to: i.email, subject: i.about, text: i.text, ...i });
+    const emailed = await this.email({
+      to: i.email,
+      subject: i.about,
+      text: i.text,
+      about: i.about,
+      callId: i.callId,
+    });
     return emailed ? CONFIRMATION_EMAILED : CONFIRMATION_NOT_SENT;
   }
 
