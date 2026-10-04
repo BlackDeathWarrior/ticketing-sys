@@ -51,6 +51,25 @@ const LINK_SENT =
 const LINK_NOT_SENT =
   'The link in this answer could NOT be sent to the caller. Never say a link or message was sent. Tell them to open the shop’s website, sign in and go there themselves.\n';
 const LINK_REPEAT_MS = 10 * 60_000;
+const CONFIRMATION_SENT =
+  'A written confirmation of this was sent just now to the caller’s WhatsApp. Tell them so.
+';
+const CONFIRMATION_NOT_SENT =
+  'No written confirmation could be sent to the caller. Do not say that one was sent.
+';
+const CONFIRMATION_MAX = 600;
+
+/**
+ * What a company tool wrote for the customer about what it just did
+ * (`confirmation` at the top of its result): sent to the caller in writing.
+ */
+function confirmationIn(result: unknown): string | null {
+  const text =
+    result && typeof result === 'object' ? (result as Record<string, unknown>).confirmation : null;
+  return typeof text === 'string' && text.trim() && text.length <= CONFIRMATION_MAX
+    ? text.trim()
+    : null;
+}
 
 /** A link a tool answered with (`url` at the top of its result): what a caller cannot be read. */
 function linkIn(result: unknown): string | null {
@@ -171,6 +190,18 @@ export class PhoneToolsService {
     }
   }
 
+  /** What the agent is told about a written confirmation: sent to WhatsApp, or not. */
+  private async confirm(i: {
+    text: string;
+    phone: string | null;
+    callId: string | null;
+    about: string;
+  }): Promise<string> {
+    if (!i.phone) return CONFIRMATION_NOT_SENT;
+    const outcome = await this.links.sendNotice({ ...i, phone: i.phone });
+    return outcome.sent ? CONFIRMATION_SENT : CONFIRMATION_NOT_SENT;
+  }
+
   /** What the agent is told about a link in a tool's answer: sent to WhatsApp, or not. */
   private async shareLink(i: {
     link: string;
@@ -270,9 +301,19 @@ export class PhoneToolsService {
               about: found.tool.title ?? found.tool.name,
             })
           : '';
+        const confirmation = confirmationIn(r.result);
+        const confirmed = confirmation
+          ? await this.confirm({
+              text: confirmation,
+              phone: owner && phone ? phone : null,
+              callId: call?.id ?? null,
+              about: found.tool.title ?? found.tool.name,
+            })
+          : '';
         return ok(
           FROM_SYSTEM +
             note +
+            confirmed +
             (typeof r.result === 'string' ? r.result : JSON.stringify(r.result ?? {})),
         );
       }

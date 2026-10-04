@@ -70,6 +70,63 @@ export class WhatsAppLinkSender {
     return outcome;
   }
 
+  /**
+   * A confirmation a company tool wrote for the customer (an order cancelled,
+   * a return asked for), sent as it is. Only as a plain message inside the
+   * 24-hour window: a template has its own fixed wording and cannot carry it.
+   */
+  async sendNotice(i: {
+    phone: string;
+    text: string;
+    about: string;
+    callId: string | null;
+  }): Promise<LinkSendOutcome> {
+    const outcome = await this.tryNotice(i);
+    if (!outcome.sent) {
+      this.logger.warn(`a confirmation was not sent over WhatsApp: ${outcome.reason}`);
+    }
+    // On record either way; never the number, never the text (it names the customer's order).
+    await this.db
+      .transaction((tx) =>
+        this.audit.record(tx, AI_CTX, {
+          action: outcome.sent ? 'whatsapp.notice_sent' : 'whatsapp.notice_not_sent',
+          targetType: 'voice_call',
+          targetId: i.callId,
+          data: { about: i.about, ...(outcome.sent ? {} : { reason: outcome.reason }) },
+        }),
+      )
+      .catch((err: Error) => this.logger.warn(`audit of a sent confirmation failed: ${err.message}`));
+    return outcome;
+  }
+
+  private async tryNotice(i: { phone: string; text: string }): Promise<LinkSendOutcome> {
+    const config = await this.channelConfig.whatsapp();
+    if (!config?.enabled || !config.accessToken) {
+      return { sent: false, reason: 'WhatsApp is not connected' };
+    }
+    const lastInboundAt = await this.conversations.lastWhatsappInboundAt(i.phone);
+    if (!waWindow(lastInboundAt).open) {
+      return {
+        sent: false,
+        reason: lastInboundAt
+          ? 'their last WhatsApp message is more than 24 hours old'
+          : 'this number has not written on WhatsApp',
+      };
+    }
+    try {
+      await sendTextMessage({
+        graph: config.graph,
+        accessToken: config.accessToken,
+        phoneNumberId: config.phoneNumberId,
+        to: i.phone,
+        text: i.text,
+      });
+      return { sent: true, as: 'text' };
+    } catch (err) {
+      return { sent: false, reason: explainMetaError(err).summary };
+    }
+  }
+
   private async trySend(i: {
     phone: string;
     templateName: string | null;
