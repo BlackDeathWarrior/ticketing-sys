@@ -13,6 +13,9 @@ x-app-env: &app-env
   TMS_SECRETS_KEY: ${TMS_SECRETS_KEY:-ZGV2LW9ubHktdG1zLXNlY3JldHMta2V5LTMyYnl0ZXM=}
   # Dev default only. Set JWT_SECRET in the environment for anything shared.
   JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me-0123456789abcdef}
+  # Dev default only: what a site signs a signed-in chat visitor's identity with. The sample
+  # data's two chats that use tools are signed with it. Set your own for anything shared.
+  CHAT_IDENTITY_SECRET: ${CHAT_IDENTITY_SECRET:-dev-only-chat-identity-secret-change-me-0123456789}
   # Add the address of your own app's pages here when they call the API or show the chat.
   CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:8081}
   # MCP servers may live on these compose hosts (the sample Demo Store server in fake-providers).
