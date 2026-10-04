@@ -144,6 +144,22 @@ export interface PhoneVerificationChecked {
   phone: string;
 }
 
+export interface CustomerNotice {
+  /** Your own id for the person; only a customer you have named before can be reached. */
+  customer: { externalId: string };
+  /** Your sentence for them, sent as it is. Up to 600 characters. */
+  text: string;
+  /** What it is about, in a few words, for the desk's record. */
+  about?: string;
+}
+
+/** `sent: false` is an answer, not an error: `reason` says why nothing went out. */
+export interface CustomerNoticeResult {
+  sent: boolean;
+  via: 'whatsapp' | null;
+  reason?: string;
+}
+
 /** Why a check was refused (`body.reason` of a 400 `TmsApiError`). */
 export type PhoneCodeFailure = 'wrong-code' | 'expired' | 'too-many-attempts' | 'no-code';
 

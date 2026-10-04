@@ -79,7 +79,10 @@ export class WhatsAppLinkSender {
     phone: string;
     text: string;
     about: string;
-    callId: string | null;
+    /** The phone call it belongs to, when it was asked for on one. */
+    callId?: string | null;
+    /** What the audit entry is filed under when there is no call (an app's customer). */
+    target?: { type: string; id: string };
   }): Promise<LinkSendOutcome> {
     const outcome = await this.tryNotice(i);
     if (!outcome.sent) {
@@ -90,8 +93,8 @@ export class WhatsAppLinkSender {
       .transaction((tx) =>
         this.audit.record(tx, AI_CTX, {
           action: outcome.sent ? 'whatsapp.notice_sent' : 'whatsapp.notice_not_sent',
-          targetType: 'voice_call',
-          targetId: i.callId,
+          targetType: i.target?.type ?? 'voice_call',
+          targetId: i.target?.id ?? i.callId ?? null,
           data: { about: i.about, ...(outcome.sent ? {} : { reason: outcome.reason }) },
         }),
       )

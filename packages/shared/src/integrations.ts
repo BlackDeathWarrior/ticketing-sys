@@ -377,3 +377,27 @@ export interface PhoneVerificationChecked {
   verified: true;
   phone: string;
 }
+
+/**
+ * A short written notice for one of the app's customers about something the
+ * app did for them (a return approved, a refund issued). It is the app's own
+ * wording and goes out as it is.
+ */
+export const customerNoticeSchema = z.object({
+  customer: z.object({ externalId: z.string().trim().min(1).max(200) }),
+  text: z.string().trim().min(1).max(600),
+  /** What it is about, in a few words, for the desk's own record ("Return approved"). */
+  about: z.string().trim().min(1).max(80).optional(),
+});
+export type CustomerNoticeInput = z.output<typeof customerNoticeSchema>;
+
+/**
+ * Whether the notice went out. Not sent is an answer, not an error: `reason`
+ * says why (no confirmed number, or WhatsApp only allows a message to someone
+ * who wrote in the last 24 hours).
+ */
+export interface CustomerNoticeResult {
+  sent: boolean;
+  via: 'whatsapp' | null;
+  reason?: string;
+}

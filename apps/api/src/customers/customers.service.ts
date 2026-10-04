@@ -701,6 +701,22 @@ export class CustomersService {
     return { id: customer.id, name: customer.displayName, email, attributes: customer.attributes };
   }
 
+  /** The number this customer has proven is theirs (digits, country code included), if any. */
+  async provenPhoneOf(customerId: string, db: DbOrTx = this.db): Promise<string | null> {
+    const [row] = await db
+      .select({ value: customerIdentities.value })
+      .from(customerIdentities)
+      .where(
+        and(
+          eq(customerIdentities.customerId, customerId),
+          eq(customerIdentities.type, 'phone'),
+          eq(customerIdentities.verified, true),
+        ),
+      )
+      .limit(1);
+    return row?.value ?? null;
+  }
+
   private async findByIdentity(db: DbOrTx, type: IdentityType, value: string) {
     const [row] = await db
       .select({ customerId: customerIdentities.customerId })
