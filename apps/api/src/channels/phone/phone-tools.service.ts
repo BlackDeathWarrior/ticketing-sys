@@ -30,6 +30,8 @@ const NOT_LINKED =
   "This caller's number is not linked to a shop account. They can add and confirm it under their account on the shop site, then call again.";
 const NEEDS_COLLEAGUE =
   'That needs a colleague. Offer the caller a call back and use request_person.';
+const APPROVAL_NEEDED =
+  'This needs a colleague’s approval and has been passed on for it. It is NOT done. Tell the caller that a colleague must approve it and that they will be rung back with the answer.\n';
 const TOO_LONG = 'That took too long. Apologise and offer to try once more.';
 const WENT_WRONG =
   'Something went wrong on our side. Apologise, and offer to try once more or a call back.';
@@ -412,9 +414,12 @@ export class PhoneToolsService {
     return { phone, owner: phone ? await this.customers.provenPhoneOwner(phone) : null };
   }
 
-  /** The company's tools a phone agent may use right now. */
+  /**
+   * The company's tools a phone agent may use right now. One that needs an approval is
+   * offered too: the request is passed on and the caller is rung back with the answer.
+   */
   async offered(): Promise<AgentTool[]> {
-    return (await this.tools.agentTools()).filter((t) => t.tool.tier !== 'transactional');
+    return this.tools.agentTools();
   }
 
   private async searchKnowledge(query: string): Promise<PhoneToolReply> {
@@ -446,16 +451,36 @@ export class PhoneToolsService {
       const names = (await this.offered()).map((t) => t.qualifiedName).join(', ');
       return fail(`There is no tool called "${name}". The tools are: ${names}.`);
     }
-    if (found.tool.tier === 'transactional') return fail(NEEDS_COLLEAGUE);
 
     // The number this token-protected request carries; the call's record (set only by such
     // requests) when this one has none.
     const { phone, owner } = await this.party(call, body.phone);
+    // The catalogue is in English too: a search for "लाल कुर्ता" would find nothing.
+    const args = await this.translator.argumentsToEnglish(body.arguments?.trim() || '{}');
+    if (found.tool.tier === 'transactional') {
+      // An approval belongs to a ticket, and this call has none until it ends. The request is
+      // checked now, so the agent can correct a wrong input while the caller is on the line,
+      // and kept on the call's record; the job that writes the ticket asks for the approval.
+      if (!call) return fail(NEEDS_COLLEAGUE);
+      const check = await this.gateway.invoke(AI_CTX, {
+        tool: found.tool,
+        server: found.server,
+        args,
+        ticketId: null,
+        conversationId: null,
+        customerEmail: owner?.email ?? null,
+        dryRun: true,
+      });
+      if (check.status === 'denied' || check.status === 'error') {
+        return fail(found.tool.customerArg && !owner?.email ? NOT_LINKED : check.error);
+      }
+      await this.calls.notePendingApproval(call.id, { toolId: found.tool.id, args });
+      return ok(APPROVAL_NEEDED);
+    }
     const run = this.gateway.invoke(AI_CTX, {
       tool: found.tool,
       server: found.server,
-      // The shop's catalogue is in English too: a search for "लाल कुर्ता" would find nothing.
-      args: await this.translator.argumentsToEnglish(body.arguments?.trim() || '{}'),
+      args,
       ticketId: null,
       conversationId: null,
       customerEmail: owner?.email ?? null,

@@ -20,18 +20,13 @@ import { ChannelHealthMonitor } from '../channels/health/channel-health.monitor'
 import { PhoneCallCloser } from '../channels/phone/phone-call-closer.service';
 import { PhoneCallQueue, PhoneCallWorker } from '../channels/phone/phone-call.queue';
 import { PhoneOutboundHandler } from '../channels/phone/phone-outbound.handler';
-import { PhoneOutboundService } from '../channels/phone/phone-outbound.service';
+import { PhoneOutboundModule } from '../channels/phone/phone-outbound.module';
 import { ElevenLabsAgentSync } from '../channels/phone/elevenlabs/elevenlabs-agent-sync.service';
 import {
   ElevenLabsSyncHandler,
   ElevenLabsSyncQueue,
   ElevenLabsSyncWorker,
 } from '../channels/phone/elevenlabs/elevenlabs-sync.queue';
-import { ElevenLabsClient } from '../channels/phone/elevenlabs/elevenlabs.client';
-import { ElevenLabsProvider } from '../channels/phone/elevenlabs/elevenlabs.provider';
-import { PhoneProviders } from '../channels/phone/phone-providers';
-import { SarvamProvider } from '../channels/phone/sarvam.provider';
-import { SarvamAgentsClient } from '../channels/phone/sarvam-agents.client';
 import { WhatsAppWebhookWorker } from '../channels/whatsapp/whatsapp-webhook.queue';
 import { InfraModule } from '../infra/infra.module';
 import { KbIndexerService } from '../kb/kb-indexer.service';
@@ -85,6 +80,7 @@ const env = loadEnv();
     StorageModule,
     TicketsModule,
     CustomersModule,
+    PhoneOutboundModule,
     ConversationsModule,
     ChannelsModule,
     LlmModule,
@@ -112,17 +108,11 @@ const env = loadEnv();
     WhatsAppSender,
     ApiSender,
     WhatsAppWebhookWorker,
-    SarvamAgentsClient,
-    SarvamProvider,
-    ElevenLabsClient,
-    ElevenLabsProvider,
     ElevenLabsAgentSync,
     ElevenLabsSyncQueue,
     ElevenLabsSyncWorker,
     ElevenLabsSyncHandler,
-    PhoneProviders,
     PhoneCallCloser,
-    PhoneOutboundService,
     PhoneCallQueue,
     PhoneOutboundHandler,
     PhoneCallWorker,

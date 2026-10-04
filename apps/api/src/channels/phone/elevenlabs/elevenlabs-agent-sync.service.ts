@@ -280,10 +280,8 @@ export class ElevenLabsAgentSync {
     const byKey = new Map(rows.map((r) => [r.key, r]));
     const taken = new Set<string>();
 
-    // Tools that need an approval are left out until the outcome can reach the caller.
-    const company = (await this.tools.agentTools())
-      .filter((t) => t.tool.tier !== 'transactional')
-      .map((t) => {
+    // Every tool, also one that needs an approval: the caller is rung back with the answer.
+    const company = (await this.tools.agentTools()).map((t) => {
         const fn = (t.definition as { function: { description?: string; parameters?: unknown } })
           .function;
         return {
