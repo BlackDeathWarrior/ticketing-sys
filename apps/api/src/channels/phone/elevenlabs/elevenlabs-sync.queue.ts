@@ -90,6 +90,7 @@ export class ElevenLabsSyncWorker implements OnApplicationBootstrap, BeforeAppli
   constructor(
     @Inject(ENV) env: Env,
     private readonly sync: ElevenLabsAgentSync,
+    private readonly queue: ElevenLabsSyncQueue,
   ) {
     this.connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
   }
@@ -104,6 +105,11 @@ export class ElevenLabsSyncWorker implements OnApplicationBootstrap, BeforeAppli
         this.logger.error(`the ElevenLabs agent was not synced: ${err.message}`);
       }
     });
+    // The agent's instruction is part of this code: a new version reaches ElevenLabs with the
+    // first sync after a deploy. Nothing happens while the card is off or has no key.
+    void this.queue
+      .request('settings_saved')
+      .catch((err: Error) => this.logger.warn(`no sync asked for at start: ${err.message}`));
   }
 
   async beforeApplicationShutdown() {
