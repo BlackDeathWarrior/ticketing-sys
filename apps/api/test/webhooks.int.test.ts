@@ -16,8 +16,17 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ConversationsService } from '../src/conversations/conversations.service';
 import { DB } from '../src/infra/tokens';
+import { WEBHOOK_QUEUE } from '../src/webhooks/webhook-delivery.worker';
 import { verifySignatureHeader } from '../src/webhooks/webhook-sign';
-import { makeUser, startApp, startWorker, type TestClient, uniq, waitFor } from './helpers';
+import {
+  eventsHandled,
+  makeUser,
+  startApp,
+  startWorker,
+  type TestClient,
+  uniq,
+  waitFor,
+} from './helpers';
 
 // The receiver is a server inside this test, on the loopback address; retries are quick.
 Object.assign(process.env, {
@@ -101,8 +110,8 @@ const arrived = (path: string, type: string, count = 1) =>
     const got = at(path).filter((r) => r.body.type === type);
     return got.length >= count ? got : undefined;
   }, `${count} × ${type} at ${path}`);
-/** Gives deliveries that should NOT happen time to happen. */
-const settle = () => new Promise((r) => setTimeout(r, 1200));
+/** Lets deliveries that should NOT happen have happened: every event handled, nothing left to send. */
+const settle = () => eventsHandled(t, [WEBHOOK_QUEUE]);
 
 const raise = async (key = shop.key, extra: Record<string, unknown> = {}) => {
   const res = await t.call<IntegrationTicketView>('POST', '/integration/tickets', {

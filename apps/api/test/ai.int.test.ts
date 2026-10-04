@@ -4,11 +4,13 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { type AiGolden, checkAiGolden, goldenToSimulation } from '@tms/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { AI_QUEUE } from '../src/ai/ai.worker';
 import { AGENT_PROMPT_VERSION } from '../src/ai/prompts';
 import { InboundService } from '../src/channels/inbound.service';
 import { ConversationsService } from '../src/conversations/conversations.service';
 import {
   clearKnowledgeBase,
+  eventsHandled,
   startApp,
   startWorker,
   type TestClient,
@@ -453,7 +455,7 @@ describe('AI agent on web chat', () => {
     expect((await conversations(c.ticketId))[0]!.controller).toBe('human');
 
     await chat('Thanks Aria, one more question about returns.', c.session);
-    await new Promise((r) => setTimeout(r, 2_500));
+    await eventsHandled(t, [AI_QUEUE]);
     expect((await runs(c.ticketId)).filter((r) => r.kind === 'turn')).toHaveLength(1);
   });
 

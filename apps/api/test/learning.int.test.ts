@@ -7,6 +7,7 @@ import { InboundService } from '../src/channels/inbound.service';
 import { CsatService } from '../src/csat/csat.service';
 import {
   clearKnowledgeBase,
+  eventsHandled,
   makeUser,
   startApp,
   startWorker,
@@ -254,12 +255,12 @@ describe('learning from ratings', () => {
       body: { ...current, learnFromRatings: false },
     });
     // The worker hears about the setting through an event.
-    await new Promise((r) => setTimeout(r, 1200));
+    await eventsHandled(t);
     const c = await chat(QUESTION);
     expect((await turnOf(c.ticketId)).decision).toBe('sent');
     expect((await overview()).enabled).toBe(false);
     await t.call('PUT', '/settings/ai', { token: admin, body: current });
-    await new Promise((r) => setTimeout(r, 1200));
+    await eventsHandled(t);
   });
 
   it('turns a review into a lesson, and the AI follows it', async () => {

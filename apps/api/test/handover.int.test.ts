@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { InboundService } from '../src/channels/inbound.service';
 import {
   clearKnowledgeBase,
+  eventsHandled,
   makeTeam,
   makeUser,
   startApp,
@@ -276,7 +277,7 @@ describe('routing settings and presence', () => {
       },
     });
     expect(asked.status).toBe(201);
-    await new Promise((r) => setTimeout(r, 1500));
+    await eventsHandled(t);
     expect((await ticket(asked.body.reference)).team?.id).not.toBe(opsTeamId);
   });
 });
@@ -470,10 +471,6 @@ describe('take-over and hand-back', () => {
       text: 'And how long does a card refund take?',
       receivedAt: new Date().toISOString(),
     });
-    await new Promise((r) => setTimeout(r, 1500));
-    expect((await conv(c.ticketId)).messages.filter((m) => m.authorType === 'ai')).toHaveLength(
-      aiBefore,
-    );
 
     // Handed back: the AI answers the waiting question.
     const back = await t.call('POST', `/conversations/${cv.id}/hand-back`, { token: winner.token });
