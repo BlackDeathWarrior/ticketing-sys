@@ -18,6 +18,12 @@ import { WhatsAppSender } from '../delivery/whatsapp.sender';
 import { ChannelHealthMonitor } from '../channels/health/channel-health.monitor';
 import { PhoneCallCloser } from '../channels/phone/phone-call-closer.service';
 import { PhoneCallWorker } from '../channels/phone/phone-call.queue';
+import { ElevenLabsAgentSync } from '../channels/phone/elevenlabs/elevenlabs-agent-sync.service';
+import {
+  ElevenLabsSyncHandler,
+  ElevenLabsSyncQueue,
+  ElevenLabsSyncWorker,
+} from '../channels/phone/elevenlabs/elevenlabs-sync.queue';
 import { ElevenLabsClient } from '../channels/phone/elevenlabs/elevenlabs.client';
 import { ElevenLabsProvider } from '../channels/phone/elevenlabs/elevenlabs.provider';
 import { PhoneProviders } from '../channels/phone/phone-providers';
@@ -106,6 +112,10 @@ const env = loadEnv();
     SarvamProvider,
     ElevenLabsClient,
     ElevenLabsProvider,
+    ElevenLabsAgentSync,
+    ElevenLabsSyncQueue,
+    ElevenLabsSyncWorker,
+    ElevenLabsSyncHandler,
     PhoneProviders,
     PhoneCallCloser,
     PhoneCallWorker,
@@ -158,6 +168,7 @@ const env = loadEnv();
         PortalMailHandler,
         LearningHandler,
         WebhookDispatchHandler,
+        ElevenLabsSyncHandler,
       ],
       useFactory: (...handlers: unknown[]) => handlers,
     },

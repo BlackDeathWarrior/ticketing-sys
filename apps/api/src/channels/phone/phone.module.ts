@@ -6,6 +6,9 @@ import { ToolsModule } from '../../tools/tools.module';
 import { ChannelsModule } from '../channels.module';
 import { ElevenLabsHookGuard } from './elevenlabs/elevenlabs-hook.guard';
 import { ElevenLabsHooksController } from './elevenlabs/elevenlabs-hooks.controller';
+import { ElevenLabsSettingsController } from './elevenlabs/elevenlabs-settings.controller';
+import { ElevenLabsSyncQueue } from './elevenlabs/elevenlabs-sync.queue';
+import { ElevenLabsClient } from './elevenlabs/elevenlabs.client';
 import { PhoneCallQueue } from './phone-call.queue';
 import { PhoneHookGuard } from './phone-hook.guard';
 import { PhoneHooksController } from './phone-hooks.controller';
@@ -19,11 +22,13 @@ import { PhoneToolsService } from './phone-tools.service';
  */
 @Module({
   imports: [ChannelsModule, ToolsModule, KbModule, CustomersModule, LlmModule],
-  controllers: [PhoneHooksController, ElevenLabsHooksController],
+  controllers: [PhoneHooksController, ElevenLabsHooksController, ElevenLabsSettingsController],
   providers: [
     PhoneToolsService,
     PhoneHookGuard,
     ElevenLabsHookGuard,
+    ElevenLabsClient,
+    ElevenLabsSyncQueue,
     PhoneCallQueue,
     PhoneQueryTranslator,
   ],
