@@ -3,6 +3,7 @@ import {
   type ChannelKind,
   type ChannelSettingsView,
   type ConnectionTestResult,
+  PHONE_PROVIDER_NAMES,
   VOICE_DEFAULT_GREETING,
 } from '@tms/shared';
 import { type FormEvent, useEffect, useState } from 'react';
@@ -32,13 +33,15 @@ import { maskedKey } from './logic';
 import styles from './Settings.module.css';
 import { TestResult } from './TestResult';
 
-type FieldKind = 'text' | 'number' | 'bool' | 'email' | 'longtext';
+type FieldKind = 'text' | 'number' | 'bool' | 'email' | 'longtext' | 'select';
 interface Field {
   name: string;
   label: string;
   kind: FieldKind;
   placeholder?: string;
   optional?: boolean;
+  /** For `select`. */
+  options?: Array<{ value: string; label: string }>;
 }
 
 const CHANNELS: Record<
@@ -115,7 +118,7 @@ const CHANNELS: Record<
     },
   },
   phone: {
-    title: 'Phone calls',
+    title: 'Phone calls: Sarvam',
     subtitle:
       'Calls on a number rented from Sarvam, answered by a Sarvam Voice Agent that uses this desk’s knowledge and tools. Calls use your Sarvam wallet.',
     fields: [
@@ -126,6 +129,19 @@ const CHANNELS: Record<
       { name: 'appId', label: 'Agent (app) ID', kind: 'text' },
       { name: 'appVersion', label: 'Agent version', kind: 'number' },
       { name: 'connectionId', label: 'Connection ID', kind: 'text' },
+    ],
+    defaults: { enabled: true, appVersion: 1 },
+  },
+  calls: {
+    title: 'Phone calls: general',
+    subtitle: 'What holds for phone calls whichever voice agent takes them.',
+    fields: [
+      {
+        name: 'outboundProvider',
+        label: 'Calls this desk starts are placed by',
+        kind: 'select',
+        options: Object.entries(PHONE_PROVIDER_NAMES).map(([value, label]) => ({ value, label })),
+      },
       { name: 'callingHours', label: 'Outbound calls only 09:00–21:00 IST', kind: 'bool' },
       {
         name: 'linkTemplate',
@@ -135,7 +151,7 @@ const CHANNELS: Record<
         optional: true,
       },
     ],
-    defaults: { enabled: true, appVersion: 1, callingHours: false },
+    defaults: { outboundProvider: 'sarvam', callingHours: false },
   },
 };
 
@@ -182,6 +198,7 @@ export function ChannelsPanel() {
   const whatsapp = view('whatsapp');
   const sarvam = view('sarvam');
   const phone = view('phone');
+  const calls = view('calls');
   const webchat = light('webchat');
   const webForm = light('web_form');
 
@@ -213,6 +230,7 @@ export function ChannelsPanel() {
       {sarvam && <ChannelCard view={sarvam} health={light('voice')} onChanged={changed} />}
       {/* The Voice light is shown once, on the card above: it covers phone calls too. */}
       {phone && <ChannelCard view={phone} health={undefined} onChanged={changed} />}
+      {calls && <ChannelCard view={calls} health={undefined} onChanged={changed} />}
     </div>
   );
 }
@@ -239,7 +257,11 @@ function ChannelCard({
         title={def.title}
         subtitle={def.subtitle}
         actions={
-          health ? <StatusLight state={health.state} /> : <TestResult result={view.lastTest} />
+          health ? (
+            <StatusLight state={health.state} />
+          ) : view.kind === 'calls' ? undefined : (
+            <TestResult result={view.lastTest} />
+          )
         }
       />
       {view.kind === 'whatsapp' ? (
@@ -310,8 +332,12 @@ function ChannelForm({ view, onChanged }: { view: ChannelSettingsView; onChanged
     }
   };
 
-  const sourceNote =
-    view.source === 'environment'
+  // The general card has nothing to connect to: no test, no keys, and its values are in
+  // force before it is ever saved.
+  const plain = view.kind === 'calls';
+  const sourceNote = plain
+    ? null
+    : view.source === 'environment'
       ? 'Currently read from environment variables. Saving here overrides them.'
       : view.source === 'none'
         ? 'Not configured yet.'
@@ -334,6 +360,15 @@ function ChannelForm({ view, onChanged }: { view: ChannelSettingsView; onChanged
                   { value: 'yes', label: 'Yes' },
                   { value: 'no', label: 'No' },
                 ]}
+              />
+            ) : f.kind === 'select' ? (
+              <Select
+                key={f.name}
+                id={`${view.kind}-${f.name}`}
+                label={f.label}
+                value={typeof values[f.name] === 'string' ? (values[f.name] as string) : ''}
+                onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
+                options={f.options ?? []}
               />
             ) : f.kind === 'longtext' ? (
               <div key={f.name} className={styles.wide}>
@@ -365,9 +400,11 @@ function ChannelForm({ view, onChanged }: { view: ChannelSettingsView; onChanged
           )}
         </div>
         <div className={styles.formActions}>
-          <Button onClick={test} disabled={testing}>
-            Test connection
-          </Button>
+          {!plain && (
+            <Button onClick={test} disabled={testing}>
+              Test connection
+            </Button>
+          )}
           <Button type="submit" disabled={saving}>
             Save settings
           </Button>
@@ -378,21 +415,23 @@ function ChannelForm({ view, onChanged }: { view: ChannelSettingsView; onChanged
           </p>
         )}
       </form>
-      <div className={styles.form}>
-        <p className={styles.note}>
-          Credentials are encrypted and write-only: only the last four characters show.
-        </p>
-        {view.secrets.map((s) => (
-          <SecretField
-            key={s.key}
-            secret={s}
-            canEdit={can('settings:secrets')}
-            onChanged={onChanged}
-            generate={s.key === 'phone.hook_token' ? newHookToken : undefined}
-          />
-        ))}
-        {view.kind === 'phone' && <PhoneAddresses />}
-      </div>
+      {!plain && (
+        <div className={styles.form}>
+          <p className={styles.note}>
+            Credentials are encrypted and write-only: only the last four characters show.
+          </p>
+          {view.secrets.map((s) => (
+            <SecretField
+              key={s.key}
+              secret={s}
+              canEdit={can('settings:secrets')}
+              onChanged={onChanged}
+              generate={s.key === 'phone.hook_token' ? newHookToken : undefined}
+            />
+          ))}
+          {view.kind === 'phone' && <PhoneAddresses />}
+        </div>
+      )}
     </div>
   );
 }
