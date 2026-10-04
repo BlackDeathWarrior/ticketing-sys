@@ -1,0 +1,25 @@
+import type { PhoneProviderId } from '@tms/shared';
+import type { CallRecording } from '../voice/voice-calls.service';
+
+export interface PhoneTranscript {
+  turns: Array<{ role: 'caller' | 'agent'; text: string }>;
+  seconds: number | null;
+  language: string | null;
+}
+
+/** A call's audio as the provider keeps it. */
+export type PhoneRecording = CallRecording;
+
+/**
+ * One hosted voice agent that answers phone calls (ADR 0040). The desk runs
+ * none of them: this is what it needs from each once a call is over.
+ * Whatever a webhook said about a call, its content is fetched here with our
+ * own key.
+ */
+export interface PhoneAgentProvider {
+  readonly id: PhoneProviderId;
+  /** The call's transcript, or null while the provider does not have it (yet). */
+  transcript(providerCallId: string): Promise<PhoneTranscript | null>;
+  /** The call's recording, or null when there is none or it is not ready. */
+  recording(providerCallId: string): Promise<PhoneRecording | null>;
+}

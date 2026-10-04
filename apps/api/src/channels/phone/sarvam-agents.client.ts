@@ -1,17 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { baseLanguage, VOICE_LANGUAGES } from '@tms/shared';
 import { ChannelConfigService } from '../../settings/channel-config.service';
+import type { PhoneTranscript } from './phone-provider';
 
 const TIMEOUT_MS = 10_000;
 const RECORDING_TIMEOUT_MS = 60_000;
 /** About an hour and a half of the audio Sarvam returns; anything larger is not a call. */
 const RECORDING_MAX_BYTES = 120 * 1024 * 1024;
 
-export interface PhoneTranscript {
-  turns: Array<{ role: 'caller' | 'agent'; text: string }>;
-  seconds: number | null;
-  language: string | null;
-}
+export type { PhoneTranscript };
 
 const CALLER_ROLES = ['user', 'customer', 'caller', 'human'];
 const AGENT_ROLES = ['agent', 'assistant', 'bot', 'ai', 'app'];

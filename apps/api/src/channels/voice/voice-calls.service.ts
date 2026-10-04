@@ -16,6 +16,15 @@ import { DB } from '../../infra/tokens';
 import { StorageService } from '../../storage/storage.service';
 
 export type CallRow = typeof voiceCalls.$inferSelect;
+/** A call's audio: a WAV from our own call engine or Sarvam, an MP3 from ElevenLabs. */
+export interface CallRecording {
+  audio: Buffer;
+  type: 'audio/wav' | 'audio/mpeg';
+}
+const EXTENSIONS: Record<CallRecording['type'], string> = {
+  'audio/wav': 'wav',
+  'audio/mpeg': 'mp3',
+};
 const DAY_MS = 86_400_000;
 
 /**
@@ -74,10 +83,14 @@ export class VoiceCallsService {
       seconds: number;
       language: string | null;
       answeredBy: 'ai' | 'human' | 'both' | null;
-      recording: Buffer | null;
+      /** A Buffer is a WAV from our own call engine. */
+      recording: CallRecording | Buffer | null;
     },
   ): Promise<void> {
-    const recordingKey = result.recording ? await this.store(id, result.recording) : null;
+    const recording = Buffer.isBuffer(result.recording)
+      ? ({ audio: result.recording, type: 'audio/wav' } as const)
+      : result.recording;
+    const recordingKey = recording ? await this.store(id, recording) : null;
     await this.db.transaction(async (tx) => {
       const [row] = await tx
         .update(voiceCalls)
@@ -89,7 +102,7 @@ export class VoiceCallsService {
           language: result.language,
           answeredBy: result.answeredBy,
           recordingKey,
-          recordingBytes: recordingKey ? result.recording!.length : null,
+          recordingBytes: recordingKey ? recording!.audio.length : null,
         })
         .where(and(eq(voiceCalls.id, id), eq(voiceCalls.status, 'active')))
         .returning();
@@ -102,13 +115,13 @@ export class VoiceCallsService {
     });
   }
 
-  /** Puts a call's WAV in object storage. Null when storage is off or the upload failed. */
-  private async store(id: string, wav: Buffer): Promise<string | null> {
+  /** Puts a call's audio in object storage. Null when storage is off or the upload failed. */
+  private async store(id: string, recording: CallRecording): Promise<string | null> {
     if (!this.storage.enabled) return null;
     const now = new Date();
-    const key = `recordings/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}.wav`;
+    const key = `recordings/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}.${EXTENSIONS[recording.type]}`;
     try {
-      await this.storage.put(key, wav, 'audio/wav');
+      await this.storage.put(key, recording.audio, recording.type);
       return key;
     } catch (err) {
       this.logger.error(`recording of call ${id} was not stored: ${(err as Error).message}`);
@@ -118,18 +131,18 @@ export class VoiceCallsService {
 
   /**
    * A recording that arrived after the call was closed (a phone call's audio
-   * is fetched from Sarvam and may be ready later than its transcript). Only
+   * is fetched from its provider and may be ready later than its transcript). Only
    * for a call that has none and whose recording was not already deleted.
    */
-  async attachRecording(id: string, wav: Buffer): Promise<boolean> {
+  async attachRecording(id: string, recording: CallRecording): Promise<boolean> {
     const call = await this.get(id);
     if (call.status !== 'ended' || call.recordingKey || call.recordingDeletedAt) return false;
-    const recordingKey = await this.store(id, wav);
+    const recordingKey = await this.store(id, recording);
     if (!recordingKey) return false;
     return this.db.transaction(async (tx) => {
       const [row] = await tx
         .update(voiceCalls)
-        .set({ recordingKey, recordingBytes: wav.length })
+        .set({ recordingKey, recordingBytes: recording.audio.length })
         .where(and(eq(voiceCalls.id, id), isNull(voiceCalls.recordingKey)))
         .returning();
       if (!row) return false;
@@ -330,7 +343,10 @@ export class VoiceCallsService {
   }
 
   /** The recording, for playback. Listening is audited. */
-  async recording(ctx: RequestCtx, id: string): Promise<{ stream: Readable; bytes: number }> {
+  async recording(
+    ctx: RequestCtx,
+    id: string,
+  ): Promise<{ stream: Readable; bytes: number; type: CallRecording['type'] }> {
     const call = await this.get(id);
     if (!call.recordingKey) throw new NotFoundException('This call has no recording');
     const stream = await this.storage.get(call.recordingKey);
@@ -344,7 +360,11 @@ export class VoiceCallsService {
         'voice.recording_played',
       ),
     );
-    return { stream, bytes: call.recordingBytes ?? 0 };
+    return {
+      stream,
+      bytes: call.recordingBytes ?? 0,
+      type: call.recordingKey.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav',
+    };
   }
 
   /** Deletes recordings older than the retention period; the transcripts stay. */
