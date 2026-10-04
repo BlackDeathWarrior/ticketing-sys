@@ -12,6 +12,7 @@ import { ElevenLabsSyncQueue } from './elevenlabs/elevenlabs-sync.queue';
 import { PhoneCallQueue } from './phone-call.queue';
 import { PhoneCallsController } from './phone-calls.controller';
 import { PhoneHookGuard } from './phone-hook.guard';
+import { PhoneEmailLink } from './phone-email-link.service';
 import { PhoneHooksController } from './phone-hooks.controller';
 import { PhoneOutboundModule } from './phone-outbound.module';
 import { PhoneQueryTranslator } from './phone-query-translator.service';
@@ -40,6 +41,7 @@ import { PhoneToolsService } from './phone-tools.service';
   ],
   providers: [
     PhoneToolsService,
+    PhoneEmailLink,
     PhoneHookGuard,
     ElevenLabsHookGuard,
     ElevenLabsSyncQueue,

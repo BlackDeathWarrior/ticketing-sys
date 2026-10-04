@@ -141,6 +141,18 @@ On the card **Phone calls: general**, choose who places calls. For Sarvam the ca
 
 The agent's model is the provider's, and it sometimes sends a tool an input the tool does not have. On a call the desk drops such inputs before the tool runs, and a refusal tells the agent exactly which inputs the tool takes. Every refusal is in the API's log with the tool's name and the names of the inputs that were sent (never their values): look for `phone tool` in `docker logs` of the api.
 
+### A caller the desk does not know
+
+Orders, the cart, payments and refunds need the caller's number to be linked to an account. A caller whose number is not linked is told so, and the agent offers to link it on the call: it asks for the caller's email address (`verify_email`), a six-digit code is emailed to it, the caller reads the code out (`confirm_email_code`), and the number is linked to that address. The code proves the address; that the number is the caller's rests on the caller id, as for every call that comes in. The code is never stored: it waits ten minutes, takes five tries, and at most five are sent per number and per address in an hour.
+
+### What a caller gets in writing
+
+A payment link, a confirmation or details the caller asks for go to their WhatsApp when WhatsApp can reach them (they wrote to the shop in the last 24 hours, or a link template is set), and otherwise to the email address on their file. The agent is told which, and says so.
+
+### Call me
+
+An app can ask for its customer to be rung: `POST /integration/customers/{externalId}/call-requests` (scope `integration:customer`, body `about`, optional). Only the customer's confirmed number is rung. Refused with 409 and a `reason`: `not_proven`, `too_soon` (once in ten minutes), `daily_limit` (three a day), or why any call is refused (`phone_off`, `no_number`, `outside_hours`, `call_in_progress`).
+
 ### Accounts started on a call
 
 An app can offer a tool that starts an account for a caller who has none, and have the desk email the caller a link that finishes it (`POST /integration/customers/emails`, scope `integration:customer`, sent from the support mailbox by the worker). The desk has no SMS provider: the link goes by email only. Register such a tool with no customer-email input, or an unknown caller is refused before the tool runs.
