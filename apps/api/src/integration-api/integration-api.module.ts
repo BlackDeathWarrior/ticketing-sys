@@ -10,10 +10,12 @@ import { IntegrationApiController } from './integration-api.controller';
 import { CallRequestService } from './call-request.service';
 import { CustomerEmailService } from './customer-email.service';
 import { CustomerNoticeService } from './customer-notice.service';
+import { CustomerPhoneService } from './customer-phone.service';
 import {
   IntegrationCallRequestsController,
   IntegrationCustomerEmailsController,
   IntegrationCustomerNoticesController,
+  IntegrationCustomerPhonesController,
   IntegrationCustomersController,
 } from './integration-customers.controller';
 import {
@@ -35,6 +37,7 @@ import { PhoneVerificationService } from './phone-verification.service';
     IntegrationCustomerNoticesController,
     IntegrationCustomerEmailsController,
     IntegrationCallRequestsController,
+    IntegrationCustomerPhonesController,
     IntegrationEventsController,
     TicketIncidentsController,
   ],
@@ -45,6 +48,7 @@ import { PhoneVerificationService } from './phone-verification.service';
     CustomerNoticeService,
     CustomerEmailService,
     CallRequestService,
+    CustomerPhoneService,
   ],
   exports: [IntegrationTicketsService, IncidentsService, PhoneVerificationService],
 })

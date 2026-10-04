@@ -5,6 +5,10 @@ import {
   callRequestSchema,
   type CheckPhoneVerificationInput,
   type CustomerEmailInput,
+  type CustomerPhoneLookupInput,
+  customerPhoneLookupSchema,
+  type LinkCustomerPhoneInput,
+  linkCustomerPhoneSchema,
   type CustomerEmailResult,
   customerEmailSchema,
   type CustomerNoticeInput,
@@ -25,6 +29,7 @@ import { ZodPipe } from '../common/zod.pipe';
 import { CallRequestService } from './call-request.service';
 import { CustomerEmailService } from './customer-email.service';
 import { CustomerNoticeService } from './customer-notice.service';
+import { CustomerPhoneService } from './customer-phone.service';
 import { PhoneVerificationService } from './phone-verification.service';
 
 /**
@@ -130,5 +135,38 @@ export class IntegrationCallRequestsController {
     @Body(new ZodPipe(callRequestSchema)) body: CallRequestInput,
   ): Promise<{ requested: true }> {
     return this.calls.request(key, externalId.slice(0, 200), body);
+  }
+}
+
+/**
+ * A customer's phone number without a WhatsApp code, for an app that proves its people by
+ * a code sent to their email address: the app tells the desk a number it linked, and asks
+ * which number the desk linked on a call.
+ */
+@ApiTags('integration API')
+@ApiBearerAuth('apiKey')
+@ApiKeyAuth()
+@RequirePermission('integration:customer')
+@Controller('integration/customers')
+export class IntegrationCustomerPhonesController {
+  constructor(private readonly phones: CustomerPhoneService) {}
+
+  @Post('phones')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Tell the desk the phone number the app linked to a customer' })
+  @ZodBody(linkCustomerPhoneSchema)
+  link(
+    @ApiKey() key: ApiKeyContext,
+    @Body(new ZodPipe(linkCustomerPhoneSchema)) body: LinkCustomerPhoneInput,
+  ) {
+    return this.phones.link(key, body);
+  }
+
+  @Post('phone-lookup')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'The phone number linked to the customer with this email address' })
+  @ZodBody(customerPhoneLookupSchema)
+  lookup(@Body(new ZodPipe(customerPhoneLookupSchema)) body: CustomerPhoneLookupInput) {
+    return this.phones.lookup(body);
   }
 }

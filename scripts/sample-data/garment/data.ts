@@ -359,7 +359,7 @@ export const tools: GarmentTool[] = [
     name: 'issue_refund',
     title: 'Refund an order',
     description:
-      "Refunds one of the customer's delivered orders in full. Our Payments team decides each request. Use it when the customer asks for their money back for an order that was delivered and paid; for an order that has not shipped, cancel it instead, which refunds at once.",
+      "Refunds one of the customer's delivered orders in full, at once, and emails them a confirmation. Use it when the customer asks for their money back for an order that was delivered and paid; for an order that has not shipped, cancel it instead. It refuses an order with final-sale items: tell the customer those cannot be refunded.",
     method: 'POST',
     path: '/refunds',
     parameters: [
@@ -373,8 +373,8 @@ export const tools: GarmentTool[] = [
       { name: 'reason', type: 'string', description: 'Why, in a few words', required: false },
     ],
     customerArg: 'customer_email',
-    tier: 'transactional',
-    // Refunds are decided by the Payments team (ADR 0031).
+    tier: 'write',
+    // Done by the AI itself since 2026-10-04; the team is kept for a desk that sets the tool back to approval.
     approverTeam: 'Payments',
   },
   {
@@ -490,6 +490,25 @@ export const tools: GarmentTool[] = [
         name: 'quantity',
         type: 'integer',
         description: 'How many the cart should hold in total, 0 to 5. 0 removes the item',
+        required: true,
+      },
+      customer,
+    ],
+    customerArg: 'customer_email',
+    tier: 'write',
+  },
+  {
+    name: 'account_creation',
+    title: 'Create an account',
+    description:
+      "Creates a shop account for a customer who has none. Use it when another tool answers that no shop account uses the customer's email address, or when the customer asks for an account. Ask for their full name first. The account has no password: the customer signs in on the website with a code sent to their email address.",
+    method: 'POST',
+    path: '/accounts',
+    parameters: [
+      {
+        name: 'name',
+        type: 'string',
+        description: "The customer's full name, as they said it",
         required: true,
       },
       customer,

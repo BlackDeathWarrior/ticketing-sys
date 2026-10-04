@@ -360,6 +360,19 @@ export const startPhoneVerificationSchema = z.object({
 });
 export type StartPhoneVerificationInput = z.output<typeof startPhoneVerificationSchema>;
 
+/**
+ * A phone number the app itself linked to a customer whose email address it has proven
+ * (an app that signs people in by a code sent to their email). No code is sent.
+ */
+export const linkCustomerPhoneSchema = startPhoneVerificationSchema;
+export type LinkCustomerPhoneInput = z.output<typeof linkCustomerPhoneSchema>;
+
+/** Which phone number the desk has linked to the customer with this email address. */
+export const customerPhoneLookupSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(320),
+});
+export type CustomerPhoneLookupInput = z.output<typeof customerPhoneLookupSchema>;
+
 export const checkPhoneVerificationSchema = z.object({
   customer: phoneCustomerSchema,
   phone: phoneNumberSchema,
