@@ -58,6 +58,36 @@ const CONFIRMATION_NOT_SENT =
 const CONFIRMATION_MAX = 600;
 
 /**
+ * On a call on 2026-10-04 a caller asked for their order's details on WhatsApp and the agent could only
+ * say it had no way to send them. This tool is the desk's own, offered in the catalogue next
+ * to the company's: it sends what the agent writes to the number the caller has proven.
+ */
+const SEND_WHATSAPP = 'send_whatsapp';
+const SEND_WHATSAPP_MAX = 1_000;
+const SEND_WHATSAPP_ENTRY: PhoneToolEntry = {
+  name: SEND_WHATSAPP,
+  description:
+    'Sends a written message to the caller’s WhatsApp, on the number they are calling from. Use it when the caller asks to get details in writing (an order, a payment, a return, a product). Look the details up with a tool first. Write "message" in the caller’s language, in plain sentences, with only what a tool answered on this call.',
+  parameters: {
+    type: 'object',
+    properties: {
+      message: {
+        type: 'string',
+        description: `The text to send, at most ${SEND_WHATSAPP_MAX} characters. No web addresses.`,
+      },
+    },
+    required: ['message'],
+    additionalProperties: false,
+  },
+};
+const MESSAGE_SENT =
+  'The message was sent just now to the caller’s WhatsApp, on the number they are calling from. Tell them to open WhatsApp for it.';
+const MESSAGE_NOT_SENT =
+  'The message could NOT be sent to the caller’s WhatsApp. Never say it was sent. WhatsApp only lets the shop write to someone who messaged the shop in the last 24 hours: tell the caller to send the shop any message on WhatsApp and ask again, or to look under their account on the shop’s website.';
+const LOOK_UP_FIRST =
+  'Nothing has been looked up on this call yet. Use a tool to get the details first, then send them.';
+
+/**
  * What a company tool wrote for the customer about what it just did
  * (`confirmation` at the top of its result): sent to the caller in writing.
  */
@@ -111,7 +141,7 @@ export class PhoneToolsService {
    * reach the caller (a call back).
    */
   async catalogue(): Promise<PhoneToolEntry[]> {
-    return (await this.offered()).map((t) => {
+    const company = (await this.offered()).map((t) => {
       const fn = (t.definition as { function: { description?: string; parameters?: unknown } })
         .function;
       return {
@@ -120,6 +150,38 @@ export class PhoneToolsService {
         parameters: (fn.parameters ?? {}) as Record<string, unknown>,
       };
     });
+    return [...company, SEND_WHATSAPP_ENTRY];
+  }
+
+  /**
+   * What the agent wrote for the caller, sent to their WhatsApp. Only to a number its owner
+   * has proven, and only after a tool has answered on this call: the text is the agent's own,
+   * so it must have had something to write from.
+   */
+  private async sendWhatsapp(call: CallRow | null, body: PhoneToolInput): Promise<PhoneToolReply> {
+    let message = '';
+    try {
+      const args = JSON.parse(body.arguments?.trim() || '{}') as { message?: unknown };
+      if (typeof args.message === 'string') message = args.message.trim();
+    } catch {
+      // Not JSON: answered below like a missing message.
+    }
+    if (!message) return fail('Give the text to send in "message", as {"message":"…"}.');
+    if (message.length > SEND_WHATSAPP_MAX) {
+      return fail(`The message is too long. Keep it under ${SEND_WHATSAPP_MAX} characters.`);
+    }
+    const phone = body.phone ?? call?.callerPhone;
+    const owner = phone ? await this.customers.provenPhoneOwner(phone) : null;
+    if (!phone || !owner) return fail(NOT_LINKED);
+    if (!call?.toolCallIds.length) return fail(LOOK_UP_FIRST);
+    const { companyName } = await this.branding.get();
+    const outcome = await this.links.sendNotice({
+      phone,
+      text: `From your call with ${companyName}:\n${message}`,
+      about: 'Details the caller asked for in writing',
+      callId: call.id,
+    });
+    return outcome.sent ? ok(MESSAGE_SENT) : fail(MESSAGE_NOT_SENT);
   }
 
   /** The call begins: who is calling, and what the agent can use. */
@@ -256,6 +318,7 @@ export class PhoneToolsService {
 
   private async deskTool(call: CallRow | null, body: PhoneToolInput): Promise<PhoneToolReply> {
     const name = body.name ?? '';
+    if (name === SEND_WHATSAPP) return this.sendWhatsapp(call, body);
     const all = await this.tools.agentTools();
     const byBareName = all.filter((t) => t.tool.name === name);
     const found =
