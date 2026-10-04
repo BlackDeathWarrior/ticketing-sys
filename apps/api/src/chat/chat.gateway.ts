@@ -11,6 +11,8 @@ import {
   CHAT_NAMESPACE,
   chatContextSchema,
   chatHandshakeSchema,
+  CARD_LIKE,
+  CARD_VIEW,
   chatMessageSchema,
   type ChatMessageView,
   type ChatRatingPrompt,
@@ -131,17 +133,40 @@ export class ChatGateway implements OnGatewayConnection {
       return { ok: false, error: 'You are sending messages too quickly' };
 
     try {
+      // A tap on a card's button names the item from the card this visitor was shown, never
+      // from what the browser sent: the same rule as for a tap on WhatsApp.
+      const tap = parsed.data.card;
+      const tapped = tap
+        ? (await this.conversations.chatHistory(session.sid))
+            .find((m) => m.id === tap.messageId)
+            ?.cards?.find((c) => c.id === tap.id)
+        : undefined;
+      const text =
+        tap && tapped
+          ? `${tap.kind === 'like' ? CARD_LIKE : CARD_VIEW}: ${tapped.title}`
+          : parsed.data.text;
       const result = await this.inbound.handle({
         channel: 'webchat',
         threadKey: session.sid,
         // Stable per client message, so a resend after a lost ack is ignored.
         channelMessageId: `${session.sid}:${parsed.data.clientMessageId}`,
         from: this.sessions.sender(session),
-        text: parsed.data.text,
+        text,
         receivedAt: new Date().toISOString(),
         metadata: {
           origin: socket.handshake.headers.origin,
           userAgent: socket.handshake.headers['user-agent'],
+          // The AI reads which card it was from here (many cards share a title).
+          ...(tap && tapped
+            ? {
+                waCard: {
+                  id: tapped.id,
+                  kind: tap.kind,
+                  title: tapped.title,
+                  ...(tapped.url ? { url: tapped.url } : {}),
+                },
+              }
+            : {}),
         },
         // A chat on an integration's site is that integration's ticket, and
         // starts with what the page said the visitor was looking at.
@@ -154,7 +179,7 @@ export class ChatGateway implements OnGatewayConnection {
         ok: true,
         message: {
           id: result.messageId,
-          body: parsed.data.text,
+          body: text,
           authorType: 'customer',
           createdAt: new Date().toISOString(),
         },

@@ -263,7 +263,7 @@ export class AiAutoResolveService {
           await this.outbound.aiReply(
             AI_CTX,
             m.conversationId,
-            closedForSilence(conv.language ?? null),
+            behaviour.closing.message || closedForSilence(conv.language ?? null),
             { draft: false, notice: true, metadata: { closing: true } },
             tx,
           );

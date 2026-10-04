@@ -45,7 +45,7 @@ export const aiBehaviourSchema = z
         askAnythingElse: z.boolean().default(true),
         /**
          * Minutes of silence after the AI's last answer before the ticket is
-         * resolved, per channel. A channel left out uses `autoResolveHours`.
+         * resolved, per channel. A channel left out uses `DEFAULT_QUIET_MINUTES`, then `autoResolveHours`.
          */
         quietMinutes: z
           .object({
@@ -57,8 +57,10 @@ export const aiBehaviourSchema = z
             api: quietMinutes.optional(),
           })
           .default({}),
-        /** Tell the customer, where they will see it, that the request was closed for silence. */
+        /** Tell the customer, on the channel they wrote on, that the request was closed for silence. */
         tellCustomer: z.boolean().default(true),
+        /** The company's own closing message; empty uses the built-in one, in the customer's language. */
+        message: z.string().trim().max(500).default(''),
         /** Days a ticket the AI resolved can still be reopened by a reply; then it is closed. 0 = never closed. */
         closeResolvedAfterDays: z.number().int().min(0).max(365).default(7),
       })
@@ -312,12 +314,22 @@ export function readsAsEnglish(text: string): boolean {
 }
 
 /**
+ * The quiet time of a channel nobody set one for: a chat is over after ten minutes of
+ * silence, an email thread after thirty. Other channels use the general setting.
+ */
+export const DEFAULT_QUIET_MINUTES: Record<string, number | undefined> = {
+  webchat: 10,
+  whatsapp: 10,
+  email: 30,
+};
+
+/**
  * How long a ticket on `channel` may stay silent after the AI's last answer
  * before it is resolved, in milliseconds. 0 = never.
  */
 export function quietTimeMs(behaviour: AiBehaviour, channel: string): number {
   const minutes = (behaviour.closing.quietMinutes as Record<string, number | undefined>)[channel];
-  return (minutes ?? behaviour.autoResolveHours * 60) * 60_000;
+  return (minutes ?? DEFAULT_QUIET_MINUTES[channel] ?? behaviour.autoResolveHours * 60) * 60_000;
 }
 
 /** Whole phrases a customer answers "is there anything else?" with when there is nothing. */

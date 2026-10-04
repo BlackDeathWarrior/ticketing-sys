@@ -1004,8 +1004,9 @@ export class AiAgentService {
     const builtIn = AGENT_TOOLS.filter(
       (t) => !(t.type === 'function' && t.function.name === 'update_ticket') || !i.ticket.category,
     );
-    // Only WhatsApp shows cards, and only items a company tool returned can be shown.
-    const cardsOffered = i.channel === 'whatsapp' && companyTools.length > 0;
+    // WhatsApp and web chat show cards, and only items a company tool returned can be shown.
+    const cardsOffered =
+      (i.channel === 'whatsapp' || i.channel === 'webchat') && companyTools.length > 0;
     /** The cards company tools returned this turn, by id: the only ones the reply may show. */
     const cardsSeen = new Map<string, MessageCard>();
     let usedCompanyTool = false;

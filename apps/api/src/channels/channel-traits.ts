@@ -35,7 +35,7 @@ const TRAITS = {
     settlesBursts: false,
     actsAlone: false,
     handoverNotice: 'after_routing',
-    toldWhenClosedForSilence: false,
+    toldWhenClosedForSilence: true,
     quickAnswers: false,
     conductScreened: true,
     style: 'email',
@@ -69,8 +69,9 @@ const TRAITS = {
     settlesBursts: true,
     actsAlone: true,
     handoverNotice: 'after_routing',
-    // Its 24-hour window is normally closed by the time the quiet timer fires.
-    toldWhenClosedForSilence: false,
+    // The quiet time of a chat is minutes, well inside WhatsApp's 24-hour window; with a
+    // longer one set, the notice fails to send like any late message and the ticket still closes.
+    toldWhenClosedForSilence: true,
     quickAnswers: true,
     conductScreened: true,
     style: 'whatsapp',
