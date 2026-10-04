@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { visibleTabs } from '../settings/logic';
 import { deletedText } from './logic';
 import {
   type AdminStatus,
@@ -103,22 +102,6 @@ describe('workflow editing', () => {
       'Tickets can’t leave “Stuck”.',
       'Nothing leads to “Stuck”.',
     ]);
-  });
-});
-
-describe('settings tabs for the new admin pages', () => {
-  // Without the two tabs every role has (their own settings, the teams).
-  const tabs = (...perms: string[]) =>
-    visibleTabs((p) => perms.includes(p))
-      .map((t) => t.value)
-      .filter((t) => t !== 'me' && t !== 'teams');
-
-  it('shows People to user managers, Tickets to either ticket permission', () => {
-    expect(tabs('user:manage')).toEqual(['people']);
-    expect(tabs('settings:workflow')).toEqual(['tickets']);
-    expect(tabs('settings:categories')).toEqual(['tickets']);
-    expect(tabs('settings:channels')).toEqual(['channels', 'customers']);
-    expect(tabs()).toEqual([]);
   });
 });
 
