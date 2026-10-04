@@ -571,7 +571,7 @@ function ChannelForm({ view, onChanged }: { view: ChannelSettingsView; onChanged
               />
             ))}
           {view.kind === 'phone' && <PhoneAddresses />}
-        {view.kind === 'elevenlabs' && <ElevenLabsSync canSync={can('settings:secrets')} />}
+          {view.kind === 'elevenlabs' && <ElevenLabsSync canSync={can('settings:secrets')} />}
         </div>
       )}
     </div>
