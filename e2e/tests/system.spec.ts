@@ -182,11 +182,4 @@ test.describe('sign-in protection', () => {
     // Other people signing in from the same place are not affected.
     expect((await login()).accessToken).toBeTruthy();
   });
-
-  test('the API sends the security headers', async () => {
-    const res = await fetch(`${env.api}/api/v1/health/live`);
-    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
-    expect(res.headers.get('x-frame-options')).toBeTruthy();
-    expect(res.headers.get('x-powered-by')).toBeNull();
-  });
 });

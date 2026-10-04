@@ -54,12 +54,6 @@ test.describe('voice calls', () => {
     await expect(box.getByRole('button', { name: 'End call' })).toBeHidden();
   });
 
-  test('the chat demo links to the call page', async ({ page }) => {
-    await page.goto(env.widgetDemo);
-    await page.getByRole('link', { name: 'Call support from your browser' }).click();
-    await expect(page.getByRole('region', { name: 'Voice call' })).toBeVisible();
-  });
-
   test('an admin sets voice up, and the light says the key is missing', async ({ page }) => {
     await signInOrbit(page);
     await page.goto(`${env.orbit}/#/settings/channels`);

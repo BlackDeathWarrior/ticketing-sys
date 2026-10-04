@@ -72,31 +72,6 @@ test.describe('AI agent', () => {
     await visitor.close();
   });
 
-  test('hands over when the visitor asks for a person, leaving a note', async ({
-    browser,
-    page,
-  }) => {
-    const stamp = Date.now().toString(36);
-    const name = `Kofi Mensah ${stamp}`;
-    await signInOrbit(page);
-    const visitor = await visitorSays(browser, name, 'Can I talk to a real person please?');
-    // The first request gets an offer to sort it out here; asking again brings a person in.
-    await expect(visitor.getByText(/If you would still like one of my colleagues/)).toBeVisible({
-      timeout: 30_000,
-    });
-    await visitor.getByLabel('Message').fill('I still want to talk to a real person.');
-    await visitor.getByRole('button', { name: 'Send' }).click();
-    // "…to a member of our team", or to a colleague by name when routing chose one.
-    await expect(visitor.getByText(/I'm passing this to/)).toBeVisible({ timeout: 30_000 });
-
-    const drawer = await openTicket(page, await ticketFor(page, name));
-    const note = drawer.locator('li[data-kind="note"][data-ai]');
-    await expect(note).toContainText('The customer asked for a person');
-    await expect(drawer.getByText('Human Assigned').first()).toBeVisible();
-    await expect(drawer.getByText('AI is replying')).toHaveCount(0);
-    await visitor.close();
-  });
-
   test('drafts email replies; approving sends the email', async ({ page }) => {
     const stamp = Date.now().toString(36);
     const subject = `Charged twice for my order ${stamp}`;

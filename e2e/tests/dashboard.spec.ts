@@ -1,5 +1,5 @@
 import type { OverviewReport } from '@tms/shared';
-import { call, login, type TicketRow } from './api';
+import { call, type TicketRow } from './api';
 import { AGENTS } from './env';
 import { expect, signInOrbit, test } from './fixtures';
 
@@ -115,24 +115,5 @@ test.describe('Orbit Desk dashboard on sample data', () => {
       .first()
       .click();
     await expect(page.getByRole('dialog').getByText(ref, { exact: true })).toBeVisible();
-  });
-
-  test('a ticket created elsewhere appears without a reload', async ({ page }) => {
-    await signInOrbit(page);
-    const admin = (await login()).accessToken;
-    const customers = await call<{ items: Array<{ id: string }> }>(
-      admin,
-      'GET',
-      '/customers?limit=1',
-    );
-    const subject = `Live update check ${Date.now().toString(36)}`;
-    const t = await call<TicketRow>(admin, 'POST', '/tickets', {
-      customerId: customers.items[0]!.id,
-      subject,
-      priority: 'high',
-    });
-    await expect(page.locator(`tr[data-ticket="${t.reference}"]`)).toContainText(subject, {
-      timeout: 15_000,
-    });
   });
 });

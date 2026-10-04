@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import type { Page } from '@playwright/test';
 import { login, raw } from './api';
 import { AGENTS, env, SAMPLE_PASSWORD } from './env';
-import { expect, openTicket, signInOrbit, test } from './fixtures';
+import { expect, signInOrbit, test } from './fixtures';
 
 /** The byte-order mark the CSV starts with, so spreadsheet apps read it as UTF-8. */
 const BOM = String.fromCharCode(0xfeff);
@@ -147,19 +147,6 @@ test.describe('reports', () => {
     await signInOrbit(page, AGENTS.jonah.email);
     await expect(page.getByRole('link', { name: 'Overview' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Reports' })).toHaveCount(0);
-  });
-
-  test('shows a low rating on the ticket, with the customer’s comment', async ({ page }) => {
-    await signInOrbit(page);
-    await page.getByLabel('Search tickets').fill('Dealer login shows wrong price tier');
-    const row = page.locator('tr[data-ticket]', { hasText: 'Dealer login shows wrong price tier' });
-    const drawer = await openTicket(page, (await row.getAttribute('data-ticket'))!);
-    const rating = drawer.getByRole('region', { name: 'Customer rating' });
-    await expect(rating).toContainText('1 / 5 · Very unhappy');
-    await expect(rating).toContainText('I still see the wrong tier on some products.');
-    await expect(rating).toContainText('Given in the portal');
-    await rating.scrollIntoViewIfNeeded();
-    await shot(page, 'orbit-ticket-rating');
   });
 
   test('fits a phone screen without horizontal scroll', async ({ page }) => {

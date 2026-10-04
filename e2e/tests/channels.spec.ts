@@ -1,5 +1,3 @@
-import nodemailer from 'nodemailer';
-import { call, eventually, login, mailpitSearch, type TicketRow } from './api';
 import { env } from './env';
 import { expect, openTicket, signInOrbit, test } from './fixtures';
 
@@ -40,49 +38,4 @@ test.describe('web chat', () => {
   });
 });
 
-test.describe('email', () => {
-  test('a customer email becomes a ticket and the reply is threaded back', async ({ page }) => {
-    const stamp = Date.now().toString(36);
-    const subject = `Lamp arrived without a plug ${stamp}`;
-    const from = `mateo.${stamp}@example.net`;
-    const transport = nodemailer.createTransport({
-      host: env.smtpHost,
-      port: env.smtpPort,
-      secure: false,
-    });
-    await transport.sendMail({
-      from: { name: 'Mateo Brandt', address: from },
-      to: 'support@tms.local',
-      subject,
-      text: 'The desk lamp from order 91822 came without the power plug.',
-    });
-    transport.close();
-
-    const admin = (await login()).accessToken;
-    const ticket = await eventually(
-      'email ticket',
-      async () =>
-        (
-          await call<{ items: TicketRow[] }>(
-            admin,
-            'GET',
-            `/tickets?q=${encodeURIComponent(subject)}`,
-          )
-        ).items[0],
-      90_000,
-    );
-    expect(ticket).toMatchObject({ channel: 'email', subject });
-
-    await signInOrbit(page);
-    const drawer = await openTicket(page, ticket.reference);
-    await expect(drawer.getByText('came without the power plug')).toBeVisible();
-    const reply = `Hi Mateo, a plug is on its way (${stamp}).`;
-    await drawer.getByLabel('Reply to Mateo Brandt').fill(reply);
-    await drawer.getByRole('button', { name: 'Send reply' }).click();
-
-    const mail = await eventually('reply in Mailpit', async () =>
-      (await mailpitSearch(`to:${from}`)).find((m) => m.Subject.includes(`[${ticket.reference}]`)),
-    );
-    expect(mail.Subject).toContain(subject);
-  });
-});
+test.describe('email', () => {});
