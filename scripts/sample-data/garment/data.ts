@@ -202,12 +202,17 @@ export const kb = {
     {
       question: 'How long does a refund take?',
       answer:
-        'A refund is always for the full amount you paid, to the payment method you used. It reaches you in 5 to 7 business days, and the order page shows its reference, which starts with "RF-".',
+        'A refund goes to the payment method you used and reaches you in 5 to 7 business days; the order page shows its reference, which starts with "RF-". A cancelled order, or an order returned in full, is refunded in full. When you return only some of the items, you are refunded the price of those items; the delivery charge is not refunded.',
     },
     {
       question: 'How do I return an order?',
       answer:
-        'You can return an order within 7 days of delivery: open it under "Your Orders", choose "Return items" and say what is wrong. The return is reviewed, and the refund follows once it is approved.',
+        'You can return an order, or only some of its items, within 7 days of delivery: open it under "Your Orders", choose "Return items", pick how many of each item to send back and say what is wrong. The return is reviewed, and the refund follows once it is approved. An order can be returned once. Items marked "Final sale" cannot be returned.',
+    },
+    {
+      question: 'What does "Final sale" mean?',
+      answer:
+        'An item marked "Final sale" cannot be returned once it is delivered. The mark is shown on the product, in your cart, at checkout and on the order. You can still cancel the order before it ships. If a final-sale item arrives damaged or is not what you ordered, choose "Get help with this order" on the order page.',
     },
     {
       question: 'Can I cancel my order?',
