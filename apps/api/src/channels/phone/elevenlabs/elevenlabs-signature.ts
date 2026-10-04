@@ -21,10 +21,7 @@ export function verifyElevenLabsSignature(
   const given = parts.find((p) => p.startsWith('v0='))?.slice(3);
   if (!time || !given || !/^\d{1,12}$/.test(time)) return false;
   if (Number(time) * 1000 < now.getTime() - maxAgeSeconds * 1000) return false;
-  const expected = createHmac('sha256', secret)
-    .update(`${time}.`)
-    .update(rawBody)
-    .digest('hex');
+  const expected = createHmac('sha256', secret).update(`${time}.`).update(rawBody).digest('hex');
   const a = Buffer.from(given, 'utf8');
   const b = Buffer.from(expected, 'utf8');
   return a.length === b.length && timingSafeEqual(a, b);
