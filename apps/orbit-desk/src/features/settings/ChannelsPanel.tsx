@@ -159,7 +159,10 @@ const CHANNELS: Record<
         kind: 'select',
         options: [
           { value: 'auto', label: 'Standard (v2 / v2.5, about 32 languages)' },
-          { value: 'eleven_v3_conversational', label: 'v3 Conversational (70+ languages, Bengali)' },
+          {
+            value: 'eleven_v3_conversational',
+            label: 'v3 Conversational (70+ languages, Bengali)',
+          },
         ],
       },
       { name: 'language', label: 'First language', kind: 'text', placeholder: 'en' },
