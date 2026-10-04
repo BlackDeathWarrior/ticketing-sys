@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { baseLanguage, VOICE_LANGUAGES } from '@tms/shared';
 import { ChannelConfigService } from '../../settings/channel-config.service';
-import type { PhoneTranscript } from './phone-provider';
+import { languageCode, type PhoneTranscript } from './phone-provider';
 
 const TIMEOUT_MS = 10_000;
 const RECORDING_TIMEOUT_MS = 60_000;
@@ -120,17 +119,6 @@ export function parseTranscript(body: unknown): PhoneTranscript {
     seconds: seconds === undefined ? null : Math.round(seconds),
     language: languageCode(language),
   };
-}
-
-/** `Hindi` or `hi-IN` → `hi`; a language we have no name for is left out. */
-function languageCode(value: string | undefined): string | null {
-  if (!value) return null;
-  const byName = Object.entries(VOICE_LANGUAGES).find(
-    ([, l]) => l.name.toLowerCase() === value.trim().toLowerCase(),
-  );
-  if (byName) return byName[0];
-  const base = baseLanguage(value);
-  return base && base in VOICE_LANGUAGES ? base : null;
 }
 
 function turnsOf(x: unknown): unknown[] | null {

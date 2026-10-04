@@ -3,6 +3,7 @@ import {
   type ChannelKind,
   type ChannelSettingsView,
   type ConnectionTestResult,
+  DESK_ONLY_SECRET_KEYS,
   PHONE_PROVIDER_NAMES,
   VOICE_DEFAULT_GREETING,
 } from '@tms/shared';
@@ -33,7 +34,7 @@ import { maskedKey } from './logic';
 import styles from './Settings.module.css';
 import { TestResult } from './TestResult';
 
-type FieldKind = 'text' | 'number' | 'bool' | 'email' | 'longtext' | 'select';
+type FieldKind = 'text' | 'number' | 'bool' | 'email' | 'longtext' | 'select' | 'list';
 interface Field {
   name: string;
   label: string;
@@ -132,6 +133,43 @@ const CHANNELS: Record<
     ],
     defaults: { enabled: true, appVersion: 1 },
   },
+  elevenlabs: {
+    title: 'Phone calls: ElevenLabs',
+    subtitle:
+      'Calls answered by an ElevenLabs agent that uses this desk’s knowledge and tools. The desk sets the agent up for you; calls are billed by ElevenLabs.',
+    fields: [
+      { name: 'enabled', label: 'ElevenLabs calls on', kind: 'bool' },
+      {
+        name: 'region',
+        label: 'Workspace region',
+        kind: 'select',
+        options: [
+          { value: 'default', label: 'Default' },
+          { value: 'eu', label: 'EU' },
+          { value: 'in', label: 'India' },
+          { value: 'sg', label: 'Singapore' },
+        ],
+      },
+      { name: 'model', label: 'Language model', kind: 'text', placeholder: 'gemini-2.5-flash' },
+      { name: 'voiceId', label: 'Voice ID', kind: 'text', placeholder: 'From ElevenLabs → Voices' },
+      { name: 'language', label: 'First language', kind: 'text', placeholder: 'en' },
+      {
+        name: 'moreLanguages',
+        label: 'Other languages (comma-separated)',
+        kind: 'list',
+        placeholder: 'hi, bn',
+        optional: true,
+      },
+      {
+        name: 'phoneNumberId',
+        label: 'Number (ElevenLabs phone number ID)',
+        kind: 'text',
+        placeholder: 'Empty until a number is connected at ElevenLabs',
+        optional: true,
+      },
+    ],
+    defaults: { enabled: true, region: 'default', model: 'gemini-2.5-flash', language: 'en' },
+  },
   calls: {
     title: 'Phone calls: general',
     subtitle: 'What holds for phone calls whichever voice agent takes them.',
@@ -199,6 +237,7 @@ export function ChannelsPanel() {
   const sarvam = view('sarvam');
   const phone = view('phone');
   const calls = view('calls');
+  const elevenlabs = view('elevenlabs');
   const webchat = light('webchat');
   const webForm = light('web_form');
 
@@ -230,6 +269,7 @@ export function ChannelsPanel() {
       {sarvam && <ChannelCard view={sarvam} health={light('voice')} onChanged={changed} />}
       {/* The Voice light is shown once, on the card above: it covers phone calls too. */}
       {phone && <ChannelCard view={phone} health={undefined} onChanged={changed} />}
+      {elevenlabs && <ChannelCard view={elevenlabs} health={undefined} onChanged={changed} />}
       {calls && <ChannelCard view={calls} health={undefined} onChanged={changed} />}
     </div>
   );
@@ -303,6 +343,10 @@ function ChannelForm({ view, onChanged }: { view: ChannelSettingsView; onChanged
         const v = values[f.name];
         if (f.kind === 'number') return [f.name, Number(v)];
         if (f.kind === 'bool') return [f.name, !!v];
+        if (f.kind === 'list') {
+          const items = Array.isArray(v) ? v : String(v ?? '').split(',');
+          return [f.name, items.map((x) => String(x).trim()).filter(Boolean)];
+        }
         const s = typeof v === 'string' ? v.trim() : v;
         return [f.name, f.optional && !s ? null : s];
       }),
@@ -391,7 +435,9 @@ function ChannelForm({ view, onChanged }: { view: ChannelSettingsView; onChanged
                 value={
                   values[f.name] === null || values[f.name] === undefined
                     ? ''
-                    : String(values[f.name])
+                    : Array.isArray(values[f.name])
+                      ? (values[f.name] as unknown[]).join(', ')
+                      : String(values[f.name])
                 }
                 onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
                 required={!f.optional}
@@ -420,7 +466,9 @@ function ChannelForm({ view, onChanged }: { view: ChannelSettingsView; onChanged
           <p className={styles.note}>
             Credentials are encrypted and write-only: only the last four characters show.
           </p>
-          {view.secrets.map((s) => (
+          {view.secrets
+          .filter((s) => !DESK_ONLY_SECRET_KEYS.includes(s.key))
+          .map((s) => (
             <SecretField
               key={s.key}
               secret={s}

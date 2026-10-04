@@ -48,6 +48,8 @@ const envSchema = z
      * address with the hook token. Sarvam documents 4.213.167.70.
      */
     PHONE_SARVAM_IPS: z.string().default(''),
+    /** ElevenLabs' API for a workspace in no data residency region (phone calls, ADR 0040). */
+    ELEVENLABS_API_URL: z.string().url().default('https://api.elevenlabs.io'),
     /** Meta Graph API base URL. Only change it to go through a proxy. */
     WHATSAPP_GRAPH_URL: z.string().url().default('https://graph.facebook.com'),
     /**

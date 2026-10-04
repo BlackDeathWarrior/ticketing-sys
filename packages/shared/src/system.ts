@@ -79,4 +79,5 @@ export const QUEUE_LABELS: Record<string, string> = {
   'webhook-deliveries': 'Webhooks to integrations',
   'kb-sync': 'Knowledge base connectors (syncing outside sources)',
   'phone-calls': 'Phone calls: writing the ticket after a call',
+  'phone-agent-sync': 'Phone calls: keeping the ElevenLabs agent in step',
 };

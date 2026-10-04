@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -12,6 +13,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   CHANNEL_KINDS,
+  DESK_ONLY_SECRET_KEYS,
   type ChannelKind,
   secretKeySchema,
   setSecretSchema,
@@ -68,6 +70,12 @@ export class PriorityRulesController {
 
 const channelKind = new ParseEnumPipe(Object.fromEntries(CHANNEL_KINDS.map((k) => [k, k])));
 const secretKey = new ZodPipe(secretKeySchema);
+/** Secrets the desk makes itself are not a person's to set: a typed one would lock the agent out. */
+function refuseDeskOnly(key: string): void {
+  if (DESK_ONLY_SECRET_KEYS.includes(key)) {
+    throw new BadRequestException('This value is set by the desk when it sets the agent up');
+  }
+}
 
 @ApiTags('settings')
 @ApiBearerAuth()
@@ -107,6 +115,7 @@ export class SettingsController {
     @Param('key', secretKey) key: string,
     @Body(new ZodPipe(setSecretSchema)) body: { value: string },
   ) {
+    refuseDeskOnly(key);
     return this.secrets.set(ctx, key, body.value);
   }
 
@@ -114,6 +123,7 @@ export class SettingsController {
   @HttpCode(204)
   @RequirePermission('settings:secrets')
   async deleteSecret(@Ctx() ctx: RequestCtx, @Param('key', secretKey) key: string) {
+    refuseDeskOnly(key);
     await this.secrets.delete(ctx, key);
   }
 

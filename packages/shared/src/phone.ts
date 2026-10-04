@@ -98,6 +98,42 @@ export const phoneEndedSchema = z
   .passthrough();
 export type PhoneEndedInput = z.output<typeof phoneEndedSchema>;
 
+/**
+ * What ElevenLabs posts when a call begins (its "conversation initiation"
+ * webhook). Read as loosely as Sarvam's bodies, for the same reason.
+ */
+export const elevenlabsStartSchema = z
+  .object({ conversation_id: callId, caller_id: callerPhone })
+  .passthrough();
+export type ElevenlabsStartInput = z.output<typeof elevenlabsStartSchema>;
+
+/** ElevenLabs' signed post-call webhook. Only its type and the conversation's id are used. */
+export const elevenlabsEventSchema = z
+  .object({
+    type: z.string().max(100),
+    data: z.object({ conversation_id: interactionId }).passthrough(),
+  })
+  .passthrough();
+export type ElevenlabsEventInput = z.output<typeof elevenlabsEventSchema>;
+
+/** A named tool's body: that desk tool's arguments, as the agent filled them in. */
+export const phoneNamedToolBodySchema = z.record(z.unknown());
+
+/** What the last set-up of the ElevenLabs agent did; shown on its card. */
+export interface ElevenlabsSyncState {
+  agentId: string | null;
+  webhookId: string | null;
+  /** The secret at ElevenLabs that holds the hook token. */
+  secretId: string | null;
+  at: string | null;
+  ok: boolean | null;
+  /** ElevenLabs' own message when the run failed. */
+  error: string | null;
+  /** Tools ElevenLabs would not take, with its reason. */
+  skipped: Array<{ tool: string; reason: string }>;
+  tools: number;
+}
+
 /** One desk tool as the phone agent sees it (the customer argument is hidden). */
 export interface PhoneToolEntry {
   name: string;

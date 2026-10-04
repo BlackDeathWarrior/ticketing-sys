@@ -25,8 +25,24 @@ export const SECRET_KEYS = {
   'sarvam.api_key': { scope: 'channel', channel: 'sarvam', label: 'API subscription key' },
   'phone.sarvam_api_key': { scope: 'channel', channel: 'phone', label: 'Voice Agents API key' },
   'phone.hook_token': { scope: 'channel', channel: 'phone', label: 'Hook token' },
+  'elevenlabs.api_key': { scope: 'channel', channel: 'elevenlabs', label: 'API key' },
+  'elevenlabs.hook_token': { scope: 'channel', channel: 'elevenlabs', label: 'Hook token' },
+  'elevenlabs.webhook_secret': {
+    scope: 'channel',
+    channel: 'elevenlabs',
+    label: 'Webhook secret',
+  },
 } as const satisfies Record<string, SecretDefinition>;
 export type KnownSecretKey = keyof typeof SECRET_KEYS;
+
+/**
+ * Secrets the desk makes and saves by itself while it sets up the ElevenLabs
+ * agent (ADR 0040). Nobody types them, so no route may set or delete them.
+ */
+export const DESK_ONLY_SECRET_KEYS: readonly string[] = [
+  'elevenlabs.hook_token',
+  'elevenlabs.webhook_secret',
+] satisfies KnownSecretKey[];
 
 /** Known keys, or tool/integration keys such as `tool.orders.api_key`. */
 export const secretKeySchema = z
@@ -65,7 +81,14 @@ export function maskedLast4(value: string): string | null {
 
 // ---- Channel configuration (non-secret parts; secrets above) ----
 
-export const CHANNEL_KINDS = ['email', 'whatsapp', 'sarvam', 'phone', 'calls'] as const;
+export const CHANNEL_KINDS = [
+  'email',
+  'whatsapp',
+  'sarvam',
+  'phone',
+  'elevenlabs',
+  'calls',
+] as const;
 export type ChannelKind = (typeof CHANNEL_KINDS)[number];
 
 const host = z.string().trim().min(1).max(255);
@@ -148,6 +171,29 @@ export const phoneChannelConfigSchema = z.object({
 });
 export type PhoneChannelConfig = z.infer<typeof phoneChannelConfigSchema>;
 
+/** Where an ElevenLabs workspace lives: the default, or one of its data residency regions. */
+export const ELEVENLABS_REGIONS = ['default', 'eu', 'in', 'sg'] as const;
+export type ElevenlabsRegion = (typeof ELEVENLABS_REGIONS)[number];
+
+/**
+ * Phone calls answered by an ElevenLabs agent (ADR 0040). The desk creates
+ * that agent and its tools through ElevenLabs' API; these are the choices a
+ * person makes for it.
+ */
+export const elevenlabsChannelConfigSchema = z.object({
+  enabled: z.boolean(),
+  region: z.enum(ELEVENLABS_REGIONS).default('default'),
+  /** The language model the agent thinks with, by ElevenLabs' name for it. */
+  model: z.string().trim().min(1).max(100).default('gemini-2.5-flash'),
+  voiceId: z.string().trim().min(1).max(100),
+  /** The language the agent starts in, and the others it may switch to. */
+  language: z.string().trim().min(2).max(10).default('en'),
+  moreLanguages: z.array(z.string().trim().min(2).max(10)).max(10).default([]),
+  /** The number at ElevenLabs this agent answers on. Empty until one is connected there. */
+  phoneNumberId: z.string().trim().max(100).nullish(),
+});
+export type ElevenlabsChannelConfig = z.infer<typeof elevenlabsChannelConfigSchema>;
+
 /** What holds for phone calls whichever provider takes them (ADR 0040). */
 export const callsChannelConfigSchema = z.object({
   /** Whose voice agent places the calls this desk starts. */
@@ -168,6 +214,7 @@ export const CHANNEL_CONFIG_SCHEMAS = {
   whatsapp: whatsappChannelConfigSchema,
   sarvam: sarvamChannelConfigSchema,
   phone: phoneChannelConfigSchema,
+  elevenlabs: elevenlabsChannelConfigSchema,
   calls: callsChannelConfigSchema,
 } as const;
 
