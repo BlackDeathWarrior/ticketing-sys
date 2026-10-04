@@ -1,5 +1,75 @@
 # Test report
 
+## 4 October 2026: the suite brought up to date, measured and trimmed
+
+Run on 4 October 2026 on branch `release/template`, locally in Docker (`bash scripts/check-in-docker.sh`, and Playwright against a freshly reset stack loaded with `pnpm sample:load`) and in CI on the pull request.
+
+**Result: every step of the gate passes.** Phases 14c to 14z had been built without running the suite, so this run started red. The tests were repaired, tests were added for the paths that had none, and the suite was then measured and trimmed.
+
+| Step                                              | Result                                                                                     |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `pnpm format:check`, `lint`, `build`, `typecheck` | pass                                                                                       |
+| `pnpm test`                                       | 502 passed (api 286, Orbit Desk 113, shared 47, fake providers 35, SDK 11, help center 10) |
+| `pnpm test:int`                                   | 318 passed (28 files) in 134 s                                                             |
+| `pnpm e2e`                                        | 95 passed in 3.7 min; 9 screenshot-only specs skipped as designed                          |
+| `pnpm audit --prod`, `pnpm audit`                 | pass in CI                                                                                 |
+| `pnpm kb:eval`, `pnpm ai:eval`                    | not run: they need a model key                                                             |
+
+### What was out of date
+
+49 tests still described the product as it was before phase 14c: 8 unit, 28 integration and 13 browser tests. The rules they had missed:
+
+- a request for a person gets one offer of help before a handover;
+- an approval decision needs a reason written for the customer, and belongs to the tool's approving team or the ticket's team;
+- company tools act only for a visitor the site vouches for, never for a typed email;
+- an attempt to get the AI's instructions ends the conversation before any model is asked;
+- Settings is open to everyone (their own settings, the teams), and teams have their own tab;
+- the AI resolves a ticket after the channel's own quiet time (10 minutes on web chat and WhatsApp, 30 on email);
+- a conversation opens with a welcome that names the company.
+
+The sample data loader had the same problem: its two chats that use the order tools came from a visitor who had only typed an email. They now come from a signed-in visitor, signed with the stack's `CHAT_IDENTITY_SECRET`.
+
+### New tests
+
+| File                                                                  | Tests | What they cover                                                                                                                                                 |
+| --------------------------------------------------------------------- | ----: | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared/src/auth.test.ts`                                    |    10 | Who may act on a team's ticket, decide an approval and manage a team's members (ADR 0031)                                                                       |
+| `packages/shared/src/closing.test.ts`                                 |     4 | The quiet time per channel: the channel's default, an admin's value, the general setting, 0 for never                                                           |
+| `apps/api/src/tools/tool-discovery.test.ts`                           |    10 | Systems grouped by host; a saved key offered only for its own host; a system's OpenAPI document read into tool drafts                                           |
+| `apps/api/src/channels/ai-answering.test.ts`                          |     6 | The one rule for "the assistant is answering"                                                                                                                   |
+| `apps/api/src/channels/phone/elevenlabs/elevenlabs-signature.test.ts` |    11 | The signature on an ElevenLabs call event: tampered body, wrong secret, a request sent again after half an hour, malformed headers                              |
+| `apps/api/src/channels/phone/phone-access.test.ts`                    |     7 | The address list for Sarvam's hooks; calling hours at their boundaries                                                                                          |
+| `apps/api/test/whatsapp.int.test.ts` (phone codes)                    |     7 | The scope; no code without a template or an open window; the code works once; five wrong tries; one code a minute; ten minutes; one app's code is not another's |
+| `apps/api/test/phone.int.test.ts`                                     |     4 | The phone hooks are 404 while off, 401 without the saved token, and refuse a staff token; an unsigned ElevenLabs event is refused                               |
+| `apps/api/test/team-access.int.test.ts`                               |     3 | On the real routes: another team's member is refused, reading and notes stay open, a super admin and a ticket with no team are open                             |
+| `apps/api/test/integration-customers.int.test.ts`                     |     4 | An app links a phone number to its customer and looks it up by email; the scope; a number moves to the customer it was linked to last                           |
+
+### Bugs found and fixed
+
+1. **An answer from the answer cache skipped the hold-back for badly rated documents.** A cached answer was judged without the sources it had first been given on, so "customers rated answers from this document badly: a person sees it first" (ADR 0020) did not reach it for as long as the cache kept it. It had been masked by the 1.2 second wait before an AI turn, during which the ticket usually got a category that held the answer back. The cached answer's own sources are now checked.
+2. **Settings, Channels scrolled sideways on a phone.** The hook addresses on the Sarvam phone card did not wrap at 390 px. Two browser tests failed for it.
+3. **The README said supervisors approve and that 72 hours of silence resolves a ticket.** Both had changed with ADR 0031 and the per-channel quiet times.
+
+### Measured and trimmed
+
+The suite was timed on a quiet machine, every test file was read for what it would catch, and the waste was cut.
+
+| Suite       | Before               | After                | What changed                                                                                                                                     |
+| ----------- | -------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Unit        | 501 tests, about 7 s | 502 tests, about 7 s | Already lean                                                                                                                                     |
+| Integration | 318 tests, 219 s     | 318 tests, 134 s     | No test removed: the 1.2 s wait before an AI turn is a setting (`AI_SETTLE_MS`, 0 in tests); 13 fixed sleeps wait for the work to finish instead |
+| Browser     | 104 tests, 260 s     | 95 tests, 222 s      | Nine tests another test already makes are gone (four never opened a page)                                                                        |
+
+Two settings exist for the tests' sake and keep their defaults in production: `LLM_SNAPSHOT_MS` (how old the model routing settings a call uses may be, 3000) and `AI_SETTLE_MS` (1200).
+
+About 14 tests could not fail, or did not check what their title said: the chunker's overlap, a copilot suggestion "without storing anything", "leads told" after an escalation, events relayed "in order", a jailbreak attempt stopped "before any model sees it", and two golden conversations that were answered from the answer cache and never reached the model. Each now has an assertion that goes red when the code is broken.
+
+### Known limits
+
+- Not done from the trimming plan: moving shared setup into `beforeAll` in the SLA, tools, settings and handover integration files (they pass only in file order); the fixed sleeps in the voice unit tests; one phone-width browser test per page instead of one table; one "what each role sees" browser test.
+- The browser tests sign in through the API once per test; a stored session per role would save an estimated 20 to 40 seconds.
+- WhatsApp, Sarvam and ElevenLabs are tested up to their HTTP boundary, never against the real services.
+
 ## Phase 11: hardening
 
 Run on 1 October 2026 against a freshly reset Docker stack (`down -v`, rebuild, `pnpm sample:load`), branch `feat/phase-11-hardening`.
