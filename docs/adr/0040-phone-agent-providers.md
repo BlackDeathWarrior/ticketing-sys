@@ -26,6 +26,14 @@ The two differ in what they let an outside system do. Sarvam's agent, tools and 
 
 **What holds for every phone call lives on its own card.** The provider for outbound calls, calling hours and the WhatsApp link template are the `calls` settings. Until that card is saved, calling hours and the template saved on the Sarvam card are still read.
 
+**The desk places calls through one engine.** `PhoneOutboundService.request` is the only way a call starts: from a ticket (staff, permission `voice:call`), for a shopper who asked to be rung, or with an approval's outcome. It writes the call's record and nothing else; the worker hands the call to the provider chosen on the general card. Sarvam is told where to report (its webhook is unsigned, so a report is believed only for an attempt this desk started); ElevenLabs reports through its signed events. A call that never connected leaves its outcome on the record and a note on the ticket.
+
+**On a call the desk placed, the customer is the one it rang.** Tools act for the customer on the call's record, whatever number or name the request carries. That closes, for outbound calls, the caller-ID weakness accepted for inbound ones.
+
+**A call placed from a ticket stays that ticket's.** Its transcript is written onto the ticket in a voice conversation of its own, the AI neither takes the ticket nor resolves it, and the intake keeps a call's turns out of a conversation that is answered by email.
+
+**An action that needs approval is taken on the call and answered by a call back.** An approval belongs to a ticket, and a phone call has none until it ends. So the request is checked while the caller is on the line, kept on the call's record, and asked for when the ticket is written. When a colleague decides, the phone agent rings the customer with the outcome and the reason; if that call cannot be placed or is not answered, a note asks a person to follow up. This replaces "tools that need an approval are not offered" in ADR 0039.
+
 ## Consequences
 
 - Three AIs can drift: the desk's, Sarvam's and ElevenLabs'. One instruction in code and the no-knowledge rule limit it. Sarvam's copy is still pasted by hand.
@@ -34,5 +42,7 @@ The two differ in what they let an outside system do. Sarvam's agent, tools and 
 - The call-start webhook is documented for Twilio numbers. Where it does not fire, the first tool call opens the call's record and the caller gets the plain greeting.
 - The hook token is stored at ElevenLabs once and not rotated by the sync.
 - Recordings are WAV from Sarvam and may be MP3 from ElevenLabs; the stored key's extension and the playback route say which.
-- Tools that need an approval are not offered to either agent yet; they arrive with outbound calls.
+- A request for an approval that the gateway refuses when the ticket is written (the tool was switched off meanwhile) is logged and dropped: the caller was told they would be rung back, and is not. The ticket stays open for a person.
+- An ElevenLabs number that reaches it through Exotel cannot place calls yet: that API path was not read.
+- Calling hours and the one-call-at-a-time check are not taken under a lock.
 - Read from ElevenLabs' API reference and SDK on 2026-10-04 and not yet run against ElevenLabs: it needs the product owner's account.

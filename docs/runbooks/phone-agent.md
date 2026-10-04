@@ -116,7 +116,11 @@ Dial the number from a phone whose number is confirmed on a shop account.
 5. **Ask for a person twice:** you are told a colleague will get back to you.
 6. Hang up. Within a minute or two a ticket appears in Orbit Desk on the "Voice call" channel with the transcript; after case 5 it is routed to a person, otherwise it is resolved ("Closed by the AI: the phone call ended with nothing left to do").
 
-Not on a phone call yet: actions that need an approval (a refund). The agent offers a call back instead. They arrive with outbound calls.
+Actions that need an approval (a refund): the agent passes the request on and says a colleague must approve it. When a colleague decides in Orbit Desk, the phone agent rings the caller back with the outcome.
+
+### Calls the desk places
+
+On the card **Phone calls: general**, choose who places calls. For Sarvam the call uses the agent version and connection on the Sarvam card. In a ticket's **Voice call** panel, **Call customer** has the phone agent ring the ticket's customer; say what the call is about and the agent opens with it. The result (connected, no answer, busy, failed) shows in the panel, and a call that was not answered leaves a note. Create the agent variables `direction`, `about` and `ticket_reference` at Sarvam first, or the opening line reads them as empty.
 
 ### If something is wrong
 
