@@ -232,7 +232,7 @@ See [`docs/runbooks/phase-7-demo.md`](docs/runbooks/phase-7-demo.md).
 ## Reports, ratings and the customer portal
 
 - **Reports** (Orbit Desk → Reports, team leads and up): what the AI resolved alone, what it passed to a person, first reply and time to final answer, SLA, customer ratings and AI cost, for a period, a channel or a team. The ticket list behind the figures exports as CSV.
-- **The AI resolves what it answered:** a ticket the AI answered and the customer left alone for 72 hours is resolved by the AI (Settings → AI behaviour; 0 switches it off). A later reply reopens it.
+- **The AI resolves what it answered:** a ticket the AI answered and the customer then left alone is resolved by the AI: after 10 minutes of silence on web chat and WhatsApp, 30 on email, and 72 hours elsewhere. Settings → AI behaviour sets the quiet time per channel (0 means never). A later reply reopens it.
 - **Ratings:** when a ticket is solved the customer is asked once to rate it from 1 to 5: in the chat window, or by email. Only customers can rate; agents see the rating on the ticket, and a 1 or 2 notifies the assignee and team leads.
 - **Customer portal:** http://localhost:8080/help/#/portal ("My requests"). A customer enters their email, opens the one-time link we send, and sees their own tickets from every channel, can reply and rate. In development the link arrives in Mailpit (http://localhost:8025).
 - **Admin pages:** Settings → People (users, teams), Tickets (categories, statuses, allowed moves) and Customers (portal, ratings, the time-saved estimate).

@@ -560,15 +560,16 @@ describe('the AI using custom tools', () => {
       extraIdentities: [{ type: 'email', value: victim, verified: false }],
     });
     await waitFor(async () => {
-      const tk = (await t.call('GET', `/tickets/${stranger.ticketId}`, { token: admin })).body;
-      return tk.handling === 'handed_over' ? tk : undefined;
-    }, 'the AI to hand the unidentified visitor over');
-    // The order system was never asked.
+      const runs = (await t.call('GET', `/tickets/${stranger.ticketId}/ai-runs`, { token: admin }))
+        .body as Array<{ kind: string }>;
+      return runs.find((r) => r.kind === 'turn');
+    }, 'the AI to answer the unidentified visitor');
+    // A tool that takes the customer is not offered for a visitor the shop has not named:
+    // nothing was tried, and the order system was never asked.
     expect(seen.some((s) => s.path === '/orders/DS-90414')).toBe(false);
-    const [refused] = (
-      await t.call('GET', `/tickets/${stranger.ticketId}/tool-calls`, { token: admin })
-    ).body;
-    expect(refused.status).not.toBe('ok');
+    expect(
+      (await t.call('GET', `/tickets/${stranger.ticketId}/tool-calls`, { token: admin })).body,
+    ).toEqual([]);
 
     // The address's owner signs in: the shop vouches for them by its own id.
     const owner = await onSite('Where is my order DS-90415?', {

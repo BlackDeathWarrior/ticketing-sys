@@ -333,8 +333,21 @@ describe('tickets the AI answered', () => {
   const statusOf = async (id: string) =>
     (await t.call('GET', `/tickets/${id}`, { token: admin })).body.status as string;
   const run = () => t.call<{ resolved: number }>('POST', '/ai/auto-resolve', { token: admin });
+  /** The quiet time for web chats, in minutes; `undefined` goes back to the channel's default. */
+  const quietAfter = async (webchat: number | undefined) => {
+    const current = (await t.call('GET', '/settings/ai', { token: admin })).body;
+    const quietMinutes = { ...current.closing.quietMinutes, webchat };
+    return t.call('PUT', '/settings/ai', {
+      token: admin,
+      body: { ...current, closing: { ...current.closing, quietMinutes } },
+    });
+  };
+  afterAll(async () => {
+    await quietAfter(undefined);
+  });
 
   it('are resolved once the customer has been quiet long enough, and not before', async () => {
+    expect((await quietAfter(48 * 60)).status).toBe(200);
     const quiet = await answeredByAi(80);
     const recent = await answeredByAi(10);
     const waitingForUs = await answeredByAi(80, 'customer');
@@ -352,7 +365,7 @@ describe('tickets the AI answered', () => {
 
     // The AI is on record as the one who resolved it, and why.
     const detail = (await t.call('GET', `/tickets/${quiet}`, { token: admin })).body;
-    expect(detail.resolution).toMatch(/No reply from the customer for 72 hours/);
+    expect(detail.resolution).toMatch(/No reply from the customer for 48 hours/);
     const history = await t.call('GET', '/audit', {
       token: admin,
       query: { action: 'ticket.status_changed', targetId: quiet },
@@ -363,23 +376,18 @@ describe('tickets the AI answered', () => {
     expect((await run()).body.resolved).toBe(0);
   });
 
-  it('follow the waiting time an admin sets; 0 switches it off', async () => {
-    const save = (autoResolveHours: number) =>
-      t.call('PUT', '/settings/ai', { token: admin, body: { ...current, autoResolveHours } });
-    const current = (await t.call('GET', '/settings/ai', { token: admin })).body;
-    expect(current.autoResolveHours).toBe(72);
+  it('follow the quiet time an admin sets for the channel; 0 switches it off', async () => {
     const id = await answeredByAi(10);
 
-    expect((await save(0)).status).toBe(200);
+    expect((await quietAfter(0)).status).toBe(200);
     expect((await run()).body.resolved).toBe(0);
     expect(await statusOf(id)).toBe('pending_customer');
 
     // Eight hours: this ticket (quiet for ten) now qualifies, with any other that old.
-    await save(8);
+    await quietAfter(8 * 60);
     expect((await run()).body.resolved).toBeGreaterThanOrEqual(1);
     expect(await statusOf(id)).toBe('resolved');
-    expect((await save(-1)).status).toBe(400);
-    await save(72);
+    expect((await quietAfter(-1)).status).toBe(400);
   });
 });
 
