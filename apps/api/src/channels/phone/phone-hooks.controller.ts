@@ -94,18 +94,19 @@ export class PhoneHooksController {
   ): Promise<{ received: true }> {
     // With Sarvam's addresses set, a trigger from anywhere else is dropped without a word.
     if (fromSarvam(this.env, req.ip) && (await this.channels.phone())?.enabled) {
-      // A report on a call we placed names its attempt. It is believed only for an attempt
-      // this desk started; a connected one is then closed like any other call.
-      const interactionId = body.attempt_id
+      // A report on a call we placed names its attempt. It decides only for an attempt this
+      // desk started; anything else is a trigger for the call it names, as before.
+      const placed = body.attempt_id
         ? await this.outbound.sarvamResult(body.attempt_id, body.status, body.interaction_id)
-        : body.interaction_id;
+        : null;
+      const interactionId = placed?.known ? placed.close : body.interaction_id;
       if (interactionId) {
         const duration = (body as Record<string, unknown>).duration;
         await this.queue.add(
           'sarvam',
           interactionId,
           {
-            phone: body.attempt_id ? null : body.user_phone_number,
+            phone: placed?.known ? null : body.user_phone_number,
             seconds:
               typeof duration === 'number' && duration >= 0 && duration < 86_400
                 ? Math.round(duration)

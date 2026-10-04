@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  internationalCallerNumber,
   type OutboundRefusal,
   PHONE_PROVIDER_NAMES,
   type PhoneCallOutcome,
@@ -53,9 +54,11 @@ export class PhoneOutboundService {
     },
   ): Promise<{ callId: string } | { refused: OutboundRefusal }> {
     const { outboundProvider, callingHours } = await this.channels.calls();
-    if (!(await this.ready(outboundProvider))) return { refused: 'phone_off' };
-    const phone = await this.customers.phoneOf(i.customerId);
-    if (!phone) return { refused: 'no_number' };
+    const from = await this.ready(outboundProvider);
+    if (from === null) return { refused: 'phone_off' };
+    // A number kept without its country code is in the country of the number we call from.
+    const phone = internationalCallerNumber(await this.customers.phoneOf(i.customerId), from);
+    if (!phone || phone.length < 11) return { refused: 'no_number' };
     if (callingHours && !withinCallingHours(new Date())) return { refused: 'outside_hours' };
     if (await this.calls.outboundInProgress(phone)) return { refused: 'call_in_progress' };
     const call = await this.calls.requestOutbound(ctx, {
@@ -70,33 +73,45 @@ export class PhoneOutboundService {
     return { callId: call.id };
   }
 
-  /** Worker: hands the call to the provider. Throws when the provider refuses, so the job retries. */
+  /**
+   * Worker: hands the call to the provider. The call is taken first, so it is dialled at most
+   * once: a refusal or a failure ends it with the reason, and nothing is tried again by
+   * itself. A person can ask for the call again.
+   */
   async place(callId: string): Promise<void> {
-    const call = await this.calls.get(callId);
-    if (call.status !== 'requested' || !call.callerPhone || !call.provider) return;
-    const contact = call.customerId ? await this.customers.contactOf(call.customerId) : null;
-    const name = contact ? (addressOf(contact.name, null)?.short ?? '') : '';
-    const { companyName } = await this.branding.get();
-    const reference = call.ticketId
-      ? await this.tickets
-          .get(call.ticketId)
-          .then((t) => t.reference)
-          .catch(() => '')
-      : '';
-    const ids = await this.providers.get(call.provider as PhoneProviderId).placeCall({
-      to: `+${call.callerPhone}`,
-      variables: {
-        customer_name: name,
-        company: companyName,
-        about: call.about ?? '',
-        ticket_reference: reference,
-        direction: 'outbound',
-        greeting: name
-          ? `Hello ${name}, this is the assistant of ${companyName} calling.`
-          : `Hello, this is the assistant of ${companyName} calling.`,
-      },
-    });
-    await this.calls.placed(call.id, ids);
+    const call = await this.calls.claimForPlacing(callId);
+    if (!call?.callerPhone || !call.provider) return;
+    try {
+      const contact = call.customerId ? await this.customers.contactOf(call.customerId) : null;
+      const name = contact ? (addressOf(contact.name, null)?.short ?? '') : '';
+      const { companyName } = await this.branding.get();
+      const reference = call.ticketId
+        ? await this.tickets
+            .get(call.ticketId)
+            .then((t) => t.reference)
+            .catch(() => '')
+        : '';
+      const ids = await this.providers.get(call.provider as PhoneProviderId).placeCall({
+        to: `+${call.callerPhone}`,
+        variables: {
+          customer_name: name,
+          company: companyName,
+          about: call.about ?? '',
+          ticket_reference: reference,
+          direction: 'outbound',
+          greeting: name
+            ? `Hello ${name}, this is the assistant of ${companyName} calling.`
+            : `Hello, this is the assistant of ${companyName} calling.`,
+        },
+      });
+      if (!(await this.calls.placedAs(call.id, ids))) {
+        // Another record already carries this call (a hook reached us first): that one
+        // becomes the ticket, this one only says the call was made.
+        await this.calls.endOutbound(call.id, 'connected');
+      }
+    } catch (err) {
+      await this.notConnected(call, 'failed', (err as Error).message);
+    }
   }
 
   /** The call ended without anyone speaking to the customer: on record, and on the ticket. */
@@ -108,7 +123,8 @@ export class PhoneOutboundService {
       .addNote(
         SYSTEM_CTX,
         call.ticketId,
-        `Phone call to the customer (${provider}): ${OUTCOME_WORDS[outcome]}.${why ? ` ${why.slice(0, 300)}` : ''}`,
+        // A provider's refusal can quote the number it was given: never onto the ticket.
+        `Phone call to the customer (${provider}): ${OUTCOME_WORDS[outcome]}.${why ? ` ${why.replace(/\d{7,}/g, '…').slice(0, 300)}` : ''}`,
       )
       .catch((err: Error) => this.logger.warn(`note for call ${call.id} failed: ${err.message}`));
   }
@@ -122,28 +138,29 @@ export class PhoneOutboundService {
   /**
    * Sarvam's report on a call we placed. It carries no proof, so it is only believed for an
    * attempt this desk started, and a connected call is still read from Sarvam with our key.
-   * Returns the id of the call to close when it connected.
+   * `known` is false for an attempt that is not ours; `close` is the call to close, if any.
    */
   async sarvamResult(
     attemptId: string,
     status: string | undefined,
     interactionId: string | null,
-  ): Promise<string | null> {
+  ): Promise<{ known: boolean; close: string | null }> {
     const call = await this.calls.byAttempt(attemptId);
-    if (!call || call.status === 'ended') return null;
+    if (!call) return { known: false, close: null };
+    if (call.status === 'ended') return { known: true, close: null };
+    // The agent's tools already tied this record to a call: whatever the report says, that
+    // call has a transcript to write, so it is closed like any other.
+    if (call.providerCallId) return { known: true, close: call.providerCallId };
     if (status === 'connected' && interactionId) {
-      // The agent's tools may already have tied the call to this id.
-      const mine =
-        call.providerCallId ?? (await this.calls.linkProviderCall(call.id, interactionId));
-      if (!mine) {
+      if (!(await this.calls.linkProviderCall(call.id, interactionId))) {
         // Another record holds the id (a tool reached us without the customer's number):
         // that one becomes the ticket, this one only says the call went through.
         await this.calls.endOutbound(call.id, 'connected');
       }
-      return interactionId;
+      return { known: true, close: interactionId };
     }
     await this.notConnected(call, status === 'no_answer' || status === 'busy' ? status : 'failed');
-    return null;
+    return { known: true, close: null };
   }
 
   /** ElevenLabs' signed report that a call we placed never connected. */
@@ -156,14 +173,21 @@ export class PhoneOutboundService {
     );
   }
 
-  /** Whether the provider that places calls is switched on and has what a call needs. */
-  private async ready(provider: PhoneProviderId): Promise<boolean> {
+  /**
+   * The number calls are placed from, when the provider that places them is switched on and
+   * has what a call needs; null when it does not.
+   */
+  private async ready(provider: PhoneProviderId): Promise<string | null> {
     if (provider === 'sarvam') {
       const c = await this.channels.phone();
-      return !!(c?.enabled && c.apiKey);
+      return c?.enabled && c.apiKey ? c.agentPhoneNumber : null;
     }
     const c = await this.channels.elevenlabs();
     const sync = await this.channels.elevenlabsSync();
-    return !!(c?.enabled && c.apiKey && c.phoneNumberId && sync?.agentId);
+    // A number that reaches ElevenLabs some other way cannot place calls yet.
+    const canDial = sync?.agentNumberKind === 'twilio' || sync?.agentNumberKind === 'sip_trunk';
+    return c?.enabled && c.apiKey && c.phoneNumberId && sync?.agentId && canDial
+      ? (sync.agentNumber ?? '')
+      : null;
   }
 }

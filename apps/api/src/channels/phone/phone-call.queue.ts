@@ -21,8 +21,8 @@ const ATTEMPTS = 8;
 /** A call no hook told us about may be nobody's call at all: asked about a few times only. */
 const ATTEMPTS_UNKNOWN = 4;
 const BACKOFF_MS = 15_000;
-/** A call the provider refuses is tried a few times, then reported as failed. */
-const PLACE_ATTEMPTS = 3;
+/** Dialled once: a second try could ring a customer whose first call did go through. */
+const PLACE_ATTEMPTS = 1;
 const SWEEP_MS = 5 * 60_000;
 /**
  * A call with no "ended" trigger is closed this long after it began: longer than a call
