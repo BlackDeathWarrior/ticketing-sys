@@ -136,3 +136,11 @@ On the card **Phone calls: general**, choose who places calls. For Sarvam the ca
 4. The price per minute (Sarvam's dashboard, not its public pricing page).
 5. Whether `{{desk_tools}}` fits in an agent variable, and whether the agent writes `arguments` as valid JSON.
 6. The address Sarvam calls from. If it is `4.213.167.70`, set `PHONE_SARVAM_IPS` to it so nothing else is let in.
+
+### When a tool is refused on a call
+
+The agent's model is the provider's, and it sometimes sends a tool an input the tool does not have. On a call the desk drops such inputs before the tool runs, and a refusal tells the agent exactly which inputs the tool takes. Every refusal is in the API's log with the tool's name and the names of the inputs that were sent (never their values): look for `phone tool` in `docker logs` of the api.
+
+### Accounts started on a call
+
+An app can offer a tool that starts an account for a caller who has none, and have the desk email the caller a link that finishes it (`POST /integration/customers/emails`, scope `integration:customer`, sent from the support mailbox by the worker). The desk has no SMS provider: the link goes by email only. Register such a tool with no customer-email input, or an unknown caller is refused before the tool runs.

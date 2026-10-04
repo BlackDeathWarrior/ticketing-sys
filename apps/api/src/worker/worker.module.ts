@@ -48,6 +48,7 @@ import { HandoverHandler, RoutingHandler } from '../handover/handover.handler';
 import { HandoverModule } from '../handover/handover.module';
 import { NotificationMailer, NotificationsHandler } from '../notifications/notifications.handler';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { CustomerEmailHandler } from '../integration-api/customer-email.service';
 import { PortalMailHandler, PortalModule } from '../portal/portal.module';
 import { RoutingModule } from '../routing/routing.module';
 import { SlaModule } from '../sla/sla.module';
@@ -145,6 +146,7 @@ const env = loadEnv();
     CsatHandler,
     WebhookDeliveryWorker,
     WebhookDispatchHandler,
+    CustomerEmailHandler,
     {
       provide: DOMAIN_EVENT_HANDLERS,
       inject: [
@@ -163,6 +165,7 @@ const env = loadEnv();
         RoutingHandler,
         CsatHandler,
         PortalMailHandler,
+        CustomerEmailHandler,
         LearningHandler,
         WebhookDispatchHandler,
         ElevenLabsSyncHandler,
