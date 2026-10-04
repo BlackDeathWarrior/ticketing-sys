@@ -143,7 +143,8 @@ export class ElevenLabsClient {
 
 /** ElevenLabs' own words for a refusal: `detail.message`, a validation list, or the body's start. */
 async function reasonOf(res: Response): Promise<string> {
-  const text = (await res.text().catch(() => '')).slice(0, 2_000);
+  // Parsed whole: a refusal can quote the request back, and half a JSON says nothing.
+  const text = await res.text().catch(() => '');
   let said = text;
   try {
     const detail = (JSON.parse(text) as { detail?: unknown }).detail;
