@@ -15,8 +15,9 @@ import {
 const can = (perms: Permission[]) => (p: Permission) => perms.includes(p);
 
 describe('settings tabs', () => {
-  it('shows every tab to an admin and nothing to an agent', () => {
+  it('shows every tab to an admin, and their own settings and the teams to an agent', () => {
     const admin = can([
+      'settings:priority',
       'settings:llm',
       'settings:channels',
       'settings:secrets',
@@ -31,6 +32,9 @@ describe('settings tabs', () => {
       'system:manage',
     ]);
     expect(visibleTabs(admin).map((t) => t.value)).toEqual([
+      'me',
+      'teams',
+      'priority',
       'providers',
       'models',
       'ai',
@@ -45,12 +49,15 @@ describe('settings tabs', () => {
       'usage',
       'system',
     ]);
-    // Everyone has their own settings (notification sound).
+    // Everyone has their own settings (notification sound) and sees the teams.
+    expect(visibleTabs(can(['ticket:read'])).map((t) => t.value)).toEqual(['me', 'teams']);
     expect(canOpenSettings(can(['ticket:read']))).toBe(true);
   });
 
   it('shows channels and customers to someone with channel settings alone', () => {
     expect(visibleTabs(can(['settings:channels'])).map((t) => t.value)).toEqual([
+      'me',
+      'teams',
       'channels',
       'customers',
     ]);
@@ -58,7 +65,7 @@ describe('settings tabs', () => {
 
   it('opens Tools for someone who may only create custom tools', () => {
     const lead = can(['ticket:read', 'tool:create']);
-    expect(visibleTabs(lead).map((t) => t.value)).toEqual(['tools']);
+    expect(visibleTabs(lead).map((t) => t.value)).toEqual(['me', 'teams', 'tools']);
     expect(canOpenSettings(lead)).toBe(true);
   });
 });

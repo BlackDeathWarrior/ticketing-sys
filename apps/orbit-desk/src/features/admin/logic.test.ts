@@ -107,7 +107,11 @@ describe('workflow editing', () => {
 });
 
 describe('settings tabs for the new admin pages', () => {
-  const tabs = (...perms: string[]) => visibleTabs((p) => perms.includes(p)).map((t) => t.value);
+  // Without the two tabs every role has (their own settings, the teams).
+  const tabs = (...perms: string[]) =>
+    visibleTabs((p) => perms.includes(p))
+      .map((t) => t.value)
+      .filter((t) => t !== 'me' && t !== 'teams');
 
   it('shows People to user managers, Tickets to either ticket permission', () => {
     expect(tabs('user:manage')).toEqual(['people']);

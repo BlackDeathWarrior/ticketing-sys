@@ -80,7 +80,10 @@ describe('TicketTable', () => {
     rerender(<TicketTable {...props} tickets={[]} total={0} search="zzz" />);
     expect(screen.getByText('No tickets in this part of the sky')).toBeInTheDocument();
     expect(screen.getByText('zzz')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    // One beside the search that is on, one in the empty state: both reset.
+    const clears = screen.getAllByRole('button', { name: 'Clear filters' });
+    expect(clears).toHaveLength(2);
+    fireEvent.click(clears[1]!);
     expect(props.onClearFilters).toHaveBeenCalled();
   });
 
