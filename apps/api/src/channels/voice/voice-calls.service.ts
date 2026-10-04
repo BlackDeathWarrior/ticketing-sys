@@ -2,6 +2,7 @@ import type { Readable } from 'node:stream';
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { type Database, users, voiceCalls } from '@tms/db';
 import {
+  type PhoneProviderId,
   VOICE_RECORDING_DAYS,
   type VoiceCallView,
   type VoiceEndReason,
@@ -144,12 +145,17 @@ export class VoiceCallsService {
    * it used). Asked again for the same call, this returns the same row, and
    * fills in the caller's number if it was not known yet.
    */
-  async beginPhone(i: { interactionId: string; phone: string | null }): Promise<CallRow> {
+  async beginPhone(i: {
+    provider: PhoneProviderId;
+    interactionId: string;
+    phone: string | null;
+  }): Promise<CallRow> {
     return this.db.transaction(async (tx) => {
       const [created] = await tx
         .insert(voiceCalls)
         .values({
           transport: 'phone',
+          provider: i.provider,
           providerCallId: i.interactionId,
           callerPhone: i.phone,
           // The phone agent's greeting says the call is transcribed.
@@ -301,6 +307,7 @@ export class VoiceCallsService {
       conversationId: call.conversationId,
       status: call.status as 'active' | 'ended',
       transport: call.transport as VoiceCallView['transport'],
+      provider: call.provider as VoiceCallView['provider'],
       direction: call.direction as VoiceCallView['direction'],
       state: call.status === 'active' ? live(call.id) : null,
       startedAt: call.startedAt.toISOString(),

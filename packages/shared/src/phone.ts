@@ -7,6 +7,14 @@ import { normalizeIdentity } from './customers';
  * tools and a trigger when the call is over. These are the bodies of those
  * requests: we choose the field names when the tools are set up in Sarvam.
  */
+/** Who answers a phone call: each is a hosted voice agent this desk does not run (ADR 0040). */
+export const PHONE_PROVIDERS = ['sarvam', 'elevenlabs'] as const;
+export type PhoneProviderId = (typeof PHONE_PROVIDERS)[number];
+export const PHONE_PROVIDER_NAMES: Record<PhoneProviderId, string> = {
+  sarvam: 'Sarvam',
+  elevenlabs: 'ElevenLabs',
+};
+
 export const PHONE_TOOL_NAMES = [
   'desk_tool',
   'list_tools',
