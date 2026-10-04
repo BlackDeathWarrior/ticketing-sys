@@ -49,7 +49,14 @@ export function CallPanel({
   const all = calls.data ?? [];
   // A call in the browser can be joined. A phone call is the phone agent's: it is only shown.
   const live = all.find((c) => c.status === 'active' && c.transport === 'browser');
-  const ringing = all.filter((c) => c.transport === 'phone' && c.status !== 'ended');
+  // A call nobody reported on is cleared by the server within the day; after two hours it
+  // no longer stands in the way of another.
+  const ringing = all.filter(
+    (c) =>
+      c.transport === 'phone' &&
+      c.status !== 'ended' &&
+      Date.now() - new Date(c.startedAt).getTime() < 2 * 60 * 60_000,
+  );
   return (
     <section className={panel.panel} aria-label="Voice call">
       <h3 className={panel.panelTitle}>
@@ -114,7 +121,7 @@ function CallCustomer({
     try {
       await api('POST', `/tickets/${ticketId}/phone-calls`, about.trim() ? { about } : {});
       setAbout('');
-      setMessage('The phone assistant is calling the customer.');
+      setMessage('Asked for. How the call went shows below.');
       onRequested();
     } catch (err) {
       setMessage((err as Error).message);

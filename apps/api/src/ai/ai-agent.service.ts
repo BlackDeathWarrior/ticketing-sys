@@ -325,12 +325,16 @@ export class AiAgentService {
         status: outcome.status as 'done' | 'rejected',
         reason,
       });
-      const rung = await this.callBack.ring({
-        ticketId: approval.ticketId,
-        conversationId: conv.id,
-        said,
-      });
-      if (rung) {
+      const callBack = this.callBack;
+      const handled = await this.withLock(conv.id, async () => {
+        // Checked again under the lock: a second run of this follow-up must not ring again.
+        if (await this.runs.followedUp(approvalId)) return true;
+        const rung = await callBack.ring({
+          ticketId: approval.ticketId,
+          conversationId: conv.id,
+          said,
+        });
+        if (!rung) return false;
         await this.db.transaction(async (tx) => {
           await this.tickets.addNoteInTx(
             tx,
@@ -352,8 +356,9 @@ export class AiAgentService {
             tools: [summaryLine],
           });
         });
-        return 'skipped';
-      }
+        return true;
+      });
+      if (handled) return 'skipped';
     }
     // Handed over and still waiting for someone: the outcome needs no judgement, so the
     // customer is told it as it is, without taking the conversation back from the queue.

@@ -10,6 +10,7 @@ import { AI_CTX, SYSTEM_CTX } from '../../common/request-context';
 import { CustomersService } from '../../customers/customers.service';
 import { HandoverService } from '../../handover/handover.service';
 import { ChannelConfigService } from '../../settings/channel-config.service';
+import { ApprovalsService } from '../../tools/approvals.service';
 import { ToolGatewayService } from '../../tools/tool-gateway.service';
 import { ToolsService } from '../../tools/tools.service';
 import { InboundService } from '../inbound.service';
@@ -46,6 +47,7 @@ export class PhoneCallCloser {
     private readonly channels: ChannelConfigService,
     private readonly tools: ToolsService,
     private readonly customers: CustomersService,
+    private readonly approvals: ApprovalsService,
   ) {}
 
   /**
@@ -159,7 +161,10 @@ export class PhoneCallCloser {
 
     if (ticketId && conversationId) {
       await this.gateway.linkCalls(call.toolCallIds, ticketId, conversationId);
-      const waiting = await this.askApprovals(call, ticketId, conversationId);
+      await this.askApprovals(call, ticketId, conversationId);
+      // Asked from the approvals themselves, not from this run: a second run of this job
+      // must not resolve a ticket whose approval the first run asked for.
+      const waiting = (await this.approvals.pendingTicketIds([ticketId])).has(ticketId);
       if (call.handoverReason) {
         await this.handover.requestHandover(SYSTEM_CTX, ticketId, {
           reason:
@@ -168,7 +173,7 @@ export class PhoneCallCloser {
         });
       } else if (waiting) {
         // Not resolved: a colleague has to decide, and the caller is rung back with the answer.
-        this.logger.log(`call ${call.id}: ${waiting} approval(s) asked for`);
+        this.logger.log(`call ${call.id}: the ticket waits for an approval`);
       } else if (fromTicket) {
         this.logger.log(`call ${call.id}: written onto the ticket it was placed from`);
       } else if (!(await this.autoResolve.callEnded({ ticketId, conversationId }))) {
@@ -182,15 +187,15 @@ export class PhoneCallCloser {
 
   /**
    * Actions the caller asked for that need a colleague's approval, taken down during the
-   * call: asked for now that there is a ticket for them to belong to. Returns how many are
-   * waiting. A tool that is gone, or a request the gateway refuses, is logged and dropped.
+   * call: asked for now that there is a ticket for them to belong to. A tool that is gone,
+   * or a request the gateway refuses, is logged and dropped.
    */
   private async askApprovals(
     call: CallRow,
     ticketId: string,
     conversationId: string,
-  ): Promise<number> {
-    if (!call.pendingApprovals.length) return 0;
+  ): Promise<void> {
+    if (!call.pendingApprovals.length) return;
     const owner =
       call.direction === 'outbound'
         ? call.customerId
@@ -200,8 +205,12 @@ export class PhoneCallCloser {
           ? await this.customers.provenPhoneOwner(call.callerPhone)
           : null;
     const tools = await this.tools.agentTools();
-    let waiting = 0;
+    let left = [...call.pendingApprovals];
     for (const asked of call.pendingApprovals) {
+      // Taken off the record before it is asked for: a run that fails after this must not
+      // ask a second time. A request lost that way leaves the ticket open for a person.
+      left = left.filter((p) => p !== asked);
+      await this.calls.setPendingApprovals(call.id, left);
       const found = tools.find((t) => t.tool.id === asked.toolId);
       if (!found) continue;
       const r = await this.gateway.invoke(AI_CTX, {
@@ -212,12 +221,10 @@ export class PhoneCallCloser {
         conversationId,
         customerEmail: owner?.email ?? null,
       });
-      if (r.status === 'awaiting_approval') waiting++;
-      else this.logger.warn(`call ${call.id}: an approval was not asked for (${r.status})`);
+      if (r.status !== 'awaiting_approval') {
+        this.logger.warn(`call ${call.id}: an approval was not asked for (${r.status})`);
+      }
     }
-    // Cleared once asked: a later run of this job must not ask a second time.
-    await this.calls.clearPendingApprovals(call.id);
-    return waiting;
   }
 
   /** The call's audio from its provider; a failure to fetch it never costs the ticket. */

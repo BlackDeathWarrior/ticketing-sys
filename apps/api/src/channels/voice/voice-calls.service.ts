@@ -28,6 +28,8 @@ const EXTENSIONS: Record<CallRecording['type'], string> = {
   'audio/mpeg': 'mp3',
 };
 const DAY_MS = 86_400_000;
+/** How long after the desk rang a number a tool request from it is taken to be that call. */
+const ADOPT_MINUTES = 5;
 
 /**
  * The record of voice calls: when, how long, who answered, and the
@@ -103,8 +105,8 @@ export class VoiceCallsService {
           endedReason: result.reason,
           language: result.language,
           answeredBy: result.answeredBy,
-          // A call the desk placed, and somebody spoke on it.
-          outcome: sql`case when ${voiceCalls.direction} = 'outbound' then 'connected' else ${voiceCalls.outcome} end`,
+          // A call the desk placed: it connected if somebody spoke on it.
+          outcome: sql`case when ${voiceCalls.direction} = 'outbound' then ${result.answeredBy ? 'connected' : 'no_answer'} else ${voiceCalls.outcome} end`,
           recordingKey,
           recordingBytes: recordingKey ? recording!.audio.length : null,
         })
@@ -268,8 +270,12 @@ export class VoiceCallsService {
       .where(eq(voiceCalls.id, id));
   }
 
-  async clearPendingApprovals(id: string): Promise<void> {
-    await this.db.update(voiceCalls).set({ pendingApprovals: [] }).where(eq(voiceCalls.id, id));
+  /** What is still to be asked for, after one request was. */
+  async setPendingApprovals(
+    id: string,
+    left: Array<{ toolId: string; args: string }>,
+  ): Promise<void> {
+    await this.db.update(voiceCalls).set({ pendingApprovals: left }).where(eq(voiceCalls.id, id));
   }
 
   /** Whether this conversation is a phone call's (and not a call in the browser). */
@@ -365,24 +371,36 @@ export class VoiceCallsService {
     return !!row;
   }
 
-  /** The provider took the call: it is ringing. Its ids are how its reports find this record. */
-  async placed(
-    id: string,
-    ids: { providerCallId: string | null; attemptId: string | null },
-  ): Promise<void> {
-    await this.db.transaction(async (tx) => {
+  /**
+   * Takes a call that was asked for, just before it is dialled. Only one taker gets it: a
+   * job that runs twice, or again after a failure, can never ring the customer twice.
+   */
+  async claimForPlacing(id: string): Promise<CallRow | null> {
+    return this.db.transaction(async (tx) => {
       const [row] = await tx
         .update(voiceCalls)
-        .set({
-          status: 'active',
-          startedAt: new Date(),
-          providerCallId: ids.providerCallId,
-          providerAttemptId: ids.attemptId,
-        })
+        .set({ status: 'active', startedAt: new Date() })
         .where(and(eq(voiceCalls.id, id), eq(voiceCalls.status, 'requested')))
         .returning();
       if (row) await this.changed(tx, SYSTEM_CTX, 'voice.call_updated', row, { placed: true });
+      return row ?? null;
     });
+  }
+
+  /**
+   * The provider's ids for a call it took: how its reports find this record. Bookkeeping,
+   * so not audited. False when another record already holds the call's id.
+   */
+  async placedAs(
+    id: string,
+    ids: { providerCallId: string | null; attemptId: string | null },
+  ): Promise<boolean> {
+    if (ids.providerCallId && (await this.byProvider(ids.providerCallId))) return false;
+    await this.db
+      .update(voiceCalls)
+      .set({ providerCallId: ids.providerCallId, providerAttemptId: ids.attemptId })
+      .where(eq(voiceCalls.id, id));
+    return true;
   }
 
   async byAttempt(attemptId: string): Promise<CallRow | null> {
@@ -429,6 +447,8 @@ export class VoiceCallsService {
           eq(voiceCalls.provider, provider),
           eq(voiceCalls.callerPhone, phone),
           isNull(voiceCalls.providerCallId),
+          // Only a call placed moments ago: later, the same person ringing in is another call.
+          gt(voiceCalls.startedAt, new Date(Date.now() - ADOPT_MINUTES * 60_000)),
         ),
       )
       .orderBy(desc(voiceCalls.startedAt))
@@ -456,9 +476,11 @@ export class VoiceCallsService {
 
   /**
    * Calls we placed that nobody reported on: asked for more than ten minutes ago and never
-   * placed, or placed over an hour ago with no word from the provider.
+   * dialled, dialled a quarter of an hour ago with no word from the provider, or still open
+   * after a day whatever the provider said.
    */
   async staleOutbound(now = new Date()): Promise<CallRow[]> {
+    const before = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
     return this.db
       .select()
       .from(voiceCalls)
@@ -466,15 +488,13 @@ export class VoiceCallsService {
         and(
           eq(voiceCalls.direction, 'outbound'),
           or(
-            and(
-              eq(voiceCalls.status, 'requested'),
-              lt(voiceCalls.startedAt, new Date(now.getTime() - 10 * 60_000)),
-            ),
+            and(eq(voiceCalls.status, 'requested'), lt(voiceCalls.startedAt, before(10))),
             and(
               eq(voiceCalls.status, 'active'),
               isNull(voiceCalls.providerCallId),
-              lt(voiceCalls.startedAt, new Date(now.getTime() - 60 * 60_000)),
+              lt(voiceCalls.startedAt, before(15)),
             ),
+            and(eq(voiceCalls.status, 'active'), lt(voiceCalls.startedAt, before(24 * 60))),
           ),
         ),
       )

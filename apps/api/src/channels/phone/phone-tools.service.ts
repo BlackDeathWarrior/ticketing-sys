@@ -169,8 +169,7 @@ export class PhoneToolsService {
 
   /**
    * Every enabled tool, read now, so one added in Settings is there on the
-   * next call. Tools that need an approval are left out until the outcome can
-   * reach the caller (a call back).
+   * next call. The desk's own send_whatsapp comes first.
    */
   async catalogue(): Promise<PhoneToolEntry[]> {
     const company = (await this.offered()).map((t) => {
@@ -223,8 +222,7 @@ export class PhoneToolsService {
   ): Promise<PhoneStartReply> {
     const caller = await this.caller(input.phone, provider);
     const call = await this.open(input.interactionId, caller, provider);
-    const phone = caller ?? call?.callerPhone;
-    const owner = phone ? await this.customers.provenPhoneOwner(phone) : null;
+    const { owner } = await this.party(call, caller);
     // A caller whose number is registered is greeted by first name, with or without a title
     // on file (the product owner's choice for phone calls); nothing when the name on file
     // is not a person's name (ADR 0037).
@@ -405,9 +403,15 @@ export class PhoneToolsService {
    */
   private async party(call: CallRow | null, requestPhone: string | null) {
     if (call?.direction === 'outbound') {
+      // Tools act for them only when the number rung is one they proved is theirs: whoever
+      // answers another number on their file gets general help, not their account.
+      const proven = call.customerId ? await this.customers.provenPhoneOf(call.customerId) : null;
       return {
         phone: call.callerPhone,
-        owner: call.customerId ? await this.customers.contactOf(call.customerId) : null,
+        owner:
+          call.customerId && proven && proven === call.callerPhone
+            ? await this.customers.contactOf(call.customerId)
+            : null,
       };
     }
     const phone = requestPhone ?? call?.callerPhone ?? null;
@@ -474,7 +478,11 @@ export class PhoneToolsService {
       if (check.status === 'denied' || check.status === 'error') {
         return fail(found.tool.customerArg && !owner?.email ? NOT_LINKED : check.error);
       }
-      await this.calls.notePendingApproval(call.id, { toolId: found.tool.id, args });
+      // Asked for twice on one call (the agent repeats a tool): one approval, not two.
+      const again = call.pendingApprovals.some(
+        (p) => p.toolId === found.tool.id && p.args === args,
+      );
+      if (!again) await this.calls.notePendingApproval(call.id, { toolId: found.tool.id, args });
       return ok(APPROVAL_NEEDED);
     }
     const run = this.gateway.invoke(AI_CTX, {
