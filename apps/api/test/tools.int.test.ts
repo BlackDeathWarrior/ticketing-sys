@@ -143,7 +143,8 @@ describe('tool registry', () => {
   it('is for admins only', async () => {
     expect((await t.call('GET', '/tools/servers', { token: agent })).status).toBe(403);
     expect((await t.call('GET', '/tools', { token: supervisor })).status).toBe(403);
-    expect((await t.call('GET', '/approvals', { token: agent })).status).toBe(403);
+    // Everyone may open the approvals list; it holds only what they may decide (ADR 0031).
+    expect((await t.call('GET', '/approvals', { token: agent })).status).toBe(200);
     expect((await t.call('GET', '/approvals', { token: supervisor })).status).toBe(200);
   });
 
@@ -272,7 +273,11 @@ describe('AI with company tools', () => {
 
   it('cannot see another customer’s order, and hands over', async () => {
     const r = await chat('omar.farouk@example.org', 'Where is my order DS-10421?');
-    const run = await waitFor(async () => (await runs(r.ticketId))[0], 'AI run', 20_000);
+    const run = await waitFor(
+      async () => (await runs(r.ticketId)).find((x) => x.kind === 'turn'),
+      'AI turn',
+      20_000,
+    );
     expect(run).toMatchObject({ decision: 'handover', rules: ['ai_requested'] });
     const [call] = await calls(r.ticketId);
     expect(call).toMatchObject({
@@ -329,6 +334,12 @@ describe('approvals', () => {
     });
     expect(item.summary).toMatch(/^Issue refund: order id DS-10388/);
     expect(item.summary).not.toContain('tom.whitaker');
+
+    // An agent who may not decide it does not see it in their list either.
+    const agentInbox = (
+      await t.call('GET', '/approvals', { token: agent, query: { status: 'pending' } })
+    ).body as Array<{ id: string }>;
+    expect(agentInbox.some((a) => a.id === r.approvalId)).toBe(false);
 
     // Agents can't approve; supervisors can.
     const denied = await t.call('POST', `/approvals/${r.approvalId}/decide`, {

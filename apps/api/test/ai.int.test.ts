@@ -367,13 +367,19 @@ describe('AI agent on web chat', () => {
     // The reminder is the system's own and never reaches the customer.
     expect(JSON.stringify(history)).not.toContain('system_note');
 
-    // A model that keeps to plain text gives no confidence: its answer goes to a person.
+    // A model that keeps to plain text gives no confidence and names no source: its
+    // answer waits as a draft for a person, and the customer is told someone will reply.
     const s = await chat('Please stay in plain words: when will my refund reach my card?');
     const stubborn = await waitForTurn(s.ticketId);
-    expect(stubborn).toMatchObject({ decision: 'handover', rules: ['low_confidence'] });
-    const notes = (await t.call('GET', `/tickets/${s.ticketId}/notes`, { token: admin })).body;
-    expect(notes[0].body).toContain('Its unsent answer was');
-    expect(notes[0].body).toMatch(/business days/);
+    expect(stubborn).toMatchObject({ decision: 'drafted', sources: [] });
+    const kept = (await conversations(s.ticketId))[0]!.messages.filter(
+      (m) => m.authorType === 'ai',
+    );
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toMatchObject({ deliveryStatus: 'draft' });
+    expect(kept[0]!.body).toMatch(/business days/);
+    const shown = await t.app.get(ConversationsService).chatHistory(s.session);
+    expect(JSON.stringify(shown)).not.toMatch(/business days/);
   });
 
   it('does not tell an email sender to wait: email answers are always drafts', async () => {
