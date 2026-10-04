@@ -145,7 +145,8 @@ export const phoneChannelConfigSchema = z.object({
   callingHours: z.boolean().default(false),
   /**
    * The WhatsApp template that carries a link to a caller (a payment link cannot be read
-   * out). Its body has one variable, the link. Empty: nothing is sent.
+   * out). Its body has one variable, the link. Empty: the link only goes, as a plain
+   * message, to a caller who wrote on WhatsApp in the last 24 hours.
    */
   linkTemplate: z.string().trim().max(512).nullish(),
 });
