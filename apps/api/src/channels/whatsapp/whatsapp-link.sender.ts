@@ -95,7 +95,9 @@ export class WhatsAppLinkSender {
           data: { about: i.about, ...(outcome.sent ? {} : { reason: outcome.reason }) },
         }),
       )
-      .catch((err: Error) => this.logger.warn(`audit of a sent confirmation failed: ${err.message}`));
+      .catch((err: Error) =>
+        this.logger.warn(`audit of a sent confirmation failed: ${err.message}`),
+      );
     return outcome;
   }
 
