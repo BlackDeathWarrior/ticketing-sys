@@ -347,9 +347,12 @@ describe('custom tools', () => {
     const made = await create(definition());
     const missing = await test(made.body.id, { args: {} });
     expect(missing.body.status).toBe('denied');
-    const extra = await test(made.body.id, { args: { sku: 'A', drop_table: true } });
-    expect(extra.body.status).toBe('denied');
     expect(seen).toHaveLength(0);
+    // An input the tool does not have is dropped: the system never sees it.
+    const extra = await test(made.body.id, { args: { sku: 'A', drop_table: true } });
+    expect(extra.body.status).not.toBe('denied');
+    expect(seen).toHaveLength(1);
+    expect(JSON.stringify(seen)).not.toContain('drop_table');
 
     const unknown = await test(made.body.id, { args: { sku: 'NOPE' } });
     expect(unknown.body).toMatchObject({ status: 'error' });
@@ -592,7 +595,7 @@ describe('the AI using custom tools', () => {
     expect(call).toMatchObject({ status: 'awaiting_approval', tool: { name: 'issue_refund' } });
     const decided = await t.call('POST', `/approvals/${call.approval.id}/decide`, {
       token: supervisor.token,
-      body: { decision: 'approve' },
+      body: { decision: 'approve', reason: 'The second charge is confirmed.' },
     });
     expect(decided.status).toBe(200);
 
