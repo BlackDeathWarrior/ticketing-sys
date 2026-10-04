@@ -1,5 +1,7 @@
 import type {
   CheckPhoneVerification,
+  CustomerNotice,
+  CustomerNoticeResult,
   CreateTicket,
   EventResult,
   Identity,
@@ -146,6 +148,16 @@ export class TmsClient {
      */
     checkPhoneVerification: (input: CheckPhoneVerification): Promise<PhoneVerificationChecked> =>
       this.request('POST', '/integration/customers/phone-verifications/check', { body: input }),
+
+    /**
+     * Tells a customer something in writing (a return approved, a refund
+     * issued): your sentence goes to the number they have confirmed, over
+     * WhatsApp. `sent: false` with a `reason` when it could not go out: they
+     * have no confirmed number, or have not written on WhatsApp in the last 24
+     * hours. Needs the `integration:customer` scope.
+     */
+    sendNotice: (input: CustomerNotice): Promise<CustomerNoticeResult> =>
+      this.request('POST', '/integration/customers/notices', { body: input }),
   };
 
   private async request<T>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {

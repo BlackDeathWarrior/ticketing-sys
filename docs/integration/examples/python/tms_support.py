@@ -237,6 +237,21 @@ class TmsClient:
         }
         return self._request("POST", "/integration/customers/phone-verifications/check", payload)
 
+    def send_customer_notice(self, external_id: str, text: str, about: Optional[str] = None) -> Dict[str, Any]:
+        """Tells a customer something in writing: a return approved, a refund issued.
+
+        Your sentence goes, as it is, to the number that customer has confirmed,
+        over WhatsApp. Needs the `integration:customer` scope. Returns
+        `{"sent": True, "via": "whatsapp"}`, or `{"sent": False, "reason": ...}`
+        when it could not go out (no confirmed number, or they have not written
+        on WhatsApp in the last 24 hours). A 404 `TmsError` means TMS does not
+        know this customer of yours.
+        """
+        payload: Dict[str, Any] = {"customer": {"externalId": external_id}, "text": text}
+        if about:
+            payload["about"] = about
+        return self._request("POST", "/integration/customers/notices", payload)
+
     # ---- Transport ----
 
     def _request(

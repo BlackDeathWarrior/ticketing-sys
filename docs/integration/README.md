@@ -272,6 +272,28 @@ Other answers:
 
 **What a proof does.** A customer has one proven number, and the latest proof wins. If another customer is known only by that number, the two are merged into the customer who proved it. Any other customer who held the number just loses it.
 
+### Telling a customer something in writing
+
+When your app does something for a customer after the conversation is over (a return approved, a refund issued), it can have TMS tell them. You give the sentence; TMS sends it, as it is, to the number that customer has proven, over WhatsApp. The same key scope applies (`integration:customer`).
+
+```bash
+curl -X POST https://support.example.com/api/v1/integration/customers/notices   -H "Authorization: Bearer $TMS_API_KEY" -H "Content-Type: application/json"   -d '{ "customer": { "externalId": "user-42" }, "text": "Your return for order ET-100123 is approved. Your refund is on its way.", "about": "Return approved" }'
+```
+
+It answers `200` either way, and says whether the message went out:
+
+```json
+{ "sent": true, "via": "whatsapp" }
+```
+
+```json
+{ "sent": false, "via": null, "reason": "their last WhatsApp message is more than 24 hours old" }
+```
+
+- Only a customer you have named before (`externalId`) can be reached, and only on the number they proved: you never pass a number. An unknown customer is a `404`.
+- WhatsApp lets a business write freely only to someone who wrote to it in the last 24 hours. Outside that window nothing is sent and `reason` says so; treat a notice as a courtesy, not as delivery you can rely on.
+- `text` is up to 600 characters. At most 20 notices per customer per hour.
+
 ## 6. Showing items as cards on WhatsApp
 
 Use this when the AI should show items from your app, such as products, as picture cards on WhatsApp. The AI never writes a picture, a price or a link itself: it can only pick items that one of your tools returned in the same turn.
