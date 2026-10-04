@@ -22,8 +22,6 @@ export const AI_QUEUE = 'ai-turns';
 
 const TURN_PRIORITY: Record<string, number> = { urgent: 1, high: 2, normal: 3, low: 4 };
 const CLASSIFY_PRIORITY = 5;
-/** How long a typed message waits before its turn starts. */
-const SETTLE_MS = 1_200;
 
 type AiJob = (
   | {
@@ -102,7 +100,8 @@ export class AiWorker implements OnApplicationBootstrap, BeforeApplicationShutdo
             : job.kind === 'followup'
               ? TURN_PRIORITY.high
               : CLASSIFY_PRIORITY,
-        ...(job.kind === 'turn' && job.settle ? { delay: SETTLE_MS } : {}),
+        // A typed message waits a moment before its turn starts (`AI_SETTLE_MS`).
+        ...(job.kind === 'turn' && job.settle ? { delay: this.env.AI_SETTLE_MS } : {}),
         // A busy conversation is retried until the turn in front of it has finished.
         attempts: 30,
         backoff: { type: 'fixed', delay: 1_500 },

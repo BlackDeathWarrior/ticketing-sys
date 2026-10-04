@@ -90,6 +90,11 @@ const envSchema = z
      * cap or a model switched off reaches calls within this time; 0 reads them every time.
      */
     LLM_SNAPSHOT_MS: z.coerce.number().int().min(0).max(60_000).default(3000),
+    /**
+     * How long a typed message waits before its AI turn starts, in milliseconds, so a
+     * customer who sends three short messages gets one answer. 0 starts the turn at once.
+     */
+    AI_SETTLE_MS: z.coerce.number().int().min(0).max(10_000).default(1200),
 
     /**
      * Host names MCP servers may use even though they resolve to private
