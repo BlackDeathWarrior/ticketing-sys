@@ -31,7 +31,11 @@ From ElevenLabs' dashboard, start a test call with the agent (it has no caller n
 5. **Ask for a person twice:** you are told a colleague will get back to you.
 6. End the call. Within a minute or two a ticket appears on the "Voice call" channel with the transcript and the recording; after case 5 it is routed to a person, otherwise it is resolved.
 
-Not on a phone call yet: actions that need an approval. They arrive with outbound calls.
+Actions that need an approval: the agent passes the request on and says a colleague must approve it. When a colleague decides, the phone agent rings the caller back with the outcome. That needs a number: a test call cannot be rung back.
+
+### Calls the desk places
+
+With a number connected (through Twilio or a SIP trunk) and ElevenLabs chosen on the card **Phone calls: general**, **Call customer** in a ticket's Voice call panel has this agent ring the customer. A number that reaches ElevenLabs through Exotel cannot place calls yet.
 
 ## If something is wrong
 
