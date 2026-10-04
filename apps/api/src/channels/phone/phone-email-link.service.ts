@@ -143,6 +143,26 @@ export class PhoneEmailLink {
     }
     // A code works once.
     if (!(await this.redis.del(keyOf(call.id)))) return no('That code was already used.');
+    // An address that already has a number keeps it: on a call, the caller id is all that
+    // says whose phone this is, so a call cannot move an account to another number. Said only
+    // after the code was right, so nobody learns from it which addresses are customers.
+    if (call.direction !== 'outbound') {
+      const known = await this.customers.lookup('email', waiting.email);
+      const held = known ? await this.customers.provenPhoneOf(known.id) : null;
+      if (held && held !== phone.replace(/\D/g, '')) {
+        await this.db.transaction((tx) =>
+          this.audit.record(tx, AI_CTX, {
+            action: 'customer.phone_link_refused',
+            targetType: 'customer',
+            targetId: known!.id,
+            data: { callId: call.id, why: 'another number is linked' },
+          }),
+        );
+        return no(
+          `${waiting.email} is already linked to a different phone number, so it was not linked to this one. Tell the caller that, for their safety, a linked number is only changed on the shop’s website, under their account after signing in, or they can call from the number that is linked. Do not try to link it again. Until then, help only with products and general questions.`,
+        );
+      }
+    }
     await this.db.transaction(async (tx) => {
       const { customer } = await this.customers.resolveOrCreate(
         AI_CTX,

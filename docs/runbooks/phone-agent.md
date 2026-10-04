@@ -143,7 +143,7 @@ The agent's model is the provider's, and it sometimes sends a tool an input the 
 
 ### A caller the desk does not know
 
-Orders, the cart, payments and refunds need the caller's number to be linked to an account. A caller whose number is not linked is told so, and the agent offers to link it on the call: it asks for the caller's email address (`verify_email`), a six-digit code is emailed to it, the caller reads the code out (`confirm_email_code`), and the number is linked to that address. The code proves the address; that the number is the caller's rests on the caller id, as for every call that comes in. The code is never stored: it waits ten minutes, takes five tries, and at most five are sent per number and per address in an hour.
+Orders, the cart, payments and refunds need the caller's number to be linked to an account. A caller whose number is not linked is told so, and the agent offers to link it on the call: it asks for the caller's email address (`verify_email`), a six-digit code is emailed to it, the caller reads the code out (`confirm_email_code`), and the number is linked to that address. The code proves the address; that the number is the caller's rests on the caller id, as for every call that comes in. An address that already has a number linked is not moved to another number on a call: the caller is told to change it under their account on the website, or to call from the linked number. The code is never stored: it waits ten minutes, takes five tries, and at most five are sent per number and per address in an hour.
 
 ### What a caller gets in writing
 
