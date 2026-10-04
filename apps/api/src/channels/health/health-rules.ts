@@ -407,13 +407,27 @@ export interface VoiceFacts {
     /** The last time Sarvam's agent reached one of our hooks. */
     lastHookAt: string | null;
   } | null;
+  /** Phone calls through an ElevenLabs agent (ADR 0040); null when never set up. */
+  elevenlabs?: {
+    enabled: boolean;
+    keySaved: boolean;
+    probe?: ProbeResult;
+    /** Made and saved by the desk when it sets the agent up. */
+    tokenSaved: boolean;
+    webhookSecretSaved: boolean;
+    numberChosen: boolean;
+    /** How the last set-up of the agent went; `at` null when it never ran. */
+    sync: { at: string | null; ok: boolean | null; error: string | null; skipped: number };
+    lastHookAt: string | null;
+  } | null;
   activity: ChannelActivity;
 }
 
 export function voiceHealth(f: VoiceFacts): ChannelHealth {
   const phone = f.phone?.enabled ? f.phone : null;
+  const elevenlabs = f.elevenlabs?.enabled ? f.elevenlabs : null;
   const browserOff = (f.enabled === null && !f.keySaved) || f.enabled === false;
-  if (browserOff && !phone) {
+  if (browserOff && !phone && !elevenlabs) {
     return f.enabled === false
       ? off('voice', 'Switched off', [], f.activity)
       : off('voice', 'Not set up');
@@ -447,6 +461,7 @@ export function voiceHealth(f: VoiceFacts): ChannelHealth {
     });
   }
   if (phone) checks.push(...phoneChecks(phone));
+  if (elevenlabs) checks.push(...elevenlabsChecks(elevenlabs));
   if (f.lines && !browserOff) {
     const busy = f.lines.active >= f.lines.max;
     checks.push({
@@ -504,6 +519,73 @@ function phoneChecks(p: NonNullable<VoiceFacts['phone']>): HealthCheck[] {
           detail: 'Not saved. The phone agent is refused.',
         },
   );
+  return checks;
+}
+
+function elevenlabsChecks(e: NonNullable<VoiceFacts['elevenlabs']>): HealthCheck[] {
+  const checks: HealthCheck[] = [];
+  if (!e.keySaved) {
+    return [
+      {
+        key: 'elevenlabs_key',
+        label: 'ElevenLabs: API key',
+        state: 'down',
+        detail: 'Not saved. The agent cannot be set up and calls cannot be written to tickets.',
+      },
+    ];
+  }
+  checks.push(
+    e.probe
+      ? {
+          key: 'elevenlabs_api',
+          label: 'ElevenLabs: connection',
+          state: e.probe.ok ? 'ok' : 'down',
+          detail: e.probe.ok
+            ? (e.probe.detail ?? 'ElevenLabs accepts the key')
+            : (e.probe.error ?? 'ElevenLabs refused the connection'),
+        }
+      : {
+          key: 'elevenlabs_api',
+          label: 'ElevenLabs: connection',
+          state: 'warning',
+          detail: 'Not checked yet. Click Test connection.',
+        },
+  );
+  if (!e.sync.at || !e.tokenSaved || !e.webhookSecretSaved) {
+    checks.push({
+      key: 'elevenlabs_sync',
+      label: 'ElevenLabs: agent',
+      state: e.sync.ok === false ? 'down' : 'warning',
+      detail:
+        e.sync.ok === false
+          ? (e.sync.error ?? 'The set-up failed')
+          : 'Not set up yet. Click Set up.',
+    });
+    return checks;
+  }
+  checks.push({
+    key: 'elevenlabs_sync',
+    label: 'ElevenLabs: agent',
+    state: e.sync.ok === false ? 'down' : e.sync.skipped ? 'warning' : 'ok',
+    detail:
+      e.sync.ok === false
+        ? (e.sync.error ?? 'The last sync failed')
+        : e.sync.skipped
+          ? `In step, but ElevenLabs refused ${e.sync.skipped} tool${e.sync.skipped === 1 ? '' : 's'}`
+          : 'In step with this desk',
+  });
+  checks.push({
+    key: 'elevenlabs_number',
+    label: 'ElevenLabs: number',
+    state: e.numberChosen ? 'ok' : 'warning',
+    detail: e.numberChosen ? 'A number is assigned to the agent' : 'No number yet: test calls only',
+  });
+  checks.push({
+    key: 'elevenlabs_hooks',
+    label: 'ElevenLabs: calls from the agent',
+    state: e.lastHookAt ? 'ok' : 'warning',
+    detail: e.lastHookAt ? 'The agent reaches the desk' : 'No call has reached the desk yet',
+  });
   return checks;
 }
 

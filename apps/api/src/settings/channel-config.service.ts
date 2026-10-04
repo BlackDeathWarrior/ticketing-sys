@@ -22,6 +22,10 @@ import {
 import { ImapFlow } from 'imapflow';
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
+import {
+  ELEVENLABS_SYNC_KEY,
+  syncStateSchema,
+} from '../channels/phone/elevenlabs/elevenlabs-sync-state';
 import { getSubscribedApps, verifyPhoneNumber } from '../channels/whatsapp/meta-api';
 import { explainMetaError } from '../channels/whatsapp/meta-errors';
 import type { RequestCtx } from '../common/request-context';
@@ -177,6 +181,11 @@ export class ChannelConfigService {
           ? this.env.ELEVENLABS_API_URL
           : `https://api.${saved.region}.residency.elevenlabs.io`,
     };
+  }
+
+  /** How the last set-up of the ElevenLabs agent went; null when it never ran. */
+  elevenlabsSync() {
+    return this.settings.get(ELEVENLABS_SYNC_KEY, syncStateSchema, { fresh: true });
   }
 
   /**

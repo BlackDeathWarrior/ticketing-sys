@@ -50,6 +50,9 @@ export class ChannelHealthService {
       voiceSignals,
       phone,
       phoneSignals,
+      elevenlabs,
+      elevenlabsSignals,
+      elevenlabsSync,
     ] = await Promise.all([
       this.channels.email(),
       this.channels.whatsapp(),
@@ -61,6 +64,9 @@ export class ChannelHealthService {
       this.signals.get('sarvam'),
       this.channels.phone(),
       this.signals.get('phone'),
+      this.channels.elevenlabs(),
+      this.signals.get('elevenlabs'),
+      this.channels.elevenlabsSync(),
     ]);
     const has = async (key: string) => (await this.secrets.has(key)).set;
     const [accessToken, appSecret, verifyToken, sarvamKey] = await Promise.all([
@@ -127,6 +133,23 @@ export class ChannelHealthService {
               tokenSaved: !!phone.hookToken,
               probe: phoneSignals.probe,
               lastHookAt: phoneSignals.webhookAt ?? null,
+            }
+          : null,
+        elevenlabs: elevenlabs
+          ? {
+              enabled: elevenlabs.enabled,
+              keySaved: !!elevenlabs.apiKey,
+              probe: elevenlabsSignals.probe,
+              tokenSaved: !!elevenlabs.hookToken,
+              webhookSecretSaved: !!elevenlabs.webhookSecret,
+              numberChosen: !!elevenlabs.phoneNumberId,
+              sync: {
+                at: elevenlabsSync?.at ?? null,
+                ok: elevenlabsSync?.ok ?? null,
+                error: elevenlabsSync?.error ?? null,
+                skipped: elevenlabsSync?.skipped.length ?? 0,
+              },
+              lastHookAt: elevenlabsSignals.webhookAt ?? null,
             }
           : null,
         activity: activity.voice ?? NO_ACTIVITY,
