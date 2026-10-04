@@ -286,6 +286,8 @@ describe('retention', () => {
   });
 
   it('deletes what is past its time, keeps the rest, and records what it did', async () => {
+    // Model calls are kept 30 days here, so the 40-day-old one below is due.
+    await t.call('PUT', '/settings/retention', { token: admin, body: { llmCallsDays: 30 } });
     const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
     const customerId = (
       await t.call('POST', '/customers', {

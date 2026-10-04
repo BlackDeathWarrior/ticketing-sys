@@ -156,12 +156,16 @@ test.describe('Settings: AI, channels and keys', () => {
     await openSettings(page);
     await page.getByRole('tab', { name: 'Channels' }).click();
     const card = page.getByRole('region', { name: 'Sarvam voice' });
-    await card.getByLabel('API subscription key').fill('sarvam-e2e-placeholder-9876');
-    await card.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(card.getByText('Stored: ••••9876')).toBeVisible();
-    await expect(card.getByLabel('API subscription key')).toHaveValue('');
-    await expect(page.locator('body')).not.toContainText('sarvam-e2e-placeholder');
-    await call(admin, 'DELETE', '/settings/secrets/sarvam.api_key');
+    try {
+      await card.getByLabel('API subscription key').fill('sarvam-e2e-placeholder-9876');
+      await card.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(card.getByText('Stored: ••••9876')).toBeVisible();
+      await expect(card.getByLabel('API subscription key')).toHaveValue('');
+      await expect(page.locator('body')).not.toContainText('sarvam-e2e-placeholder');
+    } finally {
+      // The voice and channel status specs count on no key being saved.
+      await call(admin, 'DELETE', '/settings/secrets/sarvam.api_key');
+    }
   });
 
   test('offers agents and team leads only their own settings, and the API refuses them', async ({

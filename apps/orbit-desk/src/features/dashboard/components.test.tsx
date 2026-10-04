@@ -37,6 +37,8 @@ function withSession(
 }
 
 beforeEach(() => {
+  // The callbacks handed to the components too: a call left by one test must not satisfy the next.
+  vi.clearAllMocks();
   apiMock.mockReset();
 });
 

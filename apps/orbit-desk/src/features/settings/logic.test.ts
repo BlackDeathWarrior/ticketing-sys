@@ -54,13 +54,14 @@ describe('settings tabs', () => {
     expect(canOpenSettings(can(['ticket:read']))).toBe(true);
   });
 
-  it('shows channels and customers to someone with channel settings alone', () => {
-    expect(visibleTabs(can(['settings:channels'])).map((t) => t.value)).toEqual([
-      'me',
-      'teams',
-      'channels',
-      'customers',
-    ]);
+  it.each([
+    ['settings:channels', ['channels', 'customers']],
+    ['user:manage', ['people']],
+    // Either ticket permission opens Tickets.
+    ['settings:workflow', ['tickets']],
+    ['settings:categories', ['tickets']],
+  ] as const)('opens for %s alone: %j, beside what everyone has', (permission, tabs) => {
+    expect(visibleTabs(can([permission])).map((t) => t.value)).toEqual(['me', 'teams', ...tabs]);
   });
 
   it('opens Tools for someone who may only create custom tools', () => {
