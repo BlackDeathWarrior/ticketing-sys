@@ -55,3 +55,13 @@ export function languageCode(value: string | undefined): string | null {
   const base = baseLanguage(value);
   return base && base in VOICE_LANGUAGES ? base : null;
 }
+
+/**
+ * The first thing said on a call the desk placed. The customer asked to be rung or was told
+ * they would be, so they are thanked for waiting; "thanks for calling" is for a call that came in.
+ */
+export function outboundGreeting(name: string, company: string): string {
+  return name
+    ? `Thank you for your patience, ${name}. This is the assistant of ${company} calling.`
+    : `Thank you for your patience. This is the assistant of ${company} calling.`;
+}

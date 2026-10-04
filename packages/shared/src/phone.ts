@@ -198,6 +198,9 @@ export interface PhoneStartReply {
   company: string;
   /** The tool catalogue as JSON text. */
   desk_tools: string;
+  /** `outbound` on a call the desk placed, with what it is about; `inbound` otherwise. */
+  direction: 'inbound' | 'outbound';
+  about: string;
 }
 
 /** What every tool answers: `result` is text for the agent to speak from. */
