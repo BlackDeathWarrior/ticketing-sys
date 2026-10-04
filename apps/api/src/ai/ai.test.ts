@@ -237,7 +237,7 @@ describe('prompts and parsing', () => {
     expect(p).toContain('<ticket_context>\nreference: MYN-48213\ntitle: Cotton kurta');
     expect(p.match(/<\/ticket_context>/g)).toHaveLength(1);
     expect(p).toContain('In-app support request');
-    expect(p).toContain('<ticket_context> and <approval_update> tags');
+    expect(p).toContain('<ticket_context>, <approval_update> and <team_reason> tags');
     expect(agentSystemPrompt({ ...base, ticket })).not.toContain('<ticket_context>\n');
   });
 
@@ -306,16 +306,19 @@ describe('prompts and parsing', () => {
     });
     expect(rejected).toContain('<approval_update tool="issue_refund" status="rejected">');
     expect(rejected).toContain('It was not approved');
-    expect(rejected).toContain('You were not given a reason');
+    // The reason the team wrote for the customer travels as data, for the model to put in its own words.
+    expect(rejected).toContain('<team_reason>\nNot received yet.\n</team_reason>');
+    expect(rejected).toContain("give the team's reason in your own words");
     expect(APPROVAL_UPDATE_TURN).toContain('<system_note>');
-    expect(APPROVAL_UPDATE_TURN).toContain('outcome only');
+    expect(APPROVAL_UPDATE_TURN).toContain('the outcome and the reason only');
   });
 
-  it('validates tool arguments and tolerates a bad confidence', () => {
+  it('validates tool arguments and drops a confidence it cannot use', () => {
+    // Without a usable confidence the turn judges the reply on its sources instead.
     const ok = parseArgs(sendReplyArgs, '{"message":"Hi","confidence":"high"}');
     expect(ok).toEqual({
       ok: true,
-      value: expect.objectContaining({ message: 'Hi', confidence: 0.5 }),
+      value: expect.objectContaining({ message: 'Hi', confidence: undefined }),
     });
     expect(parseArgs(sendReplyArgs, 'not json')).toEqual({
       ok: false,

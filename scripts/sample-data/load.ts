@@ -744,7 +744,8 @@ async function answer(
   ctx: Ctx & { team: string; admin: string },
 ) {
   const ticket = await call<Ticket>(ctx.admin, 'GET', `/tickets/${reference}`);
-  await call(ctx.lead, 'POST', `/tickets/${ticket.id}/assign`, {
+  // Routing may already have given the ticket to another team than the lead's (ADR 0031).
+  await call(ctx.admin, 'POST', `/tickets/${ticket.id}/assign`, {
     assigneeId: ctx.userIds.get(agent),
     teamId: ctx.teamIds.get(ctx.team),
   });
