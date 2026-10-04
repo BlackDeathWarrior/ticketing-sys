@@ -74,7 +74,8 @@ export function elevenLabsToolName(qualifiedName: string, toolId: string, taken:
 export function toElevenLabsSchema(schema: unknown, name = 'input'): Record<string, unknown> {
   let s = (schema ?? {}) as Record<string, unknown>;
   // `Optional[int]` from a Python tool server: the type sits in the first member that is not null.
-  const options = [s.anyOf, s.oneOf].find(Array.isArray) as Array<Record<string, unknown>> | undefined;
+  const options = [s.anyOf, s.oneOf].find(Array.isArray) as
+    Array<Record<string, unknown>> | undefined;
   if (!s.type && options) s = { ...(options.find((o) => o?.type !== 'null') ?? {}), ...s };
   const type = Array.isArray(s.type)
     ? (s.type.find((t) => t !== 'null') ?? 'string')
