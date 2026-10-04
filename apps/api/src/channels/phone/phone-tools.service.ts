@@ -201,8 +201,7 @@ export class PhoneToolsService {
     if (message.length > SEND_WHATSAPP_MAX) {
       return fail(`The message is too long. Keep it under ${SEND_WHATSAPP_MAX} characters.`);
     }
-    const phone = body.phone ?? call?.callerPhone;
-    const owner = phone ? await this.customers.provenPhoneOwner(phone) : null;
+    const { phone, owner } = await this.party(call, body.phone);
     if (!phone || !owner) return fail(NOT_LINKED);
     if (!call?.toolCallIds.length) return fail(LOOK_UP_FIRST);
     const { companyName } = await this.branding.get();
@@ -383,10 +382,34 @@ export class PhoneToolsService {
     phone: string | null,
     provider: PhoneProviderId,
   ): Promise<CallRow | null> {
-    if (interactionId) return this.calls.beginPhone({ provider, interactionId, phone });
+    if (interactionId) {
+      // Sarvam names a call we placed only when it reports on it. A tool used before that
+      // belongs to the call under way to this number.
+      const placed =
+        phone && provider === 'sarvam'
+          ? await this.calls.adoptOutbound(provider, phone, interactionId)
+          : null;
+      return placed ?? this.calls.beginPhone({ provider, interactionId, phone });
+    }
     // A tool that cannot name its call (a code tool at Sarvam has the caller's number but
     // not always the call's id) still belongs to the call that number is on.
     return phone ? this.calls.activeForCaller(phone) : null;
+  }
+
+  /**
+   * Who is on the line. On a call that came in: the proven owner of the number the request
+   * carries, or of the one on the call's record. On a call the desk placed: the customer it
+   * rang, from the call's own record, whatever the request says.
+   */
+  private async party(call: CallRow | null, requestPhone: string | null) {
+    if (call?.direction === 'outbound') {
+      return {
+        phone: call.callerPhone,
+        owner: call.customerId ? await this.customers.contactOf(call.customerId) : null,
+      };
+    }
+    const phone = requestPhone ?? call?.callerPhone ?? null;
+    return { phone, owner: phone ? await this.customers.provenPhoneOwner(phone) : null };
   }
 
   /** The company's tools a phone agent may use right now. */
@@ -427,8 +450,7 @@ export class PhoneToolsService {
 
     // The number this token-protected request carries; the call's record (set only by such
     // requests) when this one has none.
-    const phone = body.phone ?? call?.callerPhone;
-    const owner = phone ? await this.customers.provenPhoneOwner(phone) : null;
+    const { phone, owner } = await this.party(call, body.phone);
     const run = this.gateway.invoke(AI_CTX, {
       tool: found.tool,
       server: found.server,

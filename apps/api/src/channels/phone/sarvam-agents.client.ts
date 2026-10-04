@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ChannelConfigService } from '../../settings/channel-config.service';
-import { languageCode, type PhoneTranscript } from './phone-provider';
+import { languageCode, type OutboundCall, type PhoneTranscript } from './phone-provider';
 
 const TIMEOUT_MS = 10_000;
 const RECORDING_TIMEOUT_MS = 60_000;
@@ -50,6 +50,42 @@ export class SarvamAgentsClient {
     const wav = Buffer.from(await res.arrayBuffer());
     const isWav = wav.subarray(0, 4).toString('latin1') === 'RIFF';
     return isWav && wav.length <= RECORDING_MAX_BYTES ? wav : null;
+  }
+
+  /**
+   * Sarvam's instant outbound call (its API reference, read 2026-10-04). Returns the
+   * attempt's id; how the call went arrives at our "ended" address with that id.
+   */
+  async placeCall(call: OutboundCall): Promise<string> {
+    const c = await this.channels.phone();
+    if (!c?.apiKey) throw new Error('The Voice Agents API key is not set');
+    const path = `/api/outbounds/v1/orgs/${encodeURIComponent(c.orgId)}/workspaces/${encodeURIComponent(c.workspaceId)}/outbounds`;
+    const res = await fetch(new URL(path, this.channels.sarvamAgentsUrl), {
+      method: 'POST',
+      headers: { 'X-API-Key': c.apiKey, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        app_config: {
+          app_id: c.appId,
+          app_version: c.appVersion,
+          connection_config: {
+            connection_id: c.connectionId,
+            agent_phone_number: c.agentPhoneNumber,
+          },
+          agent_variables: call.variables,
+          app_overrides: { initial_bot_message: call.variables.greeting },
+        },
+        user_config: { user_phone_number: call.to },
+        webhook_config: { url: this.channels.publicApiUrl('phone/sarvam/ended') },
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      const said = (await res.text().catch(() => '')).slice(0, 300);
+      throw new Error(`Sarvam answered HTTP ${res.status} for the call${said ? `: ${said}` : ''}`);
+    }
+    const attemptId = ((await res.json()) as { attempt_id?: string }).attempt_id;
+    if (!attemptId) throw new Error('Sarvam took the call but returned no attempt id');
+    return attemptId;
   }
 
   private url(

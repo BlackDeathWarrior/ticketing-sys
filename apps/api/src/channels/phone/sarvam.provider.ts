@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type { PhoneAgentProvider, PhoneRecording, PhoneTranscript } from './phone-provider';
+import type {
+  OutboundCall,
+  PhoneAgentProvider,
+  PhoneRecording,
+  PhoneTranscript,
+} from './phone-provider';
 import { SarvamAgentsClient } from './sarvam-agents.client';
 
 /** Sarvam's Voice Agent on a number rented from Sarvam (ADR 0039). */
@@ -16,5 +21,9 @@ export class SarvamProvider implements PhoneAgentProvider {
   async recording(interactionId: string): Promise<PhoneRecording | null> {
     const wav = await this.client.recording(interactionId);
     return wav ? { audio: wav, type: 'audio/wav' } : null;
+  }
+
+  async placeCall(call: OutboundCall) {
+    return { providerCallId: null, attemptId: await this.client.placeCall(call) };
   }
 }

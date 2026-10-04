@@ -7,6 +7,7 @@ import { ChannelsModule } from '../channels/channels.module';
 import { EmailPollerService } from '../channels/email/email-poller.service';
 import { loadEnv } from '../config/env';
 import { ConversationsModule } from '../conversations/conversations.module';
+import { CustomersModule } from '../customers/customers.module';
 import { CsatHandler } from '../csat/csat.handler';
 import { CsatModule } from '../csat/csat.module';
 import { DeliveryHandler } from '../delivery/delivery.handler';
@@ -17,7 +18,9 @@ import { WebchatSender } from '../delivery/webchat.sender';
 import { WhatsAppSender } from '../delivery/whatsapp.sender';
 import { ChannelHealthMonitor } from '../channels/health/channel-health.monitor';
 import { PhoneCallCloser } from '../channels/phone/phone-call-closer.service';
-import { PhoneCallWorker } from '../channels/phone/phone-call.queue';
+import { PhoneCallQueue, PhoneCallWorker } from '../channels/phone/phone-call.queue';
+import { PhoneOutboundHandler } from '../channels/phone/phone-outbound.handler';
+import { PhoneOutboundService } from '../channels/phone/phone-outbound.service';
 import { ElevenLabsAgentSync } from '../channels/phone/elevenlabs/elevenlabs-agent-sync.service';
 import {
   ElevenLabsSyncHandler,
@@ -81,6 +84,7 @@ const env = loadEnv();
     SettingsModule,
     StorageModule,
     TicketsModule,
+    CustomersModule,
     ConversationsModule,
     ChannelsModule,
     LlmModule,
@@ -118,6 +122,9 @@ const env = loadEnv();
     ElevenLabsSyncHandler,
     PhoneProviders,
     PhoneCallCloser,
+    PhoneOutboundService,
+    PhoneCallQueue,
+    PhoneOutboundHandler,
     PhoneCallWorker,
     ChannelHealthMonitor,
     RetentionWorker,
@@ -169,6 +176,7 @@ const env = loadEnv();
         LearningHandler,
         WebhookDispatchHandler,
         ElevenLabsSyncHandler,
+        PhoneOutboundHandler,
       ],
       useFactory: (...handlers: unknown[]) => handlers,
     },

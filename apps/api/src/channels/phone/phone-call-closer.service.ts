@@ -120,6 +120,9 @@ export class PhoneCallCloser {
     const from: MessageEnvelope['from'] = phone
       ? { identity: { type: 'phone', value: phone } }
       : { identity: { type: 'external_id', value: `${agent.id}-call:${interactionId}` } };
+    // A call the desk placed from a ticket is written onto that ticket, which stays with
+    // whoever is working it: the AI neither takes it nor resolves it.
+    const fromTicket = call.direction === 'outbound' && !!call.ticketId;
     let ticketId = call.ticketId;
     let conversationId = call.conversationId;
     for (let i = call.importedTurns; i < transcript.turns.length; i++) {
@@ -133,6 +136,7 @@ export class PhoneCallCloser {
           text: turn.text,
           receivedAt: new Date().toISOString(),
           metadata: { callId: call.id, transport: 'phone' },
+          ...(fromTicket ? { ticket: { id: call.ticketId! }, ai: 'off' as const } : {}),
         });
         if (!conversationId) {
           ticketId = received.ticketId;
@@ -157,6 +161,8 @@ export class PhoneCallCloser {
             call.handoverReason.length >= 3 ? call.handoverReason : 'The caller asked for a person',
           source: 'ai',
         });
+      } else if (fromTicket) {
+        this.logger.log(`call ${call.id}: written onto the ticket it was placed from`);
       } else if (!(await this.autoResolve.callEnded({ ticketId, conversationId }))) {
         // The AI does not own voice tickets here (its mode is off): the ticket waits in the queue.
         this.logger.log(`call ${call.id}: ticket left open for a person`);

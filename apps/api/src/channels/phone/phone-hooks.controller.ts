@@ -33,6 +33,7 @@ import { ChannelConfigService } from '../../settings/channel-config.service';
 import { VoiceCallsService } from '../voice/voice-calls.service';
 import { PhoneCallQueue } from './phone-call.queue';
 import { fromSarvam, PhoneHookGuard } from './phone-hook.guard';
+import { PhoneOutboundService } from './phone-outbound.service';
 import { PhoneToolsService } from './phone-tools.service';
 
 /**
@@ -51,6 +52,7 @@ export class PhoneHooksController {
     private readonly queue: PhoneCallQueue,
     private readonly channels: ChannelConfigService,
     private readonly calls: VoiceCallsService,
+    private readonly outbound: PhoneOutboundService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -92,19 +94,26 @@ export class PhoneHooksController {
   ): Promise<{ received: true }> {
     // With Sarvam's addresses set, a trigger from anywhere else is dropped without a word.
     if (fromSarvam(this.env, req.ip) && (await this.channels.phone())?.enabled) {
-      const duration = (body as Record<string, unknown>).duration;
-      await this.queue.add(
-        'sarvam',
-        body.interaction_id,
-        {
-          phone: body.user_phone_number,
-          seconds:
-            typeof duration === 'number' && duration >= 0 && duration < 86_400
-              ? Math.round(duration)
-              : null,
-        },
-        !!(await this.calls.byProvider(body.interaction_id)),
-      );
+      // A report on a call we placed names its attempt. It is believed only for an attempt
+      // this desk started; a connected one is then closed like any other call.
+      const interactionId = body.attempt_id
+        ? await this.outbound.sarvamResult(body.attempt_id, body.status, body.interaction_id)
+        : body.interaction_id;
+      if (interactionId) {
+        const duration = (body as Record<string, unknown>).duration;
+        await this.queue.add(
+          'sarvam',
+          interactionId,
+          {
+            phone: body.attempt_id ? null : body.user_phone_number,
+            seconds:
+              typeof duration === 'number' && duration >= 0 && duration < 86_400
+                ? Math.round(duration)
+                : null,
+          },
+          !!(await this.calls.byProvider(interactionId)),
+        );
+      }
     }
     return { received: true };
   }

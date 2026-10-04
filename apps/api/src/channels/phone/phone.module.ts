@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CustomersModule } from '../../customers/customers.module';
 import { KbModule } from '../../kb/kb.module';
 import { LlmModule } from '../../llm/llm.module';
+import { TicketsModule } from '../../tickets/tickets.module';
 import { ToolsModule } from '../../tools/tools.module';
 import { ChannelsModule } from '../channels.module';
 import { ElevenLabsHookGuard } from './elevenlabs/elevenlabs-hook.guard';
@@ -9,11 +10,17 @@ import { ElevenLabsHooksController } from './elevenlabs/elevenlabs-hooks.control
 import { ElevenLabsSettingsController } from './elevenlabs/elevenlabs-settings.controller';
 import { ElevenLabsSyncQueue } from './elevenlabs/elevenlabs-sync.queue';
 import { ElevenLabsClient } from './elevenlabs/elevenlabs.client';
+import { ElevenLabsProvider } from './elevenlabs/elevenlabs.provider';
 import { PhoneCallQueue } from './phone-call.queue';
+import { PhoneCallsController } from './phone-calls.controller';
 import { PhoneHookGuard } from './phone-hook.guard';
 import { PhoneHooksController } from './phone-hooks.controller';
+import { PhoneOutboundService } from './phone-outbound.service';
+import { PhoneProviders } from './phone-providers';
 import { PhoneQueryTranslator } from './phone-query-translator.service';
 import { PhoneToolsService } from './phone-tools.service';
+import { SarvamProvider } from './sarvam.provider';
+import { SarvamAgentsClient } from './sarvam-agents.client';
 
 /**
  * Phone calls answered by a hosted voice agent (ADR 0039, ADR 0040): the routes Sarvam's
@@ -21,14 +28,24 @@ import { PhoneToolsService } from './phone-tools.service';
  * a call (`PhoneCallWorker`, `PhoneCallCloser`) runs in the worker.
  */
 @Module({
-  imports: [ChannelsModule, ToolsModule, KbModule, CustomersModule, LlmModule],
-  controllers: [PhoneHooksController, ElevenLabsHooksController, ElevenLabsSettingsController],
+  imports: [ChannelsModule, ToolsModule, KbModule, CustomersModule, TicketsModule, LlmModule],
+  controllers: [
+    PhoneHooksController,
+    PhoneCallsController,
+    ElevenLabsHooksController,
+    ElevenLabsSettingsController,
+  ],
   providers: [
     PhoneToolsService,
     PhoneHookGuard,
     ElevenLabsHookGuard,
     ElevenLabsClient,
+    ElevenLabsProvider,
     ElevenLabsSyncQueue,
+    SarvamAgentsClient,
+    SarvamProvider,
+    PhoneProviders,
+    PhoneOutboundService,
     PhoneCallQueue,
     PhoneQueryTranslator,
   ],

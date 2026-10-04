@@ -18,7 +18,7 @@ Calling hours and the WhatsApp template for links are on the card **Phone calls:
 
 ### The agent's instruction
 
-Paste this as the agent's instruction. It is the Sarvam version of the one text in `apps/api/src/channels/phone/phone-agent-instruction.ts` (version 4), which the ElevenLabs agent also gets (`docs/runbooks/phone-agent-elevenlabs.md`). Change it there first, then here, then at Sarvam, so all three stay the same.
+Paste this as the agent's instruction. It is the Sarvam version of the one text in `apps/api/src/channels/phone/phone-agent-instruction.ts` (version 5), which the ElevenLabs agent also gets (`docs/runbooks/phone-agent-elevenlabs.md`). Change it there first, then here, then at Sarvam, so all three stay the same.
 
 ```
 Persona
@@ -44,6 +44,7 @@ If that list is empty, call list_tools first.
 Conversation guidelines
 Opening:
 * Start: greet the caller, by name if {{customer_name}} is not empty, and say once that the call is transcribed so the team can help.
+* If {{direction}} is outbound, you are the one calling. After the greeting, say you are calling from {{company}} about this: {{about}}. If that is empty, say you are calling to follow up on their request and ask how you can help. Do not ask why they called.
 * If the caller says they are not {{customer_name}}, or does not confirm they are that customer, stop using the name and treat the account as unverified until the caller confirms it is theirs. Until then, help only with products and general questions.
 
 Where to look:
@@ -76,7 +77,7 @@ Guardrails
 
 ### Variables
 
-Create four agent variables: `customer_name`, `known`, `company`, `desk_tools`.
+Create these agent variables: `customer_name`, `known`, `company`, `desk_tools`, and for calls the desk places `direction` (default `inbound`), `about` (default empty) and `ticket_reference` (default empty).
 
 ### On-start hook
 

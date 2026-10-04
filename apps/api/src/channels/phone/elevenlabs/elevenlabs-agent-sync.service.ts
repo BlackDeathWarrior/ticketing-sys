@@ -242,6 +242,7 @@ export class ElevenLabsAgentSync {
       // 5. The number, once one is connected at ElevenLabs and chosen on the card. A number
       // id ElevenLabs does not list is said on the card; the agent is in step all the same.
       state.agentNumber = null;
+      state.agentNumberKind = null;
       if (config.phoneNumberId) {
         const number = (await this.client.listPhoneNumbers()).find(
           (n) => n.id === config.phoneNumberId,
@@ -249,6 +250,7 @@ export class ElevenLabsAgentSync {
         if (number) {
           await this.client.assignNumber(number.id, state.agentId);
           state.agentNumber = number.number;
+          state.agentNumberKind = number.provider;
         } else {
           state.skipped.push({
             tool: 'number',
@@ -383,6 +385,10 @@ export class ElevenLabsAgentSync {
               customer_name: '',
               known: 'false',
               company: companyName,
+              // Filled when the desk places the call itself.
+              direction: 'inbound',
+              about: '',
+              ticket_reference: '',
             },
           },
           prompt: {

@@ -1,17 +1,25 @@
 import {
+  PHONE_CALL_ABOUT_MAX,
   VOICE_STATE_LABELS,
   type VoiceCallView,
   type VoiceCaption,
   type VoiceState,
 } from '@tms/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchBlob } from '../../api/client';
+import { api, fetchBlob } from '../../api/client';
 import { agentSocket } from '../../api/realtime';
-import { Button, Icon } from '../../components/ui';
+import { Button, Icon, Input } from '../../components/ui';
 import { useSession } from '../../lib/session';
 import { useGet } from '../../lib/useGet';
 import panel from '../handover/Handover.module.css';
-import { answeredByText, callLine, END_REASONS, WHO } from './logic';
+import {
+  answeredByText,
+  callLine,
+  END_REASONS,
+  phoneCallProgress,
+  placedCallText,
+  WHO,
+} from './logic';
 import { type Mic, Speaker, startMic } from './voice-audio';
 import styles from './Voice.module.css';
 
@@ -35,8 +43,13 @@ export function CallPanel({
     if (liveTick) void reload();
   }, [liveTick, reload]);
 
-  if (!calls.data?.length) return null;
-  const live = calls.data.find((c) => c.status === 'active');
+  const { can } = useSession();
+  const canCall = can('voice:call');
+  if (!calls.data?.length && !canCall) return null;
+  const all = calls.data ?? [];
+  // A call in the browser can be joined. A phone call is the phone agent's: it is only shown.
+  const live = all.find((c) => c.status === 'active' && c.transport === 'browser');
+  const ringing = all.filter((c) => c.transport === 'phone' && c.status !== 'ended');
   return (
     <section className={panel.panel} aria-label="Voice call">
       <h3 className={panel.panelTitle}>
@@ -52,14 +65,82 @@ export function CallPanel({
           }}
         />
       )}
+      {canCall && (
+        <CallCustomer
+          ticketId={ticketId}
+          busy={ringing.length > 0}
+          onRequested={() => {
+            void reload();
+            onChanged();
+          }}
+        />
+      )}
       <ul className={styles.calls} aria-label="Calls on this ticket">
-        {calls.data
+        {ringing.map((c) => (
+          <li key={c.id} className={styles.ended} data-call={c.id}>
+            <p>{phoneCallProgress(c)}</p>
+          </li>
+        ))}
+        {all
           .filter((c) => c.status === 'ended')
           .map((c) => (
             <EndedCall key={c.id} call={c} />
           ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * Has the phone agent ring this ticket's customer. The request only asks for the call: the
+ * worker places it, and how it went shows in the list below.
+ */
+function CallCustomer({
+  ticketId,
+  busy,
+  onRequested,
+}: {
+  ticketId: string;
+  busy: boolean;
+  onRequested: () => void;
+}) {
+  const [about, setAbout] = useState('');
+  const [sending, setSending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const call = async () => {
+    setSending(true);
+    setMessage(null);
+    try {
+      await api('POST', `/tickets/${ticketId}/phone-calls`, about.trim() ? { about } : {});
+      setAbout('');
+      setMessage('The phone assistant is calling the customer.');
+      onRequested();
+    } catch (err) {
+      setMessage((err as Error).message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div>
+      <Input
+        id={`call-about-${ticketId}`}
+        label="What is the call about? (optional)"
+        value={about}
+        maxLength={PHONE_CALL_ABOUT_MAX}
+        onChange={(e) => setAbout(e.target.value)}
+      />
+      <Button size="sm" onClick={() => void call()} disabled={sending || busy}>
+        Call customer
+      </Button>
+      {message && (
+        <p className={styles.note} role="status">
+          {message}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -228,7 +309,11 @@ function EndedCall({ call }: { call: VoiceCallView }) {
     <li className={styles.ended} data-call={call.id}>
       <p>{callLine(call)}</p>
       <p className={styles.note}>
-        {[answeredByText(call), call.endedReason ? END_REASONS[call.endedReason] : null]
+        {[
+          placedCallText(call),
+          placedCallText(call) && call.outcome !== 'connected' ? null : answeredByText(call),
+          call.endedReason ? END_REASONS[call.endedReason] : null,
+        ]
           .filter(Boolean)
           .join(' · ')}
       </p>

@@ -108,6 +108,28 @@ export class ElevenLabsClient {
     await this.send('PATCH', `/v1/convai/agents/${encodeURIComponent(id)}`, { body });
   }
 
+  /**
+   * Rings a number from the agent's own. The path depends on how that number reaches
+   * ElevenLabs; for a kind whose path we have not read, the call is refused here.
+   */
+  async outboundCall(kind: string, body: unknown): Promise<string> {
+    const path =
+      kind === 'twilio'
+        ? '/v1/convai/twilio/outbound-call'
+        : kind === 'sip_trunk'
+          ? '/v1/convai/sip-trunk/outbound-call'
+          : null;
+    if (!path) {
+      throw new ElevenLabsError(0, 'Outbound calls are not available for this kind of number yet');
+    }
+    const res = await this.send('POST', path, { body });
+    const answer = (await res.json()) as { conversation_id?: string | null; message?: string };
+    if (!answer.conversation_id) {
+      throw new ElevenLabsError(200, `ElevenLabs did not start the call: ${answer.message ?? ''}`);
+    }
+    return answer.conversation_id;
+  }
+
   /** The signed post-call webhook. The secret comes back once, here. */
   async createWebhook(name: string, url: string): Promise<{ id: string; secret: string }> {
     const res = await this.send('POST', '/v1/workspace/webhooks', {

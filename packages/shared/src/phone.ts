@@ -92,9 +92,18 @@ export const phoneToolSchema = z.object({
 });
 export type PhoneToolInput = z.output<typeof phoneToolSchema>;
 
-/** Sarvam's own webhook body. Only the id is used: the transcript is fetched with our key. */
+/**
+ * Sarvam's own webhook body, for an inbound call and for a call this desk placed. Only the
+ * ids and the status are used: the transcript is fetched with our key. A call we placed
+ * that never connected has an attempt id and no interaction id.
+ */
 export const phoneEndedSchema = z
-  .object({ interaction_id: interactionId, user_phone_number: callerPhone })
+  .object({
+    interaction_id: callId,
+    user_phone_number: callerPhone,
+    attempt_id: clipped(200),
+    status: clipped(40),
+  })
   .passthrough();
 export type PhoneEndedInput = z.output<typeof phoneEndedSchema>;
 
@@ -137,7 +146,40 @@ export interface ElevenlabsSyncState {
   tools: number;
   /** The number the agent answers on, as ElevenLabs lists it; null while none is assigned. */
   agentNumber: string | null;
+  /** How that number reaches ElevenLabs (twilio, sip_trunk, exotel): it decides how a call is placed. */
+  agentNumberKind: string | null;
 }
+
+// ---- Calls this desk places (ADR 0040) ----
+
+/** Why the desk rings someone: from a ticket, because they asked on the shop, or with an approval's outcome. */
+export const PHONE_CALL_PURPOSES = ['ticket', 'call_me', 'approval'] as const;
+export type PhoneCallPurpose = (typeof PHONE_CALL_PURPOSES)[number];
+
+export const PHONE_CALL_OUTCOMES = ['connected', 'no_answer', 'busy', 'failed'] as const;
+export type PhoneCallOutcome = (typeof PHONE_CALL_OUTCOMES)[number];
+
+/** Why a call was not even tried. */
+export const OUTBOUND_REFUSALS = [
+  'phone_off',
+  'no_number',
+  'outside_hours',
+  'call_in_progress',
+] as const;
+export type OutboundRefusal = (typeof OUTBOUND_REFUSALS)[number];
+export const OUTBOUND_REFUSAL_TEXT: Record<OutboundRefusal, string> = {
+  phone_off: 'Phone calls are not set up for the provider that places calls.',
+  no_number: 'This customer has no phone number on file.',
+  outside_hours: 'Calls are only placed between 09:00 and 21:00 India time.',
+  call_in_progress: 'A call to this customer is already under way.',
+};
+
+/** What the call is about, said to the customer by the phone agent. Written by staff. */
+export const PHONE_CALL_ABOUT_MAX = 300;
+export const requestTicketCallSchema = z.object({
+  about: z.string().trim().max(PHONE_CALL_ABOUT_MAX).optional(),
+});
+export type RequestTicketCallInput = z.infer<typeof requestTicketCallSchema>;
 
 /** One desk tool as the phone agent sees it (the customer argument is hidden). */
 export interface PhoneToolEntry {

@@ -48,6 +48,8 @@ export const PERMISSIONS = [
   'tool:create',
   /** Join a live voice call and speak with the caller. */
   'voice:answer',
+  /** Have the phone agent ring a ticket's customer. */
+  'voice:call',
   /** Listen to call recordings. */
   'voice:recording_read',
   /** Take a conversation over from the AI or the queue, and hand it back. */
@@ -84,6 +86,7 @@ export function isPermission(value: string): value is Permission {
 
 const AGENT: Permission[] = [
   'voice:answer',
+  'voice:call',
   'conversation:takeover',
   'kb:read',
   'message:approve_draft',
