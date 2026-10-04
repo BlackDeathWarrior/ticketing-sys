@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   internationalCallerNumber,
   PHONE_TOOL_RESULT_MAX,
+  type PhoneProviderId,
   type PhoneStartInput,
   type PhoneStartReply,
   type PhoneToolEntry,
@@ -62,9 +63,9 @@ const CONFIRMATION_MAX = 600;
  * say it had no way to send them. This tool is the desk's own, offered in the catalogue next
  * to the company's: it sends what the agent writes to the number the caller has proven.
  */
-const SEND_WHATSAPP = 'send_whatsapp';
+export const SEND_WHATSAPP = 'send_whatsapp';
 const SEND_WHATSAPP_MAX = 1_000;
-const SEND_WHATSAPP_ENTRY: PhoneToolEntry = {
+export const SEND_WHATSAPP_ENTRY: PhoneToolEntry = {
   name: SEND_WHATSAPP,
   description:
     'Sends a written message to the caller’s WhatsApp, on the number they are calling from. Use it when the caller asks to get details in writing (an order, a payment, a return, a product). Look the details up with a tool first. Write "message" in the caller’s language, in plain sentences, with only what a tool answered on this call.',
@@ -111,8 +112,8 @@ const fail = (result: string): PhoneToolReply => ({
 });
 
 /**
- * What the phone agent at Sarvam can ask this desk for during a call
- * (ADR 0039). The desk runs no model here: the agent decides, and every
+ * What a phone agent (Sarvam's or ElevenLabs') can ask this desk for during a
+ * call (ADR 0039, ADR 0040). The desk runs no model here: the agent decides, and every
  * company tool still goes through the gateway, for the customer the caller's
  * proven number belongs to and nobody else.
  */
@@ -185,9 +186,12 @@ export class PhoneToolsService {
   }
 
   /** The call begins: who is calling, and what the agent can use. */
-  async start(input: PhoneStartInput): Promise<PhoneStartReply> {
-    const caller = await this.caller(input.phone);
-    const call = await this.open(input.interactionId, caller);
+  async start(
+    input: PhoneStartInput,
+    provider: PhoneProviderId = 'sarvam',
+  ): Promise<PhoneStartReply> {
+    const caller = await this.caller(input.phone, provider);
+    const call = await this.open(input.interactionId, caller, provider);
     const phone = caller ?? call?.callerPhone;
     const owner = phone ? await this.customers.provenPhoneOwner(phone) : null;
     // A caller whose number is registered is greeted by first name, with or without a title
@@ -206,17 +210,62 @@ export class PhoneToolsService {
     };
   }
 
+  /** One of the four tools a Sarvam agent holds; `desk_tool` carries the company's. */
+  async run(
+    tool: PhoneToolName,
+    body: PhoneToolInput,
+    provider: PhoneProviderId = 'sarvam',
+  ): Promise<PhoneToolReply> {
+    return this.inTime(tool, () => this.answer(tool, body, provider));
+  }
+
+  /**
+   * One tool by its own name, with its inputs as they are: how an agent that
+   * holds each tool by name (ElevenLabs) reaches the desk. `key` is a company
+   * tool's id here, or the name of one of the desk's own phone tools.
+   */
+  async runNamed(
+    provider: PhoneProviderId,
+    key: string,
+    ref: { interactionId: string | null; phone: string | null },
+    args: Record<string, unknown>,
+  ): Promise<PhoneToolReply> {
+    const text = (v: unknown, max: number) =>
+      typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined;
+    const input: PhoneToolInput = {
+      interactionId: ref.interactionId,
+      phone: ref.phone,
+      name: undefined,
+      arguments: JSON.stringify(args),
+      query: text(args.query, 500),
+      reason: text(args.reason, 500),
+    };
+    return this.inTime(key, async () => {
+      if (key === 'search_knowledge' || key === 'request_person') {
+        return this.answer(key, input, provider);
+      }
+      const body = { ...input, phone: await this.caller(input.phone, provider) };
+      const call = await this.open(body.interactionId, body.phone, provider);
+      if (key === SEND_WHATSAPP) return this.sendWhatsapp(call, body);
+      const found = (await this.tools.agentTools()).find((t) => t.tool.id === key);
+      if (!found) {
+        return fail('That tool is not available any more. Tell the caller you cannot do that now.');
+      }
+      return this.deskTool(call, { ...body, name: found.qualifiedName });
+    });
+  }
+
   /**
    * Always answers, and in time: whatever goes wrong here, the caller is on
    * the line and the agent needs something to say.
    */
-  async run(tool: PhoneToolName, body: PhoneToolInput): Promise<PhoneToolReply> {
-    const work = this.answer(tool, body).catch((err: Error) => {
-      this.logger.warn(`phone tool ${tool} failed: ${err.message}`);
+  private inTime(label: string, work: () => Promise<PhoneToolReply>): Promise<PhoneToolReply> {
+    const answer = work().catch((err: Error) => {
+      this.logger.warn(`phone tool ${label} failed: ${err.message}`);
       return fail(WENT_WRONG);
     });
     return Promise.race([
-      work,
+      answer,
       new Promise<PhoneToolReply>((resolve) =>
         setTimeout(() => resolve(fail(TOO_LONG)), TOOL_DEADLINE_MS),
       ),
@@ -224,14 +273,21 @@ export class PhoneToolsService {
   }
 
   /** The caller's number in the form proven numbers are stored in (with the country code). */
-  private async caller(phone: string | null): Promise<string | null> {
+  private async caller(phone: string | null, provider: PhoneProviderId): Promise<string | null> {
+    // Sarvam gives a national number, read against its rented number's country. ElevenLabs
+    // passes the number as the telephone network gave it, with the country code.
+    if (provider !== 'sarvam') return phone;
     return internationalCallerNumber(phone, (await this.channels.phone())?.agentPhoneNumber ?? '');
   }
 
-  private async answer(tool: PhoneToolName, input: PhoneToolInput): Promise<PhoneToolReply> {
-    const body = { ...input, phone: await this.caller(input.phone) };
+  private async answer(
+    tool: PhoneToolName,
+    input: PhoneToolInput,
+    provider: PhoneProviderId,
+  ): Promise<PhoneToolReply> {
+    const body = { ...input, phone: await this.caller(input.phone, provider) };
     // The start hook may never have arrived: any tool call opens the call's record.
-    const call = await this.open(body.interactionId, body.phone);
+    const call = await this.open(body.interactionId, body.phone, provider);
     switch (tool) {
       case 'list_tools':
         // Not cut short: half a catalogue is not JSON any more.
@@ -288,14 +344,19 @@ export class PhoneToolsService {
    * for a request with no call id: a tool tried from Sarvam's dashboard, which
    * gets a real answer and leaves no record.
    */
-  private async open(interactionId: string | null, phone: string | null): Promise<CallRow | null> {
-    if (interactionId) return this.calls.beginPhone({ provider: 'sarvam', interactionId, phone });
+  private async open(
+    interactionId: string | null,
+    phone: string | null,
+    provider: PhoneProviderId,
+  ): Promise<CallRow | null> {
+    if (interactionId) return this.calls.beginPhone({ provider, interactionId, phone });
     // A tool that cannot name its call (a code tool at Sarvam has the caller's number but
     // not always the call's id) still belongs to the call that number is on.
     return phone ? this.calls.activeForCaller(phone) : null;
   }
 
-  private async offered(): Promise<AgentTool[]> {
+  /** The company's tools a phone agent may use right now. */
+  async offered(): Promise<AgentTool[]> {
     return (await this.tools.agentTools()).filter((t) => t.tool.tier !== 'transactional');
   }
 
