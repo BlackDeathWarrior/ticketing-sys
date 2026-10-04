@@ -466,7 +466,12 @@ export function init(options: ChatOptions = {}): ChatHandle {
    * The rating is saved; now the visitor may say why, in their own words. Nothing more is
    * needed from them: "No thanks" leaves the rating as it is.
    */
-  function askForComment(prompt: RatingPrompt, rating: number, box: HTMLElement, label: HTMLElement) {
+  function askForComment(
+    prompt: RatingPrompt,
+    rating: number,
+    box: HTMLElement,
+    label: HTMLElement,
+  ) {
     const thanks = `Thanks for your rating: ${rating} out of 5.`;
     label.textContent = thanks;
     const id = `tms-comment-${prompt.reference}`;
