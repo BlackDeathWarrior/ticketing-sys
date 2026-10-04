@@ -174,6 +174,7 @@ export type PhoneChannelConfig = z.infer<typeof phoneChannelConfigSchema>;
 /** Where an ElevenLabs workspace lives: the default, or one of its data residency regions. */
 export const ELEVENLABS_REGIONS = ['default', 'eu', 'in', 'sg'] as const;
 export type ElevenlabsRegion = (typeof ELEVENLABS_REGIONS)[number];
+export const ELEVENLABS_VOICE_MODELS = ['auto', 'eleven_v3_conversational'] as const;
 
 /**
  * Phone calls answered by an ElevenLabs agent (ADR 0040). The desk creates
@@ -186,6 +187,12 @@ export const elevenlabsChannelConfigSchema = z.object({
   /** The language model the agent thinks with, by ElevenLabs' name for it. */
   model: z.string().trim().min(1).max(100).default('gemini-2.5-flash'),
   voiceId: z.string().trim().min(1).max(100),
+  /**
+   * The model that speaks. `auto`: ElevenLabs' v2 for an English agent and v2.5 for other
+   * languages (about 32 of them). `eleven_v3_conversational`: its v3 model, which also
+   * speaks Bengali and other languages v2.5 does not.
+   */
+  voiceModel: z.enum(ELEVENLABS_VOICE_MODELS).default('auto'),
   /** The language the agent starts in, and the others it may switch to. */
   language: z.string().trim().min(2).max(10).default('en'),
   moreLanguages: z.array(z.string().trim().min(2).max(10)).max(10).default([]),
