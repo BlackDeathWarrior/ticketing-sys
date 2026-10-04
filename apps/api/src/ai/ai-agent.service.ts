@@ -1208,8 +1208,10 @@ export class AiAgentService {
     const a = { ...final.args, message: withoutNotes(final.args.message) };
     const cited = a.sources.filter((id) => labels.has(id));
     // Customers rated answers like this one badly: a person sees it before the customer does.
+    // An answer kept from an earlier turn stands on the documents it cited then, so those count too.
+    const stoodOn = [...cited, ...(fast?.sources.map((s) => s.chunkId) ?? [])];
     const caution = await this.learning
-      .cautionFor({ categoryId: i.ticket.categoryId ?? null, chunkIds: cited })
+      .cautionFor({ categoryId: i.ticket.categoryId ?? null, chunkIds: stoodOn })
       .catch(() => []);
     const grounded = cited.length + toolSources.length > 0;
     const verdict = assess({
