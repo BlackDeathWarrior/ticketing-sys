@@ -575,13 +575,11 @@ export function init(options: ChatOptions = {}): ChatHandle {
       true,
     );
     try {
-      const res = (await socket!
-        .timeout(10_000)
-        .emitWithAck('message', {
-          text: body,
-          clientMessageId,
-          ...(card ? { card } : {}),
-        })) as Ack<{
+      const res = (await socket!.timeout(10_000).emitWithAck('message', {
+        text: body,
+        clientMessageId,
+        ...(card ? { card } : {}),
+      })) as Ack<{
         message: ChatMessage;
         ticket?: { reference: string; created: boolean };
         assistantReplying?: boolean;
