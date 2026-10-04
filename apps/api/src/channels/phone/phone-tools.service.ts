@@ -209,7 +209,7 @@ export class PhoneToolsService {
   }): Promise<string> {
     if (!i.phone) return LINK_NOT_SENT;
     // Without a template the link still goes to a caller who wrote on WhatsApp in the last day.
-    const templateName = (await this.channels.phone())?.linkTemplate?.trim() || null;
+    const templateName = (await this.channels.calls()).linkTemplate?.trim() || null;
     // Asked for twice on one call (the agent retries, the caller asks again): sent once.
     const key = `${i.callId ?? i.phone}:${i.link}`;
     const now = Date.now();

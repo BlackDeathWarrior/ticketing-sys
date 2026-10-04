@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PHONE_PROVIDERS } from './phone';
 
 /**
  * Secrets TMS stores itself (AES-256-GCM, see ADR 0009). LLM provider keys
@@ -64,7 +65,7 @@ export function maskedLast4(value: string): string | null {
 
 // ---- Channel configuration (non-secret parts; secrets above) ----
 
-export const CHANNEL_KINDS = ['email', 'whatsapp', 'sarvam', 'phone'] as const;
+export const CHANNEL_KINDS = ['email', 'whatsapp', 'sarvam', 'phone', 'calls'] as const;
 export type ChannelKind = (typeof CHANNEL_KINDS)[number];
 
 const host = z.string().trim().min(1).max(255);
@@ -141,6 +142,16 @@ export const phoneChannelConfigSchema = z.object({
     .string()
     .trim()
     .regex(/^\+\d{8,15}$/, 'Give the full international number, starting with +'),
+  /** Where these two lived before `calls` (below); still read until that card is saved. */
+  callingHours: z.boolean().default(false),
+  linkTemplate: z.string().trim().max(512).nullish(),
+});
+export type PhoneChannelConfig = z.infer<typeof phoneChannelConfigSchema>;
+
+/** What holds for phone calls whichever provider takes them (ADR 0040). */
+export const callsChannelConfigSchema = z.object({
+  /** Whose voice agent places the calls this desk starts. */
+  outboundProvider: z.enum(PHONE_PROVIDERS).default('sarvam'),
   /** On: outbound calls only between 09:00 and 21:00 India time. */
   callingHours: z.boolean().default(false),
   /**
@@ -150,13 +161,14 @@ export const phoneChannelConfigSchema = z.object({
    */
   linkTemplate: z.string().trim().max(512).nullish(),
 });
-export type PhoneChannelConfig = z.infer<typeof phoneChannelConfigSchema>;
+export type CallsChannelConfig = z.infer<typeof callsChannelConfigSchema>;
 
 export const CHANNEL_CONFIG_SCHEMAS = {
   email: emailChannelConfigSchema,
   whatsapp: whatsappChannelConfigSchema,
   sarvam: sarvamChannelConfigSchema,
   phone: phoneChannelConfigSchema,
+  calls: callsChannelConfigSchema,
 } as const;
 
 export interface ChannelSettingsView<C = Record<string, unknown>> {

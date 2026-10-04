@@ -7,6 +7,8 @@ import {
   type EmailChannelConfig,
   emailChannelConfigSchema,
   type KnownSecretKey,
+  type CallsChannelConfig,
+  callsChannelConfigSchema,
   type PhoneChannelConfig,
   phoneChannelConfigSchema,
   SECRET_KEYS,
@@ -146,6 +148,25 @@ export class ChannelConfigService {
     };
   }
 
+  /**
+   * What holds for phone calls whichever provider takes them (ADR 0040). Until
+   * that card is saved, calling hours and the link template are the ones saved
+   * on the Sarvam card, where they used to live.
+   */
+  async calls(): Promise<CallsChannelConfig> {
+    const saved = await this.settings.get(configKey('calls'), callsChannelConfigSchema, {
+      fresh: true,
+    });
+    if (saved) return saved;
+    const phone = await this.settings.get(configKey('phone'), phoneChannelConfigSchema, {
+      fresh: true,
+    });
+    return callsChannelConfigSchema.parse({
+      callingHours: phone?.callingHours ?? false,
+      linkTemplate: phone?.linkTemplate ?? null,
+    });
+  }
+
   /** Where Sarvam's Voice Agents API lives. */
   get sarvamAgentsUrl(): string {
     return this.env.SARVAM_AGENTS_URL;
@@ -163,6 +184,8 @@ export class ChannelConfigService {
         source = 'environment';
       }
     }
+    // Not saved yet: show what is in force, so saving the card changes nothing by accident.
+    if (!saved && kind === 'calls') config = await this.calls();
     const secrets = await Promise.all(
       secretKeysFor(kind).map(async (key) => ({
         key,
@@ -180,7 +203,20 @@ export class ChannelConfigService {
   }
 
   async save(ctx: RequestCtx, kind: ChannelKind, config: unknown): Promise<ChannelSettingsView> {
-    const parsed = new ZodPipe(CHANNEL_CONFIG_SCHEMAS[kind]).transform(config);
+    let parsed = new ZodPipe(CHANNEL_CONFIG_SCHEMAS[kind]).transform(config);
+    if (kind === 'phone') {
+      // The Sarvam card no longer shows calling hours and the link template. While the
+      // general card is unsaved they are still read from here, so saving this card keeps them.
+      const before = await this.settings.get(configKey('phone'), phoneChannelConfigSchema, {
+        fresh: true,
+      });
+      const given = (config ?? {}) as Record<string, unknown>;
+      parsed = {
+        ...parsed,
+        ...(before && !('callingHours' in given) ? { callingHours: before.callingHours } : {}),
+        ...(before && !('linkTemplate' in given) ? { linkTemplate: before.linkTemplate } : {}),
+      };
+    }
     await this.settings.set(ctx, configKey(kind), parsed);
     return this.view(kind);
   }
@@ -230,6 +266,7 @@ export class ChannelConfigService {
 
   private async runTest(kind: ChannelKind): Promise<{ detail: string; facts: Facts }> {
     if (kind === 'email') return this.testEmail();
+    if (kind === 'calls') throw new Error('These settings have nothing to test');
     if (kind === 'sarvam') {
       const c = await this.sarvam();
       if (!c?.apiKey) throw new Error('The Sarvam API key is not set');
