@@ -111,15 +111,28 @@ describe('GET /reports/overview', () => {
   });
 
   it('includes customer details on ticket list rows', async () => {
-    const res = await t.call('GET', '/tickets', { token: admin, query: { limit: '1' } });
+    const customer = await t.call('POST', '/customers', {
+      token: admin,
+      body: {
+        displayName: 'Vera Vipond',
+        email: `${uniq('vera')}@example.com`,
+        customerType: 'vip',
+        attributes: { plan: 'gold' },
+      },
+    });
+    const subject = `List row ${uniq()}`;
+    await t.call('POST', '/tickets', {
+      token: admin,
+      body: { customerId: customer.body.id, subject },
+    });
+    const res = await t.call('GET', '/tickets', { token: admin, query: { q: subject } });
     expect(res.status).toBe(200);
-    expect(res.body.items[0].customer).toEqual(
-      expect.objectContaining({
-        id: expect.any(String),
-        displayName: expect.any(String),
-        customerType: expect.any(String),
-        attributes: expect.any(Object),
-      }),
-    );
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].customer).toMatchObject({
+      id: customer.body.id,
+      displayName: 'Vera Vipond',
+      customerType: 'vip',
+      attributes: { plan: 'gold' },
+    });
   });
 });

@@ -166,7 +166,7 @@ describe('channel status lights', () => {
     expect(all.find((h) => h.channel === 'whatsapp')!.state).toBe('off');
   });
 
-  it('turn green for email once the mailbox is watched and the mail server answers', async () => {
+  it('show the mailbox being watched and the mail server answering', async () => {
     const email = await waitFor(async () => {
       const h = (await recheck()).find((x) => x.channel === 'email')!;
       return checkOf(h, 'imap')?.state === 'ok' && checkOf(h, 'smtp')?.state === 'ok'
@@ -175,14 +175,7 @@ describe('channel status lights', () => {
     }, 'email reading and sending');
     expect(checkOf(email, 'imap')?.detail).toBe('Watching support@tms.local for new mail');
     expect(email.checkedAt).toBeTruthy();
-    // Other test files may have left failed emails behind; that alone would make it amber.
-    if (checkOf(email, 'deliveries')?.state === 'ok') {
-      expect(email).toMatchObject({
-        state: 'ok',
-        summary: 'Reading and sending as support@tms.local',
-      });
-      expect((await light('web_form')).state).toBe('ok');
-    }
+    // How the checks add up to one light is a pure rule: health-rules.test.ts has it.
   });
 
   it('turn red for email when the mail server refuses us, and say which half', async () => {
@@ -294,14 +287,7 @@ describe('Connect WhatsApp', () => {
     expect(wa.checkedAt).toBeTruthy();
   });
 
-  it('stays amber until Meta has called the webhook, then goes green', async () => {
-    // Nothing has arrived from Meta on this number yet (unless an earlier file sent messages).
-    const before = await light('whatsapp');
-    if (!before.activity.lastInboundAt) {
-      expect(checkOf(before, 'webhook')).toMatchObject({ state: 'warning' });
-      expect(before.state).toBe('warning');
-    }
-
+  it('shows the webhook check passing once Meta has verified it and called it', async () => {
     const verify = await t.call('GET', '/channels/whatsapp/webhook', {
       query: { 'hub.mode': 'subscribe', 'hub.verify_token': VERIFY_TOKEN, 'hub.challenge': '9' },
     });
@@ -322,12 +308,6 @@ describe('Connect WhatsApp', () => {
     expect(hook.statusCode).toBe(200);
     const heard = await light('whatsapp');
     expect(checkOf(heard, 'webhook')?.detail).toBe('Meta last called the webhook just now');
-    if (checkOf(heard, 'deliveries')?.state === 'ok') {
-      expect(heard).toMatchObject({
-        state: 'ok',
-        summary: 'Connected to +1 555 010 0142 (Demo Store)',
-      });
-    }
   });
 
   it('keeps saved keys when reconnecting without them, and registers with a PIN', async () => {

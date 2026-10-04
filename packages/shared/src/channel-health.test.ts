@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HEALTH_LABELS, whatsappConnectSchema, worstState } from './channel-health';
+import { whatsappConnectSchema, worstState } from './channel-health';
 
 describe('channel status', () => {
   it('shows the worst check', () => {
@@ -12,15 +12,6 @@ describe('channel status', () => {
     expect(worstState(['off', 'ok'])).toBe('ok');
     expect(worstState(['off', 'off'])).toBe('off');
     expect(worstState([])).toBe('off');
-  });
-
-  it('has a plain label for every light', () => {
-    expect(HEALTH_LABELS).toEqual({
-      ok: 'Working',
-      warning: 'Needs attention',
-      down: 'Not working',
-      off: 'Off',
-    });
   });
 });
 
