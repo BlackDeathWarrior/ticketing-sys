@@ -409,6 +409,8 @@ export class PhoneToolsService {
       known: !!owner,
       company,
       desk_tools: JSON.stringify(await this.catalogue()),
+      direction: call?.direction === 'outbound' ? 'outbound' : 'inbound',
+      about: call?.direction === 'outbound' ? (call.about ?? '') : '',
     };
   }
 
