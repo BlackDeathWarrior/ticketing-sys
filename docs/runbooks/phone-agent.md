@@ -153,6 +153,6 @@ A payment link, a confirmation or details the caller asks for go to their WhatsA
 
 An app can ask for its customer to be rung: `POST /integration/customers/{externalId}/call-requests` (scope `integration:customer`, body `about`, optional). Only the customer's confirmed number is rung. Refused with 409 and a `reason`: `not_proven`, `too_soon` (once in ten minutes), `daily_limit` (three a day), or why any call is refused (`phone_off`, `no_number`, `outside_hours`, `call_in_progress`).
 
-### Accounts started on a call
+### Accounts made on a call
 
-An app can offer a tool that starts an account for a caller who has none, and have the desk email the caller a link that finishes it (`POST /integration/customers/emails`, scope `integration:customer`, sent from the support mailbox by the worker). The desk has no SMS provider: the link goes by email only. Register such a tool with no customer-email input, or an unknown caller is refused before the tool runs.
+A caller with no account is asked for their name and their email address. The address is proven with the emailed code, which links the number they ring from; then the app's account tool makes the account for that address. Register such a tool with the customer-email input filled in by the desk: the desk only fills it in for an address it has proven. An app that signs people in by a code sent to their email (no WhatsApp) tells the desk each number it links (`POST /integration/customers/phones`) and asks which number the desk linked on a call (`POST /integration/customers/phone-lookup`). The desk has no SMS provider.

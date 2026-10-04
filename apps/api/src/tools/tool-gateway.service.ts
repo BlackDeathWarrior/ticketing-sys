@@ -118,6 +118,18 @@ export class ToolGatewayService {
       }
       args[i.tool.customerArg] = i.customerEmail;
     }
+    // A model sometimes adds an input of its own ("action", "product"). Over three days that
+    // refused the cart and the return tool nine times, on chat and on calls. An input the tool
+    // never sees cannot do harm, so it is dropped; a missing or wrong one is still refused.
+    const schema = i.tool.inputSchema as {
+      properties?: Record<string, unknown>;
+      additionalProperties?: unknown;
+    } | null;
+    if (schema?.properties && schema.additionalProperties === false) {
+      for (const name of Object.keys(args)) {
+        if (!(name in schema.properties)) delete args[name];
+      }
+    }
     const validate = this.validator(i.tool);
     if (!validate(args)) {
       return refuse(argumentError(validate.errors?.[0], i.tool.inputSchema, i.tool.customerArg));
