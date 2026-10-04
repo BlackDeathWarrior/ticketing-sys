@@ -153,6 +153,15 @@ const CHANNELS: Record<
       },
       { name: 'model', label: 'Language model', kind: 'text', placeholder: 'gemini-2.5-flash' },
       { name: 'voiceId', label: 'Voice ID', kind: 'text', placeholder: 'From ElevenLabs → Voices' },
+      {
+        name: 'voiceModel',
+        label: 'Voice model',
+        kind: 'select',
+        options: [
+          { value: 'auto', label: 'Standard (v2 / v2.5, about 32 languages)' },
+          { value: 'eleven_v3_conversational', label: 'v3 Conversational (70+ languages, Bengali)' },
+        ],
+      },
       { name: 'language', label: 'First language', kind: 'text', placeholder: 'en' },
       {
         name: 'moreLanguages',
@@ -169,7 +178,13 @@ const CHANNELS: Record<
         optional: true,
       },
     ],
-    defaults: { enabled: true, region: 'default', model: 'gemini-2.5-flash', language: 'en' },
+    defaults: {
+      enabled: true,
+      region: 'default',
+      model: 'gemini-2.5-flash',
+      voiceModel: 'auto',
+      language: 'en',
+    },
   },
   calls: {
     title: 'Phone calls: general',

@@ -197,14 +197,18 @@ export class ElevenLabsAgentSync {
       const languages = config.moreLanguages
         .map((l) => l.toLowerCase())
         .filter((l) => l !== config.language.toLowerCase());
-      for (const l of languages.filter((x) => !AGENT_LANGUAGES.has(x))) {
+      // The list is the v2.5 model's. The v3 model speaks more languages (Bengali among them),
+      // so with it ElevenLabs is the judge of what it takes.
+      const speaks = (l: string) => config.voiceModel !== 'auto' || AGENT_LANGUAGES.has(l);
+      for (const l of languages.filter((x) => !speaks(x))) {
         state.skipped.push({
           tool: `language ${l}`,
-          reason: 'ElevenLabs agents cannot switch to this language, so it was left out.',
+          reason:
+            'The standard voice model cannot speak this language, so it was left out. The v3 voice model may.',
         });
       }
       const body = await this.agentBody(
-        { ...config, moreLanguages: languages.filter((l) => AGENT_LANGUAGES.has(l)) },
+        { ...config, moreLanguages: languages.filter(speaks) },
         state,
         toolIds.keep,
       );
@@ -391,7 +395,15 @@ export class ElevenLabsAgentSync {
             },
           },
         },
-        tts: { voice_id: config.voiceId, model_id: english ? ENGLISH_TTS : MULTILINGUAL_TTS },
+        tts: {
+          voice_id: config.voiceId,
+          model_id:
+            config.voiceModel !== 'auto'
+              ? config.voiceModel
+              : english
+                ? ENGLISH_TTS
+                : MULTILINGUAL_TTS,
+        },
         turn: { silence_end_call_timeout: SILENCE_HANG_UP_SECONDS },
         conversation: { max_duration_seconds: MAX_CALL_SECONDS },
         language_presets: Object.fromEntries(
