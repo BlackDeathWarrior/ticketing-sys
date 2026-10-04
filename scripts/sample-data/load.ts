@@ -16,8 +16,10 @@
  * Env: API_URL (http://localhost:3000), ADMIN_EMAIL / ADMIN_PASSWORD
  * (admin@example.com / ChangeMe123!), DATABASE_URL for backdating,
  * SMTP_HOST / SMTP_PORT for the support mailbox (localhost:3025), MAILPIT_URL
- * for the inbox outgoing mail lands in (http://localhost:8025).
+ * for the inbox outgoing mail lands in (http://localhost:8025),
+ * CHAT_IDENTITY_SECRET as the stack has it (the compose file's dev default).
  */
+import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import nodemailer from 'nodemailer';
@@ -510,6 +512,28 @@ async function loadKb(admin: string) {
   log(`${ids.length} knowledge base documents (+1 draft)`);
 }
 
+const CHAT_IDENTITY_SECRET =
+  process.env.CHAT_IDENTITY_SECRET ?? 'dev-only-chat-identity-secret-change-me-0123456789';
+
+/**
+ * What a site's server hands its page for a signed-in visitor: a short-lived
+ * HS256 token saying who they are (ADR 0026). The sample "site" is this loader.
+ */
+function identityToken(visitor: { name: string; email: string }): string {
+  const part = (v: object) => Buffer.from(JSON.stringify(v)).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const claims = { name: visitor.name, email: visitor.email, iat: now, exp: now + 300 };
+  const signed = `${part({ alg: 'HS256', typ: 'JWT' })}.${part(claims)}`;
+  return `${signed}.${createHmac('sha256', CHAT_IDENTITY_SECRET).update(signed).digest('base64url')}`;
+}
+
+/** How a visitor of the sample chats presents themselves: signed in, or by what they typed. */
+function visitorAuth(name: string): Record<string, string> {
+  const c = chats.find((x) => x.name === name);
+  if (!c) return {};
+  return c.signedIn ? { identityToken: identityToken(c) } : { name: c.name, email: c.email };
+}
+
 async function sendChats(admin: string) {
   const refs: string[] = [];
   /** The session token of each visitor, to come back as the same person later. */
@@ -517,7 +541,7 @@ async function sendChats(admin: string) {
   for (const c of chats) {
     const socket = io(`${API_URL}/chat`, {
       transports: ['websocket'],
-      auth: { name: c.name, email: c.email },
+      auth: visitorAuth(c.name),
     });
     await new Promise<void>((resolve, reject) => {
       socket.once('session', (s: { token: string }) => {
@@ -619,9 +643,11 @@ async function rateInChat(
   rating: number,
   comment?: string,
 ): Promise<boolean> {
+  // A signed-in visitor's session is theirs alone: they come back signed in.
+  const who = chats.find((c) => c.name === name);
   const socket = io(`${API_URL}/chat`, {
     transports: ['websocket'],
-    auth: { token: sessionToken },
+    auth: { token: sessionToken, ...(who?.signedIn ? visitorAuth(name) : {}) },
   });
   try {
     await new Promise<void>((resolve, reject) => {

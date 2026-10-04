@@ -1,6 +1,9 @@
 import { createHmac } from 'node:crypto';
 import type { INestApplicationContext } from '@nestjs/common';
+import { type Database, phoneVerifications } from '@tms/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DB } from '../src/infra/tokens';
 import { makeUser, startApp, startWorker, type TestClient, uniq, waitFor } from './helpers';
 import { FAKE_LLM_BASE_URL } from './test-env';
 
@@ -806,6 +809,166 @@ describe('WhatsApp channel', () => {
       expect(graphCalls).toContainEqual(
         expect.objectContaining({ method: 'POST', path: `/v23.0/${WABA_ID}/subscribed_apps` }),
       );
+    });
+  });
+
+  describe('proving a phone number with a code (ADR 0034)', () => {
+    let shop: { id: string; slug: string };
+    let key: string;
+    let ticketsOnly: string;
+    let otherApp: string;
+
+    interface Person {
+      externalId: string;
+      name: string;
+      email: string;
+    }
+    const person = (): Person => ({
+      externalId: uniq('user-'),
+      name: 'Pia Phone',
+      email: `${uniq('pia')}@example.com`,
+    });
+    const start = (phone: string, customer: Person, token = key) =>
+      t.call('POST', '/integration/customers/phone-verifications', {
+        token,
+        body: { customer, phone },
+      });
+    const check = (phone: string, customer: Person, code: string, token = key) =>
+      t.call('POST', '/integration/customers/phone-verifications/check', {
+        token,
+        body: { customer, phone, code },
+      });
+    /** The code in the last message Meta was asked to send to `phone`. */
+    const codeSentTo = (phone: string) => {
+      const sent = messageSends()
+        .filter((c) => c.body.to === phone)
+        .at(-1)!;
+      return /^(\d{6}) is your/.exec(sent.body.text.body as string)![1]!;
+    };
+    const not = (code: string) => String((Number(code) + 1) % 1_000_000).padStart(6, '0');
+    /** A number that has written to the business: no template is synced, so only it may get a code. */
+    const writer = async () => {
+      const phone = newPhone();
+      await opened(phone, `Hello ${uniq()}`);
+      return phone;
+    };
+    /** A code on its way to a number that may get one. */
+    const sent = async () => {
+      const phone = await writer();
+      const who = person();
+      const res = await start(phone, who);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return { phone, who, code: codeSentTo(phone), expiresAt: res.body.expiresAt as string };
+    };
+
+    beforeAll(async () => {
+      const app = async (scopes: string[]) => {
+        const made = await t.call('POST', '/integrations', {
+          token: admin,
+          body: { slug: uniq('wa-app-'), name: 'Phone app' },
+        });
+        const k = await t.call('POST', `/integrations/${made.body.id}/keys`, {
+          token: admin,
+          body: { name: 'Server', scopes },
+        });
+        return { app: made.body as { id: string; slug: string }, key: k.body.key as string };
+      };
+      const mine = await app(['integration:customer']);
+      shop = mine.app;
+      key = mine.key;
+      otherApp = (await app(['integration:customer'])).key;
+      const k = await t.call('POST', `/integrations/${shop.id}/keys`, {
+        token: admin,
+        body: { name: 'Tickets only', scopes: ['integration:ticket'] },
+      });
+      ticketsOnly = k.body.key;
+    });
+
+    it('is refused to a key without the customer scope', async () => {
+      expect((await start(newPhone(), person(), ticketsOnly)).status).toBe(403);
+    });
+
+    it('sends nothing to a number that has not written, while no template exists', async () => {
+      const phone = newPhone();
+      const who = person();
+      const before = messageSends().length;
+      expect((await start(phone, who)).status).toBe(409);
+      expect(messageSends()).toHaveLength(before);
+      // Nothing was stored either: there is no code to guess at.
+      const guess = await check(phone, who, '123456');
+      expect(guess.status).toBe(400);
+      expect(guess.body.reason).toBe('no-code');
+    });
+
+    it('links the number once the customer types the code, and the code works once', async () => {
+      const { phone, who, code, expiresAt } = await sent();
+      const minutes = (new Date(expiresAt).getTime() - Date.now()) / 60_000;
+      expect(minutes).toBeGreaterThan(9);
+      expect(minutes).toBeLessThanOrEqual(10);
+
+      const wrong = await check(phone, who, not(code));
+      expect(wrong.status).toBe(400);
+      expect(wrong.body.reason).toBe('wrong-code');
+
+      const right = await check(phone, who, code);
+      expect(right.status, JSON.stringify(right.body)).toBe(200);
+      expect(right.body).toEqual({ verified: true, phone });
+      const again = await check(phone, who, code);
+      expect(again.body.reason).toBe('no-code');
+
+      // The customer the app named now holds the number and the email, both verified.
+      const found = (await t.call('GET', '/customers', { token: admin, query: { q: who.email } }))
+        .body.items as Array<{ id: string }>;
+      const customer = (await t.call('GET', `/customers/${found[0]!.id}`, { token: admin })).body;
+      expect(customer.identities).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'phone', value: phone, verified: true }),
+          expect.objectContaining({ type: 'email', value: who.email, verified: true }),
+          expect.objectContaining({ type: 'external_id', value: `${shop.slug}:${who.externalId}` }),
+        ]),
+      );
+
+      // The code itself is in no audit entry.
+      const audit = await t.call('GET', '/audit', {
+        token: admin,
+        query: { action: 'customer.phone_verification_sent', targetId: shop.id },
+      });
+      expect(audit.body.length).toBeGreaterThan(0);
+      expect(JSON.stringify(audit.body)).not.toContain(code);
+    });
+
+    it('stops after five wrong tries, even for the right code', async () => {
+      const { phone, who, code } = await sent();
+      for (let i = 0; i < 5; i++) {
+        expect((await check(phone, who, not(code))).body.reason).toBe('wrong-code');
+      }
+      const locked = await check(phone, who, code);
+      expect(locked.status).toBe(400);
+      expect(locked.body.reason).toBe('too-many-attempts');
+    });
+
+    it('sends a number one code a minute, whatever the rate limit setting', async () => {
+      const { phone, who } = await sent();
+      const second = await start(phone, who);
+      expect(second.status).toBe(429);
+    });
+
+    it('refuses a code after its ten minutes', async () => {
+      const { phone, who, code } = await sent();
+      await t.app
+        .get<Database>(DB)
+        .update(phoneVerifications)
+        .set({ expiresAt: new Date(Date.now() - 1000) })
+        .where(eq(phoneVerifications.phone, phone));
+      const late = await check(phone, who, code);
+      expect(late.status).toBe(400);
+      expect(late.body.reason).toBe('expired');
+    });
+
+    it('keeps a code to the app that asked for it', async () => {
+      const { phone, who, code } = await sent();
+      expect((await check(phone, who, code, otherApp)).body.reason).toBe('no-code');
+      expect((await check(phone, who, code)).status).toBe(200);
     });
   });
 

@@ -136,7 +136,7 @@ This builds the images from the root `Dockerfile`, starts the infrastructure, ru
 | LiteLLM proxy               | http://localhost:4000                                                                           |
 | Fake providers              | http://localhost:4010: a scripted LLM so AI features work with no real keys (never real data)   |
 
-Override defaults with environment variables or a `.env` next to the compose file: `JWT_SECRET` (set this for anything shared), `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_DEMO_DATA`, `API_DOCS`, `LOG_LEVEL`, and the `EMAIL_*` settings to point at a real mailbox.
+Override defaults with environment variables or a `.env` next to the compose file: `JWT_SECRET` and `CHAT_IDENTITY_SECRET` (set both for anything shared), `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_DEMO_DATA`, `API_DOCS`, `LOG_LEVEL`, and the `EMAIL_*` settings to point at a real mailbox.
 
 `pnpm docker:logs` follows the app logs; `pnpm docker:down` stops everything (add `-v` to the compose command to also delete the data volumes). Behind a TLS-intercepting corporate proxy, build with its CA: `docker build --secret id=extra_ca,src=/path/to/ca.pem ...`. Rate-limited by Docker Hub? Build with `--build-arg NODE_IMAGE=mirror.gcr.io/library/node:22-bookworm-slim --build-arg NGINX_IMAGE=mirror.gcr.io/library/nginx:1.27-alpine`.
 

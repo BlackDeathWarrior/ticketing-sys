@@ -945,17 +945,20 @@ export const chats = [
     email: 'nina.petrova@example.org',
     text: 'I would like to talk to a real person about my damaged cargo bike, please.',
   },
-  // Answered from the Demo Store order system (Phase 6 tools).
+  // Answered from the Demo Store order system (Phase 6 tools). Tools act only for a visitor
+  // the site vouches for, never for a typed email (ADR 0028), so these two are signed in.
   {
     name: 'María López',
     email: 'maria.lopez@example.com',
     text: 'Hi, where is my order DS-20517?',
+    signedIn: true,
   },
   // Asks for a refund: waits in Approvals for a supervisor.
   {
     name: 'Kenji Watanabe',
     email: 'kenji.watanabe@example.org',
     text: 'I was charged twice for order DS-20533. Can you refund the extra charge?',
+    signedIn: true,
   },
 ];
 
