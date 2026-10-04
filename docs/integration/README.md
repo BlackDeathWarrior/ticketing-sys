@@ -5,6 +5,7 @@ This guide is for a developer adding support to an existing app. When you finish
 - raise a ticket for one of its users and show them the answer;
 - report its own failures as incidents that open, update and close one ticket;
 - prove that a user owns a WhatsApp number, with a code sent over WhatsApp;
+- lend the AI tools, so it can look things up and act in your app;
 - be told about ticket changes by signed webhooks;
 - show a chat on its pages that knows who the visitor is and what they are looking at.
 
@@ -294,11 +295,30 @@ It answers `200` either way, and says whether the message went out:
 - WhatsApp lets a business write freely only to someone who wrote to it in the last 24 hours. Outside that window nothing is sent and `reason` says so; treat a notice as a courtesy, not as delivery you can rely on.
 - `text` is up to 600 characters. At most 20 notices per customer per hour.
 
-## 6. Showing items as cards on WhatsApp
+## 6. Tools: letting the AI act in your app
 
-Use this when the AI should show items from your app, such as products, as picture cards on WhatsApp. The AI never writes a picture, a price or a link itself: it can only pick items that one of your tools returned in the same turn.
+A tool is a request the AI may make to your server: look an order up, cancel it, start a refund. Tools are what turn the AI from something that answers from documents into something that resolves requests. An administrator defines them in Orbit Desk under **Settings → Tools & MCP**; your part is to serve the routes.
 
-A tool (see ADR 0017 for how a tool is defined) adds `cards` to its result, next to whatever else it returns:
+1. **Serve a route per action**, protected by a token of your choosing. Take the customer as a parameter (for example `customer_email`) on every route that reads or changes one person's data, and answer about that customer only: a record that is not theirs should look exactly like one that does not exist.
+2. **Define the tool.** New custom tool: a name, a sentence saying what it does, the method and address (with `{placeholders}` for values the AI fills in), and the header your token travels in. The token is saved on the tool's row afterwards, and nobody is shown it again.
+   - The **AI helper** at the top of the form fills it in from a description. If your server publishes an OpenAPI document at `<tools address>/openapi.json`, the helper reads your routes from it instead of asking.
+   - **Check connection** tries the address without changing anything on your side.
+3. **Choose the risk.** Read only; changes data; or needs approval, where the call waits for a supervisor and the customer is told the outcome and the reason.
+4. **Switch it on.** A new tool starts off. Set "AI may use it" to Yes.
+
+Three rules decide whether a tool runs:
+
+- **TMS fills in the customer, never the AI.** The parameter you named as the customer is set from the ticket.
+- **Only for a customer you named.** On your integration's tickets, a tool that takes the customer runs only when you sent `customer.externalId` or signed the chat's identity token. A visitor who types someone else's email into the chat gets answers from the knowledge base, and anything about an account goes to a person. On WhatsApp and on phone calls, the number must be one the customer has proven (section 5).
+- **Only hosts that are allowed.** A tool's address must be public `https`. For a server on your own machine or network, list its host in `TOOL_PRIVATE_HOSTS` (for example `host.docker.internal`).
+
+If your systems already speak MCP, register the server on the same page instead; its tools get the same risk tiers and approvals.
+
+## 7. Showing items as cards
+
+Use this when the AI should show items from your app, such as products, as picture cards on WhatsApp and in the chat widget. The AI never writes a picture, a price or a link itself: it can only pick items that one of your tools returned in the same turn.
+
+A tool (section 6) adds `cards` to its result, next to whatever else it returns:
 
 ```json
 {
@@ -326,10 +346,10 @@ A tool (see ADR 0017 for how a tool is defined) adds `cards` to its result, next
 - TMS reads at most 20 cards from one result. A card that is not valid is dropped, and so is a second card with an id already seen. Addresses that are not `https` are not accepted.
 - The AI shows at most 10 cards in one reply, because a WhatsApp carousel holds 10. One card goes as a single picture message.
 - Each card carries two buttons, "I like this" and "View product". "View product" is there only when every card in the reply has a `url`. A customer who taps it gets the `url` back at once. The AI is not asked.
-- Cards are shown only on WhatsApp. Other channels get the reply text alone.
+- Cards are shown on WhatsApp and in the chat widget. Other channels get the reply text alone.
 - If WhatsApp cannot show the cards, the reply goes as plain text and the ticket in Orbit Desk says why. The reply is too long, or Meta refuses the cards for a reason a retry cannot fix: it goes as text at once. A temporary failure is retried with the cards, and if the last attempt fails too, the reply is sent once more as text. In every text fallback the items are listed under the reply, one line each: the title, then the text and the `url` when the card has them.
 
-## 7. Errors and limits
+## 8. Errors and limits
 
 | Status | Meaning                                                                       | What to do                                    |
 | ------ | ----------------------------------------------------------------------------- | --------------------------------------------- |
@@ -343,7 +363,7 @@ A tool (see ADR 0017 for how a tool is defined) adds `cards` to its result, next
 
 Never let a support call break your app: use a short timeout, catch the error, and carry on.
 
-## 8. With the SDKs
+## 9. With the SDKs
 
 Node (18 or later):
 
@@ -415,7 +435,7 @@ except TmsError as err:
 
 Both clients are tested against the same fixed signatures (`signature-vectors.json`), and the Node SDK is tested against the real API.
 
-## 9. A checklist before going live
+## 10. A checklist before going live
 
 - [ ] The API key and both secrets are only on your server, and not in your repository.
 - [ ] Calls that create something send an `Idempotency-Key`.

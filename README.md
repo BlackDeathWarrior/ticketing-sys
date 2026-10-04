@@ -1,35 +1,93 @@
 # ticketing-sys
 
-Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp, web chat, voice calls in the browser) where an AI agent handles first-level support, calls company systems through governed MCP/API tools, and hands off to human agents in one workspace.
+Ticket Management System for companies: an omnichannel helpdesk (email, WhatsApp, web chat, voice calls in the browser, phone calls) where an AI agent handles first-level support, calls company systems through governed MCP/API tools, and hands off to human agents in one workspace.
+
+It is built to be plugged into an app you already have. Your app raises tickets, reports its own failures, shows the chat on its pages and lends the AI its tools, all through a public integration API. TMS holds no code for any particular app.
 
 - Architecture map (open in a browser): [`docs/architecture.html`](docs/architecture.html)
+- Connecting your app: [`docs/integration/README.md`](docs/integration/README.md)
 - Phased build plan: [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
 - Decisions: [`docs/adr/`](docs/adr)
+- Licence: [MIT](LICENSE)
+
+## Use it with your own app
+
+This repository is a template. Press **Use this template** on GitHub, or clone it, then:
+
+1. **Start the stack.** You need Docker with Compose v2 and nothing else.
+
+   ```bash
+   docker compose -f infra/docker-compose.yml --profile app up -d --build
+   ```
+
+   Open Orbit Desk at http://localhost:8081 and sign in as `admin@example.com` / `ChangeMe123!`. The first start loads a small fictional company; set `SEED_DEMO_DATA=false` for an empty desk.
+
+2. **Name your company.** Settings → Customers sets the company name and the sign-off that the help center and the AI use.
+3. **Add a model.** Settings → AI providers takes a key for Anthropic, OpenAI, Gemini, Mistral, Groq and others; then pick a model under Models & roles. With no key, `pnpm sample:load` (it needs Node 22 and pnpm) registers a scripted Demo model, so you can click through everything offline.
+4. **Give the AI something to know.** Knowledge base: upload documents, add FAQ entries, or connect a source (a website, GitHub, Notion, Google Drive, S3-compatible storage, a folder, PostgreSQL or MySQL).
+5. **Connect your app.** Settings → Integrations → **Add integration**, then **Create key** with the scope `integration:ticket`. The key is shown once. From your server:
+
+   ```bash
+   curl -X POST http://localhost:3000/api/v1/integration/tickets \
+     -H "Authorization: Bearer $TMS_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "customer": { "externalId": "user-42", "name": "Asha Verma", "email": "asha@example.com" },
+       "subject": "Where is my order?",
+       "body": "I ordered on Monday and have heard nothing.",
+       "externalRef": "ORDER-1001"
+     }'
+   ```
+
+   The ticket appears in Orbit Desk with an answer the AI drafted for a person to send. To let the AI answer app tickets by itself, set that channel to "auto" under Settings → AI behaviour. Your app reads the answer back or is told by a signed webhook.
+
+6. **Put the chat on your pages.** The same integration page shows the snippet:
+
+   ```html
+   <script src="http://localhost:8080/widget/tms-chat.js"></script>
+   <script>
+     TMSChat.init({ integration: 'your-identifier' });
+   </script>
+   ```
+
+7. **Let the AI act in your app.** Settings → Tools & MCP → new custom tool. Describe what you want in the **AI helper** ("look up an order by its number") and it fills in the form; if your app serves an `openapi.json`, the helper reads the routes from it. A tool starts switched off, and you choose its risk: read only, changes data, or needs a supervisor's approval.
+
+When your app runs on the same machine outside Docker, the stack reaches it as `host.docker.internal`, and tools may only call hosts you allow. Put this in `infra/.env` before step 1 (`CORS_ORIGINS` is needed only when your own pages call the API directly; add their address to it):
+
+```bash
+TOOL_PRIVATE_HOSTS=fake-providers,host.docker.internal
+CORS_ORIGINS=http://localhost:8080,http://localhost:8081,http://localhost:5173
+```
+
+Webhooks to `host.docker.internal` are allowed by default. Anything else an app is given must be a public `https` address. The full guide, with incidents, webhooks, signed-in visitors, phone numbers and the Node and Python clients, is [`docs/integration/README.md`](docs/integration/README.md).
 
 ## Status
 
-| Phase | Scope                                                                                                                                                                                                                                                                               | State   |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| 0     | Monorepo, Docker Compose infra, API/worker skeletons, CI                                                                                                                                                                                                                            | Done    |
-| 1     | Auth + RBAC, customers, tickets + workflow, audit log, outbox events, barebones UI                                                                                                                                                                                                  | Done    |
-| 2     | Channel gateway + orchestrator, web chat widget, email (IMAP/SMTP), agent replies, live updates                                                                                                                                                                                     | Done    |
-| —     | Orbit Desk console wired to the API (ADR 0005), reports overview (ADR 0006), sample data + Playwright E2E suite (ADR 0007)                                                                                                                                                          | Done    |
-| 3     | LLM platform on LiteLLM, Settings for AI and channel keys, cheapest-first routing with per-provider caps (ADR 0008, 0009)                                                                                                                                                           | Done    |
-| 4     | Knowledge base: uploads, URL and FAQ sources, review, pgvector hybrid search with citations (ADR 0010)                                                                                                                                                                              | Done    |
-| 5     | AI agent: answers chat, drafts email, hands over; confidence policy, classifier, AI marks in Orbit Desk (ADR 0011)                                                                                                                                                                  | Done    |
-| 5b    | Help center: public request form (channel `web_form`) with attachments, email acknowledgement and replies (ADR 0012)                                                                                                                                                                | Done    |
-| 6     | Tools over MCP (Demo Store sample server), risk tiers, supervisor approvals, AI follow-ups (ADR 0013)                                                                                                                                                                               | Done    |
-| 7     | Handover with context packs, take-over/hand-back, routing (rules, skills, presence), SLA timers, notifications, copilot, AI-vs-human views (ADR 0014)                                                                                                                               | Done    |
-| 8     | WhatsApp on the Meta Cloud API (ported from whatsapp-crm): signed webhook, media, delivery and read reports, 24-hour window, templates (ADR 0015)                                                                                                                                   | Done    |
-| 8b    | Channel status lights (green, amber, red, grey) with per-channel checks, a connection monitor, and one-step "Connect WhatsApp" (ADR 0016)                                                                                                                                           | Done    |
-| 8c    | Custom tools: HTTP requests defined in Settings that the AI can use, through the same gateway as MCP tools; a `tool:create` permission admins can grant to other roles (ADR 0017)                                                                                                   | Done    |
-| 9     | Voice calls in the browser on Sarvam speech: answered by the AI in 11 languages, barge-in, an agent can join by voice, transcripts and recordings on the ticket (ADR 0018)                                                                                                          | Done    |
-| 10    | Reports (the AI next to the team: resolution, handover, SLA, ratings, cost; CSV export), customer ratings, the customer portal (sign-in link, my requests, reply, rate), admin pages for people, teams, categories and the workflow; the AI resolves tickets it answered (ADR 0019) | Done    |
-| 10b   | Learning from ratings: badly rated topics and documents make the AI ask a person first; reviewers turn rated tickets into lessons the AI follows or knowledge base drafts; ratings per agent in Reports (ADR 0020)                                                                  | Done    |
-| 11    | Hardening: rate limits and sign-in lockout, data retention, a failed-jobs view, guards against prompt injection with red-team tests, tracing from the API through the worker to the model, a dependency audit in CI (ADR 0021)                                                      | Done    |
-| 12    | AWS live demo                                                                                                                                                                                                                                                                       | Planned |
+| Phase | Scope                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | State   |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 0     | Monorepo, Docker Compose infra, API/worker skeletons, CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Done    |
+| 1     | Auth + RBAC, customers, tickets + workflow, audit log, outbox events, barebones UI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Done    |
+| 2     | Channel gateway + orchestrator, web chat widget, email (IMAP/SMTP), agent replies, live updates                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Done    |
+| —     | Orbit Desk console wired to the API (ADR 0005), reports overview (ADR 0006), sample data + Playwright E2E suite (ADR 0007)                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Done    |
+| 3     | LLM platform on LiteLLM, Settings for AI and channel keys, cheapest-first routing with per-provider caps (ADR 0008, 0009)                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Done    |
+| 4     | Knowledge base: uploads, URL and FAQ sources, review, pgvector hybrid search with citations (ADR 0010)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Done    |
+| 5     | AI agent: answers chat, drafts email, hands over; confidence policy, classifier, AI marks in Orbit Desk (ADR 0011)                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Done    |
+| 5b    | Help center: public request form (channel `web_form`) with attachments, email acknowledgement and replies (ADR 0012)                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Done    |
+| 6     | Tools over MCP (Demo Store sample server), risk tiers, supervisor approvals, AI follow-ups (ADR 0013)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Done    |
+| 7     | Handover with context packs, take-over/hand-back, routing (rules, skills, presence), SLA timers, notifications, copilot, AI-vs-human views (ADR 0014)                                                                                                                                                                                                                                                                                                                                                                                                                                   | Done    |
+| 8     | WhatsApp on the Meta Cloud API (ported from whatsapp-crm): signed webhook, media, delivery and read reports, 24-hour window, templates (ADR 0015)                                                                                                                                                                                                                                                                                                                                                                                                                                       | Done    |
+| 8b    | Channel status lights (green, amber, red, grey) with per-channel checks, a connection monitor, and one-step "Connect WhatsApp" (ADR 0016)                                                                                                                                                                                                                                                                                                                                                                                                                                               | Done    |
+| 8c    | Custom tools: HTTP requests defined in Settings that the AI can use, through the same gateway as MCP tools; a `tool:create` permission admins can grant to other roles (ADR 0017)                                                                                                                                                                                                                                                                                                                                                                                                       | Done    |
+| 9     | Voice calls in the browser on Sarvam speech: answered by the AI in 11 languages, barge-in, an agent can join by voice, transcripts and recordings on the ticket (ADR 0018)                                                                                                                                                                                                                                                                                                                                                                                                              | Done    |
+| 10    | Reports (the AI next to the team: resolution, handover, SLA, ratings, cost; CSV export), customer ratings, the customer portal (sign-in link, my requests, reply, rate), admin pages for people, teams, categories and the workflow; the AI resolves tickets it answered (ADR 0019)                                                                                                                                                                                                                                                                                                     | Done    |
+| 10b   | Learning from ratings: badly rated topics and documents make the AI ask a person first; reviewers turn rated tickets into lessons the AI follows or knowledge base drafts; ratings per agent in Reports (ADR 0020)                                                                                                                                                                                                                                                                                                                                                                      | Done    |
+| 11    | Hardening: rate limits and sign-in lockout, data retention, a failed-jobs view, guards against prompt injection with red-team tests, tracing from the API through the worker to the model, a dependency audit in CI (ADR 0021)                                                                                                                                                                                                                                                                                                                                                          | Done    |
+| 12    | AWS live demo                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Planned |
+| 13    | Integration platform: integrations with scoped API keys, a ticket API, incident intake, signed webhooks, a themable chat widget with an identity secret per integration, `@tms/sdk` and a Python client (ADR 0022 to 0026)                                                                                                                                                                                                                                                                                                                                                              | Done    |
+| 14    | Proof with an outside app, and what it led to: tools act only for customers the app has named (ADR 0027, 0028); guardrails before the model and answers without one (ADR 0029, 0030); teams that own their tickets and priority rules (ADR 0031, 0032); knowledge connectors (ADR 0033); phone identity and WhatsApp picture cards (ADR 0034, 0035); an AI helper for the tool forms (ADR 0036); addressing customers by name and listening to voice messages (ADR 0037, 0038); phone calls on real numbers through Sarvam and ElevenLabs agents, inbound and outbound (ADR 0039, 0040) | Done    |
+| 15    | Multi-tenancy: one installation, many companies                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Planned |
 
-WhatsApp and voice are built but switched off until you connect a Meta app and save a Sarvam key; neither has been run against the real service yet. The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
+WhatsApp, voice and phone calls are built but switched off until you connect a Meta app and save a Sarvam or ElevenLabs key; none of them has a simulator. One installation serves one company. The full gap list is in the [reality check](docs/IMPLEMENTATION_PLAN.md#reality-check-30-september-2026).
 
 ## Layout
 
@@ -41,6 +99,8 @@ apps/
   web/          Barebones React test console           → http://localhost:5173
   orbit-desk/   Orbit Desk: the product console        → http://localhost:5175 (design: docs/DESIGN.md)
   chat-widget/  Embeddable web chat widget (one script tag)
+  help-center/  Customer pages: request form, portal, rating  → http://localhost:8080/help/
+  fake-providers/  Scripted LLM and a sample tool server, for demos and tests without keys
 packages/
   shared/       Zod schemas, permissions, workflow defaults, channel envelope, event contracts
   db/           Drizzle schema, SQL migrations, seed
@@ -130,7 +190,10 @@ When a model is configured (Settings), new web chats, WhatsApp chats and calls g
   - at 80% or more on a channel that answers on its own, the reply is sent;
   - between 60% and 80%, or on email, it becomes a draft that an agent sends, edits or discards. On chat and WhatsApp the customer is told once that a member of the team will reply, so they are not left in front of a silent chat;
   - below 60%, or when the customer asks for a person, the AI hands over with an internal note.
-- **Guardrails:** replies that promise refunds or dates no tool confirmed are never sent.
+- **Guardrails:** replies that promise refunds or dates no tool confirmed are never sent. Every customer message is screened before any model sees it: an attempt to override the AI's instructions, abuse or spam gets a warning and then ends the conversation (ADR 0029).
+- **Hands over only when it must:** a request for a person gets one offer of help first; small talk, FAQ questions and repeated questions are answered without a model (ADR 0030).
+- **Closing:** an answer that settles the request ends with "anything else?". A no, or a quiet period per channel, resolves the ticket.
+- **Voice messages** on WhatsApp are written down before the AI answers (ADR 0038).
 - **Classification:** new customer tickets get a suggested category, priority, language, intent and sentiment.
 - **Visibility in Orbit Desk:** AI work shows an **AI** mark and is slightly dimmed; the drawer has "AI is replying", the classification and an "AI activity" list.
 - **Settings → AI behaviour** sets each channel's mode and the thresholds, and has **Try the agent** for a dry run.
@@ -149,6 +212,7 @@ The AI can look up and act on company systems through MCP servers (ADR 0013).
 - **Customer binding:** TMS fills the customer's email into the tool from the ticket, so the AI can only reach that customer's data.
 - **Approvals:** a needs-approval tool (such as a refund) doesn't run. It waits in **Approvals** (`#/approvals`, supervisors) and inline in the ticket drawer. Once someone approves, the worker runs it and the AI tells the customer the result. Rejected and expired requests are handled too.
 - **Custom tools:** a tool can also be a plain HTTP request defined in Settings → Tools & MCP (address with `{placeholders}`, values the AI fills in, optional key). It gets the same checks, tiers and approvals. Admins create them; other roles can once an admin ticks them under "Who can create custom tools" (ADR 0017, [`docs/runbooks/phase-8c-demo.md`](docs/runbooks/phase-8c-demo.md)).
+- **AI helper:** beside both forms, a helper fills in the form from a description, reads a system's `openapi.json`, and offers the key of a tool already saved for the same host. It never saves or switches on anything. **Check connection** tries the address without changing the other system, and **Diagnose with AI** explains a failed check and saves it as a ticket (ADR 0036).
 - **Demo:** the sample data registers **Demo Store systems**, a fictional order and payment server inside `fake-providers`. Try "Where is my order DS-20517?" or "I was charged twice for order DS-20533" in the widget.
 
 See [`docs/runbooks/phase-6-demo.md`](docs/runbooks/phase-6-demo.md).
@@ -159,7 +223,9 @@ See [`docs/runbooks/phase-6-demo.md`](docs/runbooks/phase-6-demo.md).
 - **Taking over:** agents take a conversation over from the AI or the queue, and only one person can. They can hand it back to the AI, pass it to another team, or escalate it.
 - **SLA:** first-response and resolution targets per priority and customer type, counted in business hours (time zone, holidays) and paused while waiting on the customer. At 80% the ticket is at risk; at 100% it is breached. The assignee and team leads are told, and breaches are also emailed.
 - **AI vs human:** the queue filters by who is handling each ticket and shows SLA countdowns. The drawer can show the conversation as **AI | People** lanes, and history filters by who acted.
-- **Where to set it up:** Settings → Routing and Settings → SLA.
+- **Teams own their tickets:** a team's members and super admins act on its tickets; everyone else can read and add notes. Approvals go to the tool's approving team, and each decision carries a reason for the customer (ADR 0031).
+- **Priority rules:** an ordered list sets a ticket's priority from its channel, category, words, intent or sentiment, and only raises it afterwards (ADR 0032).
+- **Where to set it up:** Settings → Routing, SLA, Teams and Priority.
 
 See [`docs/runbooks/phase-7-demo.md`](docs/runbooks/phase-7-demo.md).
 
@@ -209,6 +275,7 @@ Orbit Desk → **Knowledge base** (`#/kb`) searches approved documents with cita
 
 - **Managers** (`kb:manage`, supervisors and admins) add documents: PDF, Word, Markdown, HTML or text files, web pages, or FAQ entries. They also approve, archive and re-index them.
 - **Indexing** runs in the worker: text extraction, heading-aware chunks, and embeddings through the Settings "Knowledge base embeddings" role. Search then combines pgvector similarity and full-text rank.
+- **Sources:** Knowledge base → Sources keeps documents in step with a website or sitemap, GitHub, Notion, Google Drive, S3-compatible storage, a shared folder, PostgreSQL or MySQL (ADR 0033).
 - **Visibility:** public documents may be quoted to customers; internal and team documents are for agents only.
 - **In a ticket:** the drawer suggests articles and inserts a cited passage into the reply.
 
@@ -221,7 +288,9 @@ Orbit Desk → **Knowledge base** (`#/kb`) searches approved documents with cita
 - **WhatsApp:** it needs a Meta app, and there is no simulator. Once connected in Settings → Channels:
   - customers' messages and files open tickets, and the AI or an agent replies;
   - each reply shows whether it was delivered and read, or why it failed;
-  - more than 24 hours after the customer's last message, WhatsApp only allows approved templates, and the reply box offers those.
+  - more than 24 hours after the customer's last message, WhatsApp only allows approved templates, and the reply box offers those;
+  - a company tool can return picture cards, which the AI shows with buttons (ADR 0035);
+  - your app can prove that a customer owns a number with a code sent over WhatsApp, and the AI's customer tools then work for that number (ADR 0034).
 
   Setup steps are in [`docs/runbooks/phase-8-demo.md`](docs/runbooks/phase-8-demo.md); the design is ADR 0015.
 
@@ -230,7 +299,9 @@ Orbit Desk → **Knowledge base** (`#/kb`) searches approved documents with cita
   - when the caller asks for a person, an agent joins the call from the ticket and talks to them;
   - the transcript lands on the ticket, with a recording supervisors can play for 30 days.
 
-  Steps are in [`docs/runbooks/phase-9-demo.md`](docs/runbooks/phase-9-demo.md); the design is ADR 0018. Real phone numbers are not built.
+  Steps are in [`docs/runbooks/phase-9-demo.md`](docs/runbooks/phase-9-demo.md); the design is ADR 0018.
+
+- **Phone calls:** a real number is answered by a voice agent at Sarvam or ElevenLabs. The agent has no knowledge of its own: it asks this desk for every fact, through the knowledge base and your tools, and the call becomes a ticket with its transcript and recording when it ends. The desk can also ring a customer from a ticket. You need an account and a number at the provider; set-up is in [`docs/runbooks/phone-agent.md`](docs/runbooks/phone-agent.md) (Sarvam) and [`docs/runbooks/phone-agent-elevenlabs.md`](docs/runbooks/phone-agent-elevenlabs.md); the design is ADR 0039 and ADR 0040.
 
 - **Embedding the widget on a site:**
   ```html
@@ -239,7 +310,7 @@ Orbit Desk → **Knowledge base** (`#/kb`) searches approved documents with cita
     TMSChat.init({ server: 'https://tms.example.com', title: 'Chat with us' });
   </script>
   ```
-  For logged-in visitors, pass `identityToken`: an HS256 JWT with `sub` (your customer id) and/or `email`, signed with `CHAT_IDENTITY_SECRET`. Only vouched-for identities link a chat to an existing customer.
+  For logged-in visitors, pass `identityToken`: an HS256 JWT with `sub` (your customer id) and/or `email`, signed with your integration's chat secret (or `CHAT_IDENTITY_SECRET`). Only vouched-for identities link a chat to an existing customer. Options, themes and callbacks are in [`docs/integration/widget.md`](docs/integration/widget.md).
 
 ## Local development
 

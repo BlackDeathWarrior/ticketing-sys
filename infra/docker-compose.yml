@@ -13,7 +13,8 @@ x-app-env: &app-env
   TMS_SECRETS_KEY: ${TMS_SECRETS_KEY:-ZGV2LW9ubHktdG1zLXNlY3JldHMta2V5LTMyYnl0ZXM=}
   # Dev default only. Set JWT_SECRET in the environment for anything shared.
   JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me-0123456789abcdef}
-  CORS_ORIGINS: http://localhost:8080,http://localhost:8081
+  # Add the address of your own app's pages here when they call the API or show the chat.
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:8081}
   # MCP servers may live on these compose hosts (the sample Demo Store server in fake-providers).
   TOOL_PRIVATE_HOSTS: ${TOOL_PRIVATE_HOSTS:-fake-providers}
   # Webhook receivers may run on the machine that runs Docker (a local app, the E2E tests).
