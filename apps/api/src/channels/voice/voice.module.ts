@@ -41,10 +41,10 @@ export class VoiceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    const { stream, bytes } = await this.records.recording(ctx, id);
-    void res.header('content-type', 'audio/wav');
+    const { stream, bytes, type } = await this.records.recording(ctx, id);
+    void res.header('content-type', type);
     if (bytes) void res.header('content-length', String(bytes));
-    void res.header('content-disposition', `inline; filename="call-${id}.wav"`);
+    void res.header('content-disposition', `inline; filename="call-${id}.${type === 'audio/mpeg' ? 'mp3' : 'wav'}"`);
     return new StreamableFile(stream);
   }
 }

@@ -94,6 +94,7 @@ export class PhoneHooksController {
     if (fromSarvam(this.env, req.ip) && (await this.channels.phone())?.enabled) {
       const duration = (body as Record<string, unknown>).duration;
       await this.queue.add(
+        'sarvam',
         body.interaction_id,
         {
           phone: body.user_phone_number,

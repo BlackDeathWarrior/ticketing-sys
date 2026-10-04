@@ -5,6 +5,7 @@ import {
   Logger,
   type OnApplicationBootstrap,
 } from '@nestjs/common';
+import type { PhoneProviderId } from '@tms/shared';
 import { type Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import type { Env } from '../../config/env';
@@ -31,6 +32,8 @@ const GIVE_UP_MINUTES = 24 * 60;
 type CloseJob =
   | {
       kind: 'close';
+      /** Whose call it is. A job queued before there were two providers has none: Sarvam's. */
+      provider?: PhoneProviderId;
       interactionId: string;
       hint: PhoneCallHint;
       trace?: string | null;
@@ -43,9 +46,10 @@ type CloseJob =
 const RECORDING_FOLLOW_UPS = 5;
 const RECORDING_FOLLOW_UP_MS = 60_000;
 
-const closeOptions = (interactionId: string, known = true) => ({
-  // One waiting job per call: a trigger that arrives twice is closed once.
-  jobId: `phone-${interactionId.replace(/[^\w-]/g, '_')}`,
+const closeOptions = (provider: PhoneProviderId, interactionId: string, known = true) => ({
+  // One waiting job per call: a trigger that arrives twice is closed once. Sarvam's ids keep
+  // the form they had before there was a second provider.
+  jobId: `phone-${provider === 'sarvam' ? '' : `${provider}-`}${interactionId.replace(/[^\w-]/g, '_')}`,
   attempts: known ? ATTEMPTS : ATTEMPTS_UNKNOWN,
   backoff: { type: 'exponential' as const, delay: BACKOFF_MS },
   removeOnComplete: { age: 3_600, count: 1_000 },
@@ -54,11 +58,12 @@ const closeOptions = (interactionId: string, known = true) => ({
 
 async function addClose(
   queue: Queue<CloseJob>,
+  provider: PhoneProviderId,
   interactionId: string,
   hint: PhoneCallHint,
   known: boolean,
 ): Promise<void> {
-  const options = closeOptions(interactionId, known);
+  const options = closeOptions(provider, interactionId, known);
   // A finished job keeps its id for a while, and an id that exists is not added again: clear
   // it, or this call could not be tried again. A failed one is retried after a fix or a late
   // trigger; a completed one is asked once more for a recording that was not ready.
@@ -66,10 +71,14 @@ async function addClose(
   if (earlier && ((await earlier.isFailed()) || (await earlier.isCompleted()))) {
     await earlier.remove();
   }
-  await queue.add('close', { kind: 'close', interactionId, hint, trace: currentTrace() }, options);
+  await queue.add(
+    'close',
+    { kind: 'close', provider, interactionId, hint, trace: currentTrace() },
+    options,
+  );
 }
 
-/** API side: the "ended" route answers Sarvam at once and leaves the ticket to the worker. */
+/** API side: the "ended" route answers the provider at once and leaves the ticket to the worker. */
 @Injectable()
 export class PhoneCallQueue implements BeforeApplicationShutdown {
   private connection?: Redis;
@@ -78,10 +87,15 @@ export class PhoneCallQueue implements BeforeApplicationShutdown {
   constructor(@Inject(ENV) private readonly env: Env) {}
 
   /** `known`: a token-protected hook already told us about this call. */
-  async add(interactionId: string, hint: PhoneCallHint, known: boolean): Promise<void> {
+  async add(
+    provider: PhoneProviderId,
+    interactionId: string,
+    hint: PhoneCallHint,
+    known: boolean,
+  ): Promise<void> {
     this.connection ??= new Redis(this.env.REDIS_URL, { maxRetriesPerRequest: null });
     this.queue ??= new Queue<CloseJob>(PHONE_CALL_QUEUE, { connection: this.connection });
-    await addClose(this.queue, interactionId, hint, known);
+    await addClose(this.queue, provider, interactionId, hint, known);
   }
 
   async beforeApplicationShutdown() {
@@ -140,13 +154,20 @@ export class PhoneCallWorker implements OnApplicationBootstrap, BeforeApplicatio
     if (d.kind === 'sweep') {
       for (const call of await this.calls.stalePhoneCalls(STALE_MINUTES, GIVE_UP_MINUTES)) {
         if (!call.providerCallId) continue;
-        await addClose(this.queue, call.providerCallId, { phone: null, seconds: null }, true);
+        await addClose(
+          this.queue,
+          (call.provider as PhoneProviderId | null) ?? 'sarvam',
+          call.providerCallId,
+          { phone: null, seconds: null },
+          true,
+        );
       }
       return;
     }
     return withSpan('phone call close', { parent: d.trace, kind: SpanKind.CONSUMER }, async () => {
       // The first try waits for the recording; after that the ticket is written without it.
-      const outcome = await this.closer.close(d.interactionId, d.hint, {
+      const provider = d.provider ?? 'sarvam';
+      const outcome = await this.closer.close(provider, d.interactionId, d.hint, {
         waitForRecording: job.attemptsMade === 0 && !d.recording,
         recordingFollowUp: !!d.recording,
       });
@@ -154,12 +175,12 @@ export class PhoneCallWorker implements OnApplicationBootstrap, BeforeApplicatio
       if (outcome !== 'closed') return;
       const call = await this.calls.byProvider(d.interactionId);
       if (!call?.ticketId || call.recordingKey) return;
-      // Written without its recording: ask Sarvam again later, a few times.
+      // Written without its recording: ask the provider again later, a few times.
       await this.queue.add(
         'close',
         { ...d, recording: true },
         {
-          jobId: `${closeOptions(d.interactionId).jobId}-recording`,
+          jobId: `${closeOptions(provider, d.interactionId).jobId}-recording`,
           delay: RECORDING_FOLLOW_UP_MS,
           attempts: RECORDING_FOLLOW_UPS,
           backoff: { type: 'exponential', delay: RECORDING_FOLLOW_UP_MS },
