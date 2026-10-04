@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { guessLanguage } from '@tms/shared';
+import { guessLanguage, readsAsEnglish } from '@tms/shared';
 import type { Env } from '../config/env';
 import { ENV } from '../infra/tokens';
 import { ChannelConfigService } from '../settings/channel-config.service';
@@ -22,6 +22,8 @@ export class LanguageService {
     const guess = guessLanguage(text);
     // Latin script is ambiguous (English, Hinglish, …); other scripts are decisive.
     if (guess && guess !== 'en') return guess;
+    // Plain English is settled here: asked about "payment methods", Sarvam answers Malayalam.
+    if (guess === 'en' && readsAsEnglish(text)) return guess;
     const sarvam = await this.channels.sarvam().catch(() => null);
     if (!sarvam?.apiKey || !sarvam.enabled) return guess;
     try {
