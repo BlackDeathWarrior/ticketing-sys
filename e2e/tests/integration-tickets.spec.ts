@@ -23,7 +23,7 @@ test.describe('tickets an integration raises', () => {
     page,
   }) => {
     const admin = (await login()).accessToken;
-    const name = `Ethnic Threads ${stamp()}`;
+    const name = `Acme Store ${stamp()}`;
     const integration = await call<{ id: string }>(admin, 'POST', '/integrations', {
       slug: `shop-${stamp()}`,
       name,

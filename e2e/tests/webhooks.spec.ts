@@ -51,7 +51,7 @@ test.describe('webhooks', () => {
     // Retries wait a few seconds between attempts.
     test.setTimeout(120_000);
     const admin = (await login()).accessToken;
-    const name = `Ethnic Threads ${stamp()}`;
+    const name = `Acme Store ${stamp()}`;
     const integration = await call<{ id: string }>(admin, 'POST', '/integrations', {
       slug: `hooks-${stamp()}`,
       name,

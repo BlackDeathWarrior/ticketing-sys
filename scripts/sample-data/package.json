@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "load": "tsx load.ts",
-    "load:garment": "tsx garment/load-garment.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "eval:kb": "tsx kb-eval.ts",
     "eval:ai": "tsx ai-eval.ts"

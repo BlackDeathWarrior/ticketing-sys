@@ -17,7 +17,7 @@ test.describe("the chat widget on an integration's site", () => {
     page,
   }) => {
     const admin = (await login()).accessToken;
-    const name = `Ethnic Threads ${stamp()}`;
+    const name = `Acme Store ${stamp()}`;
     const slug = `site-${stamp()}`;
     const integration = await call<{ id: string }>(admin, 'POST', '/integrations', { slug, name });
     const { key } = await call<{ key: string }>(

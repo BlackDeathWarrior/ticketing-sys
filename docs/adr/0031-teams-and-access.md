@@ -44,4 +44,4 @@ A failed payment creates no order, so there was nothing to refund and nothing fo
 - A team with nobody online can hold tickets that nobody else may answer. Super admins, `ticket:any_team` and the triage of team-less tickets are the way round it.
 - Custom roles (created, renamed, deleted) are not built; built-in roles keep their built-in permissions.
 - The sidebar's team list is still a list, not a set of queue filters.
-- The demo's team admins and the Payments approving team come from the loader (`scripts/sample-data/garment/data.ts`); an existing demo needs the loader run again, or the same set by hand in Settings → Teams and Settings → Tools.
+- Team admins and an approving team are set by hand in Settings → Teams and Settings → Tools; the sample data loader does not set them.

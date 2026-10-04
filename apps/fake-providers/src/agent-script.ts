@@ -16,7 +16,7 @@ import type { ChatMessage, ChatRequest, ScriptedReply } from './llm';
  *   asking where "my order" is calls `…__list_orders`.
  *   A refund waiting for approval is reported as "with the team"; an
  *   <approval_update> in the system prompt is reported to the customer.
- * - A catalogue site (ADR 0027): a message that says prices look old calls
+ * - A catalogue site: a message that says prices look old calls
  *   `…__catalog_status`, then `…__scraper_status` when the catalogue is stale;
  *   asking for a refresh calls `…__trigger_rescrape` (which waits for
  *   approval); a question about price or stock, with a `product_id` in the
@@ -251,7 +251,7 @@ function freshness(c: Record<string, unknown>): string {
 }
 
 /**
- * Flows for a site that shows a scraped catalogue (ADR 0027); undefined when
+ * Flows for a site that shows a scraped catalogue; undefined when
  * the message is not about how fresh the catalogue is, a refresh or a listing.
  */
 function siteFlow(req: ChatRequest, question: string): ScriptedReply | undefined {

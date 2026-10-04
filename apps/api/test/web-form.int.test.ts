@@ -298,16 +298,16 @@ describe('branding (ADR 0026)', () => {
     const saved = await t.call('PUT', '/settings/branding', {
       token: admin,
       body: {
-        companyName: 'Ethnic Threads',
-        supportName: 'Ethnic Threads Care',
+        companyName: 'Acme Store',
+        supportName: 'Acme Store Care',
         helpCenterNote: '',
         referenceLabel: 'Listing',
       },
     });
     expect(saved.status).toBe(200);
     expect(await publicBranding()).toEqual({
-      companyName: 'Ethnic Threads',
-      supportName: 'Ethnic Threads Care',
+      companyName: 'Acme Store',
+      supportName: 'Acme Store Care',
       helpCenterNote: '',
       referenceLabel: 'Listing',
     });
@@ -320,7 +320,7 @@ describe('branding (ADR 0026)', () => {
   it('hides the reference field when it has no label', async () => {
     const saved = await t.call('PUT', '/settings/branding', {
       token: admin,
-      body: { companyName: 'Ethnic Threads', referenceLabel: '' },
+      body: { companyName: 'Acme Store', referenceLabel: '' },
     });
     expect(saved.body.referenceLabel).toBeNull();
     expect((await publicBranding()).referenceLabel).toBeNull();

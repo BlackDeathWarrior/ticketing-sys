@@ -13,7 +13,7 @@ In Orbit Desk, **Settings → Integrations → your integration → Chat widget*
 <script>
   TMSChat.init({
     server: 'https://support.example.com',
-    integration: 'ethnic-threads',
+    integration: 'acme-store',
   });
 </script>
 ```
@@ -41,7 +41,7 @@ All are optional.
 
 ```js
 const chat = TMSChat.init({
-  integration: 'ethnic-threads',
+  integration: 'acme-store',
   theme: { primary: '#7a1f3d', position: 'right' },
   strings: { launcher: 'Need help?', title: 'Ask us' },
   visitor: { name: user.name },
@@ -66,7 +66,7 @@ While the assistant writes an answer the widget shows three moving dots. `string
 
 ## Context
 
-Agents see the context next to the ticket ("Context from Ethnic Threads: Product id MYN-48213"), and the AI reads it as background. It is attached when a message opens a ticket, so keep it current with `setContext`.
+Agents see the context next to the ticket ("Context from Acme Store: Product id MYN-48213"), and the AI reads it as background. It is attached when a message opens a ticket, so keep it current with `setContext`.
 
 It comes from a browser, so TMS treats it as untrusted: it is shown as text and never acted on. Do not put anything in it that the visitor should not be able to set.
 

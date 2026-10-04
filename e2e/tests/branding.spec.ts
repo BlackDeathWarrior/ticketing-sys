@@ -16,8 +16,8 @@ test.describe('branding', () => {
     await page.goto(`${env.orbit}/#/settings/customers`);
     const form = page.getByRole('form', { name: 'Branding' });
     await expect(form.getByLabel('Company name')).toHaveValue('Demo Store');
-    await form.getByLabel('Company name').fill('Ethnic Threads');
-    await form.getByLabel('Replies are signed by').fill('Ethnic Threads Care');
+    await form.getByLabel('Company name').fill('Acme Store');
+    await form.getByLabel('Replies are signed by').fill('Acme Store Care');
     await form.getByLabel('Reference field on the request form').fill('Listing');
     await form.getByLabel('Line at the bottom of the help center').fill('');
     await form.getByRole('button', { name: 'Save branding' }).click();
@@ -25,9 +25,9 @@ test.describe('branding', () => {
 
     const visitor = await browser.newPage();
     await visitor.goto(env.helpCenter);
-    await expect(visitor.locator('.brand')).toContainText('Ethnic Threads');
-    await expect(visitor.locator('.brand__mark')).toHaveText('ET');
-    await expect(visitor).toHaveTitle('Ethnic Threads Help');
+    await expect(visitor.locator('.brand')).toContainText('Acme Store');
+    await expect(visitor.locator('.brand__mark')).toHaveText('AS');
+    await expect(visitor).toHaveTitle('Acme Store Help');
     await expect(visitor.getByLabel('Listing')).toBeVisible();
     await expect(visitor.getByLabel('Order number')).toHaveCount(0);
     await expect(
@@ -40,7 +40,7 @@ test.describe('branding', () => {
     await form.getByRole('button', { name: 'Save branding' }).click();
     await expect(form.getByRole('status')).toHaveText('Saved.');
     await visitor.reload();
-    await expect(visitor.locator('.brand')).toContainText('Ethnic Threads');
+    await expect(visitor.locator('.brand')).toContainText('Acme Store');
     await expect(visitor.getByLabel('Listing')).toHaveCount(0);
     await visitor.close();
   });

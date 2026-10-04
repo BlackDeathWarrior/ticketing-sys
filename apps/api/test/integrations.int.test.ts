@@ -26,7 +26,7 @@ afterAll(async () => {
   await t?.close();
 });
 
-async function makeIntegration(name = 'Ethnic Threads') {
+async function makeIntegration(name = 'Acme Store') {
   const res = await t.call<IntegrationView>('POST', '/integrations', {
     token: admin,
     body: { slug: uniq('shop-'), name },
@@ -50,16 +50,16 @@ const whoAmI = (token?: string) =>
 describe('managing integrations', () => {
   it('creates, lists, renames and switches off an integration', async () => {
     const made = await makeIntegration();
-    expect(made).toMatchObject({ name: 'Ethnic Threads', isActive: true, activeKeys: 0 });
+    expect(made).toMatchObject({ name: 'Acme Store', isActive: true, activeKeys: 0 });
 
     const list = await t.call<IntegrationView[]>('GET', '/integrations', { token: admin });
     expect(list.body.some((i) => i.id === made.id)).toBe(true);
 
     const renamed = await t.call<IntegrationView>('PATCH', `/integrations/${made.id}`, {
       token: admin,
-      body: { name: 'Ethnic Threads storefront', isActive: false },
+      body: { name: 'Acme Store storefront', isActive: false },
     });
-    expect(renamed.body).toMatchObject({ name: 'Ethnic Threads storefront', isActive: false });
+    expect(renamed.body).toMatchObject({ name: 'Acme Store storefront', isActive: false });
     // The slug names its secrets and cannot change.
     expect(renamed.body.slug).toBe(made.slug);
   });

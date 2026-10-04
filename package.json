@@ -2,6 +2,7 @@
   "name": "ticketing-sys",
   "private": true,
   "description": "Omnichannel Ticket Management System with an AI first-level support agent",
+  "license": "MIT",
   "packageManager": "pnpm@9.15.0",
   "engines": {
     "node": ">=20.11"
@@ -25,9 +26,7 @@
     "docker:logs": "docker compose -f infra/docker-compose.yml --profile app logs -f api worker web orbit-desk",
     "demo:email": "node apps/api/scripts/send-test-email.mjs",
     "sample:load": "pnpm --filter @tms/sample-data load",
-    "garment:load": "pnpm --filter @tms/sample-data load:garment",
     "e2e": "pnpm --filter @tms/e2e e2e",
-    "e2e:garment": "pnpm --filter @tms/e2e e2e:garment",
     "kb:eval": "pnpm --filter @tms/sample-data eval:kb",
     "ai:eval": "pnpm --filter @tms/sample-data eval:ai"
   },

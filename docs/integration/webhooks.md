@@ -51,7 +51,7 @@ X-TMS-Signature: t=1790000000,v1=00c77c95442d04dd586e98d6f729b5f1761b29b2af360c1
   "id": "5b0c9a52-6d55-4f0c-9d0e-3a1f6d1c2b7e",
   "type": "message.created",
   "createdAt": "2026-10-01T10:12:31.000Z",
-  "integration": "ethnic-threads",
+  "integration": "acme-store",
   "data": {
     "ticket": {
       "reference": "TMS-1042",

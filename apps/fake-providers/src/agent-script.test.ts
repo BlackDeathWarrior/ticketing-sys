@@ -366,7 +366,7 @@ describe("a shop's order tools", () => {
   });
 });
 
-describe('a catalogue site (the Ethnic Threads tools)', () => {
+describe('a catalogue site (the Acme Store tools)', () => {
   const siteTools = [
     ...tools,
     ...['catalog_status', 'scraper_status', 'product_lookup', 'trigger_rescrape'].map((name) => ({
