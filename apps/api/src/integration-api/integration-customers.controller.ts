@@ -2,6 +2,9 @@ import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   type CheckPhoneVerificationInput,
+  type CustomerEmailInput,
+  type CustomerEmailResult,
+  customerEmailSchema,
   type CustomerNoticeInput,
   type CustomerNoticeResult,
   customerNoticeSchema,
@@ -17,6 +20,7 @@ import {
 } from '../common/request-context';
 import { ZodBody } from '../common/zod-openapi';
 import { ZodPipe } from '../common/zod.pipe';
+import { CustomerEmailService } from './customer-email.service';
 import { CustomerNoticeService } from './customer-notice.service';
 import { PhoneVerificationService } from './phone-verification.service';
 
@@ -77,5 +81,29 @@ export class IntegrationCustomerNoticesController {
     @Body(new ZodPipe(customerNoticeSchema)) body: CustomerNoticeInput,
   ): Promise<CustomerNoticeResult> {
     return this.notices.send(key, body);
+  }
+}
+
+/**
+ * Emailing a customer for an app that has no mail server of its own: the link that
+ * finishes an account started on a phone call. It goes out from the support mailbox.
+ */
+@ApiTags('integration API')
+@ApiBearerAuth('apiKey')
+@ApiKeyAuth()
+@RequirePermission('integration:customer')
+@Controller('integration/customers/emails')
+export class IntegrationCustomerEmailsController {
+  constructor(private readonly emails: CustomerEmailService) {}
+
+  @Post()
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Send a customer an email from the support mailbox' })
+  @ZodBody(customerEmailSchema)
+  send(
+    @ApiKey() key: ApiKeyContext,
+    @Body(new ZodPipe(customerEmailSchema)) body: CustomerEmailInput,
+  ): Promise<CustomerEmailResult> {
+    return this.emails.send(key, body);
   }
 }

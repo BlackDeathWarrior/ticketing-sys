@@ -17,7 +17,7 @@ import { KbSearchService } from '../../kb/kb-search.service';
 import { BrandingService } from '../../settings/branding.service';
 import { ChannelConfigService } from '../../settings/channel-config.service';
 import { ToolGatewayService } from '../../tools/tool-gateway.service';
-import { type AgentTool, ToolsService } from '../../tools/tools.service';
+import { type AgentTool, modelSchema, ToolsService } from '../../tools/tools.service';
 import { type CallRow, VoiceCallsService } from '../voice/voice-calls.service';
 import { WhatsAppLinkSender } from '../whatsapp/whatsapp-link.sender';
 import { PhoneQueryTranslator } from './phone-query-translator.service';
@@ -135,6 +135,68 @@ function withoutAddresses(value: unknown): unknown {
     );
   }
   return value;
+}
+
+/**
+ * The names of the inputs a request carried, never their values: what a refusal is logged
+ * with. On a call on 2026-10-04 the cart tool was refused six times and nothing said what
+ * the agent had sent.
+ */
+function inputNames(args: string | undefined): string {
+  try {
+    const parsed = JSON.parse(args?.trim() || '{}') as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? Object.keys(parsed).join(', ')
+      : 'not an object';
+  } catch {
+    return 'not JSON';
+  }
+}
+
+/**
+ * A tool's inputs, in words: appended to a refusal so the agent's next try is right. Naming
+ * them alone was not enough on that call: the agent added an input of its own.
+ */
+function inputsOf(tool: AgentTool): string {
+  const schema = modelSchema(tool.tool.inputSchema as Record<string, unknown>, tool.tool.customerArg);
+  const required = new Set((schema.required as string[] | undefined) ?? []);
+  const inputs = Object.entries(schema.properties as Record<string, { type?: unknown }>).map(
+    ([name, p]) =>
+      `"${name}" (${p.type === 'integer' || p.type === 'number' ? 'a number' : p.type === 'boolean' ? 'true or false' : 'text'}${required.has(name) ? ', needed' : ''})`,
+  );
+  return inputs.length
+    ? ` This tool takes exactly these inputs and no others: ${inputs.join(', ')}.`
+    : ' This tool takes no inputs.';
+}
+
+/**
+ * The agent's arguments without inputs the tool does not have. The agent's model is not
+ * ours: on that call it sent the cart tool an "action" beside the right inputs, twice, and
+ * the caller got nothing. An input the tool never sees cannot do harm, so it is dropped
+ * here, not refused. Anything that is not a JSON object is left for the gateway to refuse.
+ */
+function fitted(tool: AgentTool, args: string): { args: string; dropped: string[] } {
+  const schema = tool.tool.inputSchema as {
+    properties?: Record<string, unknown>;
+    additionalProperties?: unknown;
+  } | null;
+  if (!schema?.properties || schema.additionalProperties !== false) return { args, dropped: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(args);
+  } catch {
+    return { args, dropped: [] };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { args, dropped: [] };
+  const known = schema.properties;
+  const dropped = Object.keys(parsed).filter((k) => !(k in known));
+  if (!dropped.length) return { args, dropped };
+  return {
+    args: JSON.stringify(
+      Object.fromEntries(Object.entries(parsed).filter(([k]) => k in known)),
+    ),
+    dropped,
+  };
 }
 
 const fail = (result: string): PhoneToolReply => ({
@@ -443,7 +505,18 @@ export class PhoneToolsService {
     );
   }
 
+  /** A company tool, or the desk's own send_whatsapp. A refusal is logged with what was sent. */
   private async deskTool(call: CallRow | null, body: PhoneToolInput): Promise<PhoneToolReply> {
+    const reply = await this.runDeskTool(call, body);
+    if (!reply.ok) {
+      this.logger.warn(
+        `phone tool "${body.name ?? ''}" with inputs [${inputNames(body.arguments)}] was refused: ${reply.result.slice(0, 240)}`,
+      );
+    }
+    return reply;
+  }
+
+  private async runDeskTool(call: CallRow | null, body: PhoneToolInput): Promise<PhoneToolReply> {
     const name = body.name ?? '';
     if (name === SEND_WHATSAPP) return this.sendWhatsapp(call, body);
     const all = await this.tools.agentTools();
@@ -460,7 +533,19 @@ export class PhoneToolsService {
     // requests) when this one has none.
     const { phone, owner } = await this.party(call, body.phone);
     // The catalogue is in English too: a search for "लाल कुर्ता" would find nothing.
-    const args = await this.translator.argumentsToEnglish(body.arguments?.trim() || '{}');
+    const sent = fitted(
+      found,
+      await this.translator.argumentsToEnglish(body.arguments?.trim() || '{}'),
+    );
+    const args = sent.args;
+    if (sent.dropped.length) {
+      this.logger.warn(
+        `phone tool "${found.qualifiedName}": dropped inputs it does not have [${sent.dropped.join(', ')}]`,
+      );
+    }
+    /** Why the gateway refused, with the tool's inputs spelled out for the next try. */
+    const refused = (error: string) =>
+      fail(found.tool.customerArg && !owner?.email ? NOT_LINKED : error + inputsOf(found));
     if (found.tool.tier === 'transactional') {
       // An approval belongs to a ticket, and this call has none until it ends. The request is
       // checked now, so the agent can correct a wrong input while the caller is on the line,
@@ -475,9 +560,8 @@ export class PhoneToolsService {
         customerEmail: owner?.email ?? null,
         dryRun: true,
       });
-      if (check.status === 'denied' || check.status === 'error') {
-        return fail(found.tool.customerArg && !owner?.email ? NOT_LINKED : check.error);
-      }
+      if (check.status === 'denied') return refused(check.error);
+      if (check.status === 'error') return fail(check.error);
       // Asked for twice on one call (the agent repeats a tool): one approval, not two.
       const again = call.pendingApprovals.some(
         (p) => p.toolId === found.tool.id && p.args === args,
@@ -535,7 +619,7 @@ export class PhoneToolsService {
         );
       }
       case 'denied':
-        return fail(found.tool.customerArg && !owner?.email ? NOT_LINKED : r.error);
+        return refused(r.error);
       case 'error':
         return fail(r.error);
       default:

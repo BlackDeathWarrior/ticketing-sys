@@ -28,7 +28,7 @@ export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
 export const API_KEY_SCOPE_LABELS: Record<ApiKeyScope, string> = {
   'integration:ticket': 'Create and read its own tickets and messages',
   'integration:event': 'Report incidents and recoveries',
-  'integration:customer': "Prove a customer's phone number",
+  'integration:customer': "Prove a customer's phone number and write to a customer",
   'kb:read': 'Search the knowledge base',
 };
 
@@ -390,6 +390,26 @@ export const customerNoticeSchema = z.object({
   about: z.string().trim().min(1).max(80).optional(),
 });
 export type CustomerNoticeInput = z.output<typeof customerNoticeSchema>;
+
+/**
+ * An email an app asks the desk to send to one of its customers from the support
+ * mailbox: a link to finish an account that was started on a phone call, for one.
+ * The wording is the app's own.
+ */
+export const customerEmailSchema = z.object({
+  to: z.string().trim().toLowerCase().email().max(320),
+  subject: z.string().trim().min(1).max(150),
+  text: z.string().trim().min(1).max(2000),
+  /** What it is about, in a few words, for the desk's own record ("Account link"). */
+  about: z.string().trim().min(1).max(80).optional(),
+});
+export type CustomerEmailInput = z.output<typeof customerEmailSchema>;
+
+/** Whether the email was handed to the worker. Not queued is an answer, not an error. */
+export interface CustomerEmailResult {
+  queued: boolean;
+  reason?: string;
+}
 
 /**
  * Whether the notice went out. Not sent is an answer, not an error: `reason`
