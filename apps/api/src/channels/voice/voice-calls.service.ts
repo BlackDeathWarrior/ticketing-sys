@@ -255,6 +255,33 @@ export class VoiceCallsService {
     });
   }
 
+  /**
+   * An action that needs approval, asked for on a call that has no ticket yet. Kept for the
+   * job that writes the ticket. Bookkeeping: the approval itself is audited when it is made.
+   */
+  async notePendingApproval(id: string, entry: { toolId: string; args: string }): Promise<void> {
+    await this.db
+      .update(voiceCalls)
+      .set({
+        pendingApprovals: sql`${voiceCalls.pendingApprovals} || ${JSON.stringify([entry])}::jsonb`,
+      })
+      .where(eq(voiceCalls.id, id));
+  }
+
+  async clearPendingApprovals(id: string): Promise<void> {
+    await this.db.update(voiceCalls).set({ pendingApprovals: [] }).where(eq(voiceCalls.id, id));
+  }
+
+  /** Whether this conversation is a phone call's (and not a call in the browser). */
+  async isPhoneConversation(conversationId: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: voiceCalls.id })
+      .from(voiceCalls)
+      .where(and(eq(voiceCalls.conversationId, conversationId), eq(voiceCalls.transport, 'phone')))
+      .limit(1);
+    return !!row;
+  }
+
   /** How far the transcript has been written to the ticket. A counter: not audited. */
   async importedUpTo(id: string, turns: number): Promise<void> {
     await this.db.update(voiceCalls).set({ importedTurns: turns }).where(eq(voiceCalls.id, id));

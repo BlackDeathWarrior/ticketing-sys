@@ -7,12 +7,14 @@ import {
 } from '@tms/shared';
 import { AiAutoResolveService } from '../../ai/ai-auto-resolve';
 import { AI_CTX, SYSTEM_CTX } from '../../common/request-context';
+import { CustomersService } from '../../customers/customers.service';
 import { HandoverService } from '../../handover/handover.service';
 import { ChannelConfigService } from '../../settings/channel-config.service';
 import { ToolGatewayService } from '../../tools/tool-gateway.service';
+import { ToolsService } from '../../tools/tools.service';
 import { InboundService } from '../inbound.service';
 import { OutboundService } from '../outbound.service';
-import { VoiceCallsService } from '../voice/voice-calls.service';
+import { type CallRow, VoiceCallsService } from '../voice/voice-calls.service';
 import type { PhoneAgentProvider, PhoneRecording } from './phone-provider';
 import { PhoneProviders } from './phone-providers';
 
@@ -42,6 +44,8 @@ export class PhoneCallCloser {
     private readonly handover: HandoverService,
     private readonly autoResolve: AiAutoResolveService,
     private readonly channels: ChannelConfigService,
+    private readonly tools: ToolsService,
+    private readonly customers: CustomersService,
   ) {}
 
   /**
@@ -155,12 +159,16 @@ export class PhoneCallCloser {
 
     if (ticketId && conversationId) {
       await this.gateway.linkCalls(call.toolCallIds, ticketId, conversationId);
+      const waiting = await this.askApprovals(call, ticketId, conversationId);
       if (call.handoverReason) {
         await this.handover.requestHandover(SYSTEM_CTX, ticketId, {
           reason:
             call.handoverReason.length >= 3 ? call.handoverReason : 'The caller asked for a person',
           source: 'ai',
         });
+      } else if (waiting) {
+        // Not resolved: a colleague has to decide, and the caller is rung back with the answer.
+        this.logger.log(`call ${call.id}: ${waiting} approval(s) asked for`);
       } else if (fromTicket) {
         this.logger.log(`call ${call.id}: written onto the ticket it was placed from`);
       } else if (!(await this.autoResolve.callEnded({ ticketId, conversationId }))) {
@@ -170,6 +178,46 @@ export class PhoneCallCloser {
     }
     await finish('ai');
     return 'closed';
+  }
+
+  /**
+   * Actions the caller asked for that need a colleague's approval, taken down during the
+   * call: asked for now that there is a ticket for them to belong to. Returns how many are
+   * waiting. A tool that is gone, or a request the gateway refuses, is logged and dropped.
+   */
+  private async askApprovals(
+    call: CallRow,
+    ticketId: string,
+    conversationId: string,
+  ): Promise<number> {
+    if (!call.pendingApprovals.length) return 0;
+    const owner =
+      call.direction === 'outbound'
+        ? call.customerId
+          ? await this.customers.contactOf(call.customerId)
+          : null
+        : call.callerPhone
+          ? await this.customers.provenPhoneOwner(call.callerPhone)
+          : null;
+    const tools = await this.tools.agentTools();
+    let waiting = 0;
+    for (const asked of call.pendingApprovals) {
+      const found = tools.find((t) => t.tool.id === asked.toolId);
+      if (!found) continue;
+      const r = await this.gateway.invoke(AI_CTX, {
+        tool: found.tool,
+        server: found.server,
+        args: asked.args,
+        ticketId,
+        conversationId,
+        customerEmail: owner?.email ?? null,
+      });
+      if (r.status === 'awaiting_approval') waiting++;
+      else this.logger.warn(`call ${call.id}: an approval was not asked for (${r.status})`);
+    }
+    // Cleared once asked: a later run of this job must not ask a second time.
+    await this.calls.clearPendingApprovals(call.id);
+    return waiting;
   }
 
   /** The call's audio from its provider; a failure to fetch it never costs the ticket. */

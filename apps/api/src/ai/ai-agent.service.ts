@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { Database } from '@tms/db';
 import {
   type AiBehaviour,
@@ -44,6 +44,7 @@ import { traitsOf } from '../channels/channel-traits';
 import { type AgentTool, ToolsService } from '../tools/tools.service';
 import { type Address, addressOf, titleOf } from './address';
 import { AiAutoResolveService } from './ai-auto-resolve';
+import { APPROVAL_CALL_BACK, type ApprovalCallBack } from './approval-call-back';
 import { AiRunsService } from './ai-runs.service';
 import { AiFastPathsService, type FastAnswer } from './fast-paths.service';
 import { LanguageService } from './language.service';
@@ -264,6 +265,7 @@ export class AiAgentService {
     private readonly autoResolve: AiAutoResolveService,
     private readonly fast: AiFastPathsService,
     private readonly voiceNotes: VoiceNotesService,
+    @Optional() @Inject(APPROVAL_CALL_BACK) private readonly callBack?: ApprovalCallBack,
   ) {}
 
   /** Answers the conversation's unanswered customer message(s), if the AI still owns it. */
@@ -315,6 +317,44 @@ export class AiAgentService {
       ? ((behaviour.channels as Record<string, AiChannelMode>)[conv.channel] ?? 'off')
       : 'off';
     const summaryLine = { name: tool.name, summary: `${approval.summary} → ${outcome.status}` };
+    // Asked for on a phone call: the caller has hung up, so the answer is a call back. The
+    // phone agent says the outcome and the reason; the note says whether the call was placed.
+    if (conv && conv.channel === 'voice' && decided && this.callBack) {
+      const said = approvalOutcomeMessage(conv.language ?? null, {
+        action,
+        status: outcome.status as 'done' | 'rejected',
+        reason,
+      });
+      const rung = await this.callBack.ring({
+        ticketId: approval.ticketId,
+        conversationId: conv.id,
+        said,
+      });
+      if (rung) {
+        await this.db.transaction(async (tx) => {
+          await this.tickets.addNoteInTx(
+            tx,
+            AI_CTX,
+            approval.ticketId,
+            `${followUpNote(approval.summary, outcome, reason, approval.note)}\n${
+              rung.asked
+                ? 'The customer asked for this on a phone call: the phone assistant is ringing them with the outcome.'
+                : `The customer asked for this on a phone call and could not be rung back (${rung.why}). Please tell them the outcome.`
+            }`,
+          );
+          await this.runs.record(tx, {
+            kind: 'followup',
+            ticketId: approval.ticketId,
+            conversationId: conv.id,
+            triggerMessageId: approvalId,
+            decision: 'skipped',
+            promptVersion: AGENT_PROMPT_VERSION,
+            tools: [summaryLine],
+          });
+        });
+        return 'skipped';
+      }
+    }
     // Handed over and still waiting for someone: the outcome needs no judgement, so the
     // customer is told it as it is, without taking the conversation back from the queue.
     if (conv && conv.controller === 'none' && mode === 'auto' && decided) {

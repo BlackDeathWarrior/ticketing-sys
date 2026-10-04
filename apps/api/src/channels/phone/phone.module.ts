@@ -9,18 +9,13 @@ import { ElevenLabsHookGuard } from './elevenlabs/elevenlabs-hook.guard';
 import { ElevenLabsHooksController } from './elevenlabs/elevenlabs-hooks.controller';
 import { ElevenLabsSettingsController } from './elevenlabs/elevenlabs-settings.controller';
 import { ElevenLabsSyncQueue } from './elevenlabs/elevenlabs-sync.queue';
-import { ElevenLabsClient } from './elevenlabs/elevenlabs.client';
-import { ElevenLabsProvider } from './elevenlabs/elevenlabs.provider';
 import { PhoneCallQueue } from './phone-call.queue';
 import { PhoneCallsController } from './phone-calls.controller';
 import { PhoneHookGuard } from './phone-hook.guard';
 import { PhoneHooksController } from './phone-hooks.controller';
-import { PhoneOutboundService } from './phone-outbound.service';
-import { PhoneProviders } from './phone-providers';
+import { PhoneOutboundModule } from './phone-outbound.module';
 import { PhoneQueryTranslator } from './phone-query-translator.service';
 import { PhoneToolsService } from './phone-tools.service';
-import { SarvamProvider } from './sarvam.provider';
-import { SarvamAgentsClient } from './sarvam-agents.client';
 
 /**
  * Phone calls answered by a hosted voice agent (ADR 0039, ADR 0040): the routes Sarvam's
@@ -28,7 +23,15 @@ import { SarvamAgentsClient } from './sarvam-agents.client';
  * a call (`PhoneCallWorker`, `PhoneCallCloser`) runs in the worker.
  */
 @Module({
-  imports: [ChannelsModule, ToolsModule, KbModule, CustomersModule, TicketsModule, LlmModule],
+  imports: [
+    ChannelsModule,
+    ToolsModule,
+    KbModule,
+    CustomersModule,
+    TicketsModule,
+    LlmModule,
+    PhoneOutboundModule,
+  ],
   controllers: [
     PhoneHooksController,
     PhoneCallsController,
@@ -39,13 +42,7 @@ import { SarvamAgentsClient } from './sarvam-agents.client';
     PhoneToolsService,
     PhoneHookGuard,
     ElevenLabsHookGuard,
-    ElevenLabsClient,
-    ElevenLabsProvider,
     ElevenLabsSyncQueue,
-    SarvamAgentsClient,
-    SarvamProvider,
-    PhoneProviders,
-    PhoneOutboundService,
     PhoneCallQueue,
     PhoneQueryTranslator,
   ],

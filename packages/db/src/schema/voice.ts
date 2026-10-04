@@ -74,6 +74,15 @@ export const voiceCalls = pgTable(
     handoverReason: text('handover_reason'),
     /** Phone calls: tool calls made before the ticket existed, linked to it when the call ends. */
     toolCallIds: jsonb('tool_call_ids').$type<string[]>().notNull().default([]),
+    /**
+     * Phone calls: actions the caller asked for that need a colleague's approval. An
+     * approval belongs to a ticket, and the ticket is written when the call ends, so they
+     * wait here until then.
+     */
+    pendingApprovals: jsonb('pending_approvals')
+      .$type<Array<{ toolId: string; args: string }>>()
+      .notNull()
+      .default([]),
     /** Phone calls: how many transcript turns are on the ticket, so a retry never repeats one. */
     importedTurns: integer('imported_turns').notNull().default(0),
   },
