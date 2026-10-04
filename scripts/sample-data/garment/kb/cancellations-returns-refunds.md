@@ -10,7 +10,7 @@ An order that has shipped cannot be cancelled. Wait for it to arrive and return 
 
 ## Returning an order
 
-You can return an order, or only some of its items, within 7 days of delivery. Open the order and choose "Return items", pick how many of each item to send back, and say what is wrong. The return is then reviewed, and the refund follows once it is approved. An order can be returned once, so choose everything you want to send back in the same request.
+You can return an order, or only some of its items, within 7 days of delivery. Open the order and choose "Return items", pick how many of each item to send back, and say what is wrong. Support can also do it for you on a call or in a chat. The return is accepted at once and the refund is made right away: nobody has to approve it. An order can be returned once, so choose everything you want to send back in the same request.
 
 ## Final-sale items
 

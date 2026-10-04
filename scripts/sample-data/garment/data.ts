@@ -207,7 +207,7 @@ export const kb = {
     {
       question: 'How do I return an order?',
       answer:
-        'You can return an order, or only some of its items, within 7 days of delivery: open it under "Your Orders", choose "Return items", pick how many of each item to send back and say what is wrong. The return is reviewed, and the refund follows once it is approved. An order can be returned once. Items marked "Final sale" cannot be returned.',
+        'You can return an order, or only some of its items, within 7 days of delivery: open it under "Your Orders", choose "Return items", pick how many of each item to send back and say what is wrong. Support can also do it for you on a call or in a chat. The return is accepted at once and the refund is made right away: nobody has to approve it. An order can be returned once. Items marked "Final sale" cannot be returned.',
     },
     {
       question: 'What does "Final sale" mean?',
