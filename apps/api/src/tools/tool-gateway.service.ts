@@ -57,14 +57,20 @@ const BREAKER_OPEN_SECONDS = 60;
  * Why a tool's arguments were refused, in words the caller can act on: a model that sent
  * an input the tool does not have is told which one, and which inputs there are.
  */
-export function argumentError(error: ErrorObject | undefined, schema: unknown, filledIn?: string | null): string {
+export function argumentError(
+  error: ErrorObject | undefined,
+  schema: unknown,
+  filledIn?: string | null,
+): string {
   const properties = (schema as { properties?: Record<string, unknown> } | null)?.properties;
   // Not the customer's own input: the desk fills that one in, the caller never sends it.
   const inputs = (properties ? Object.keys(properties) : []).filter((name) => name !== filledIn);
   const known = inputs.length ? ` The inputs are: ${inputs.join(', ')}.` : '';
   const field = error?.instancePath?.replace(/^\//, '').replace(/\//g, '.');
   if (error?.keyword === 'additionalProperties') {
-    const name = String((error.params as { additionalProperty?: unknown }).additionalProperty ?? '');
+    const name = String(
+      (error.params as { additionalProperty?: unknown }).additionalProperty ?? '',
+    );
     return `Invalid arguments: there is no input named "${name}".${known} Call again with only those.`;
   }
   if (error?.keyword === 'required') {
