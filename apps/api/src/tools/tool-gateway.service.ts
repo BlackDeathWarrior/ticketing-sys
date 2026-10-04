@@ -7,7 +7,7 @@ import {
   type ToolCallView,
   type ToolTier,
 } from '@tms/shared';
-import Ajv, { type ValidateFunction } from 'ajv';
+import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import Redis from 'ioredis';
@@ -53,6 +53,27 @@ const BREAKER_OPEN_SECONDS = 60;
  * row with audit and outbox. Transactional tools don't run: they create an
  * approval, and run later in the worker once a supervisor approves.
  */
+/**
+ * Why a tool's arguments were refused, in words the caller can act on: a model that sent
+ * an input the tool does not have is told which one, and which inputs there are.
+ */
+export function argumentError(error: ErrorObject | undefined, schema: unknown, filledIn?: string | null): string {
+  const properties = (schema as { properties?: Record<string, unknown> } | null)?.properties;
+  // Not the customer's own input: the desk fills that one in, the caller never sends it.
+  const inputs = (properties ? Object.keys(properties) : []).filter((name) => name !== filledIn);
+  const known = inputs.length ? ` The inputs are: ${inputs.join(', ')}.` : '';
+  const field = error?.instancePath?.replace(/^\//, '').replace(/\//g, '.');
+  if (error?.keyword === 'additionalProperties') {
+    const name = String((error.params as { additionalProperty?: unknown }).additionalProperty ?? '');
+    return `Invalid arguments: there is no input named "${name}".${known} Call again with only those.`;
+  }
+  if (error?.keyword === 'required') {
+    const name = String((error.params as { missingProperty?: unknown }).missingProperty ?? '');
+    return `Invalid arguments: the input "${name}" is missing.${known}`;
+  }
+  return `Invalid arguments: ${field ? `"${field}"` : 'input'} ${error?.message ?? ''}`.trim();
+}
+
 @Injectable()
 export class ToolGatewayService {
   private readonly logger = new Logger(ToolGatewayService.name);
@@ -93,8 +114,7 @@ export class ToolGatewayService {
     }
     const validate = this.validator(i.tool);
     if (!validate(args)) {
-      const e = validate.errors?.[0];
-      return refuse(`Invalid arguments: ${e?.instancePath || 'input'} ${e?.message ?? ''}`.trim());
+      return refuse(argumentError(validate.errors?.[0], i.tool.inputSchema, i.tool.customerArg));
     }
 
     const tier = i.tool.tier as ToolTier;
