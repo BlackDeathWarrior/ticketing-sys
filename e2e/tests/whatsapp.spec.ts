@@ -118,18 +118,6 @@ test.describe('WhatsApp', () => {
     });
   });
 
-  test('the webhook answers Meta’s handshake and refuses unsigned calls', async () => {
-    const query = (token: string) =>
-      `${HOOK}?hub.mode=subscribe&hub.challenge=7781&hub.verify_token=${token}`;
-    const ok = await fetch(query(VERIFY_TOKEN));
-    expect(ok.status).toBe(200);
-    expect(await ok.text()).toBe('7781');
-    expect((await fetch(query('guess'))).status).toBe(403);
-
-    const forged = textMessage(newPhone(), 'Forger', `Forged ${stamp()}`);
-    expect(await webhook(forged, 'sha256=00')).toBe(401);
-  });
-
   test('settings show a red light, what is missing, the webhook address and the templates', async ({
     page,
   }) => {

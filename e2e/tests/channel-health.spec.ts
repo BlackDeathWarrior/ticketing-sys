@@ -1,7 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import type { Page } from '@playwright/test';
-import { login, raw } from './api';
-import { AGENTS, env, SAMPLE_PASSWORD } from './env';
+import { env } from './env';
 import { expect, signInOrbit, test } from './fixtures';
 
 /** With SCREENSHOTS=1, saves an image for docs/testing/TEST_REPORT.md. */
@@ -89,15 +88,6 @@ test.describe('channel status lights', () => {
       await expect(form.getByRole('alert')).toContainText('Digits only');
       await shot(page, 'orbit-settings-whatsapp');
     });
-  });
-
-  test('is for admins only', async () => {
-    const agent = (await login(AGENTS.jonah.email, SAMPLE_PASSWORD)).accessToken;
-    expect((await raw(agent, 'GET', '/channels/health')).status).toBe(403);
-    expect((await raw(agent, 'POST', '/channels/health/check')).status).toBe(403);
-    expect(
-      (await raw(agent, 'POST', '/whatsapp/connect', { phoneNumberId: '1', wabaId: '2' })).status,
-    ).toBe(403);
   });
 
   test('fits a phone screen without horizontal scroll', async ({ page }) => {

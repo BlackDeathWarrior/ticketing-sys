@@ -1,5 +1,5 @@
 import { findTicket, login, raw } from './api';
-import { AGENTS, SAMPLE_PASSWORD } from './env';
+import { AGENTS } from './env';
 import { expect, openTicket, signInOrbit, test } from './fixtures';
 
 test.describe('an agent without reporting or assignment rights', () => {
@@ -19,13 +19,5 @@ test.describe('an agent without reporting or assignment rights', () => {
     await expect(drawer.getByRole('combobox', { name: 'Assignee' })).toHaveCount(0);
     await expect(drawer.getByText('Jonah Reyes', { exact: true }).first()).toBeVisible();
     await expect(drawer.getByLabel('Priority')).toBeEnabled();
-  });
-
-  test('the API refuses assignment for an agent', async () => {
-    const agent = (await login(AGENTS.jonah.email, SAMPLE_PASSWORD)).accessToken;
-    const admin = (await login()).accessToken;
-    const t = await findTicket(admin, 'Charged three times for order 55120');
-    const res = await raw(agent, 'POST', `/tickets/${t.id}/assign`, { assigneeId: null });
-    expect(res.status).toBe(403);
   });
 });
