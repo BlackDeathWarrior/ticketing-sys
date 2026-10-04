@@ -421,3 +421,16 @@ export interface CustomerNoticeResult {
   via: 'whatsapp' | null;
   reason?: string;
 }
+
+/**
+ * An app asks for one of its customers to be rung by the phone agent ("Call me"). The
+ * customer must have proven a phone number. `about` is said to them when they answer.
+ */
+export const callRequestSchema = z.object({
+  about: z.string().trim().max(300).optional(),
+});
+export type CallRequestInput = z.output<typeof callRequestSchema>;
+
+/** Why a call was not asked for, beside the reasons a call can be refused for anyone. */
+export const CALL_REQUEST_REFUSALS = ['not_proven', 'too_soon', 'daily_limit'] as const;
+export type CallRequestRefusal = (typeof CALL_REQUEST_REFUSALS)[number];

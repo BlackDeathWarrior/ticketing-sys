@@ -1,6 +1,8 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  type CallRequestInput,
+  callRequestSchema,
   type CheckPhoneVerificationInput,
   type CustomerEmailInput,
   type CustomerEmailResult,
@@ -20,6 +22,7 @@ import {
 } from '../common/request-context';
 import { ZodBody } from '../common/zod-openapi';
 import { ZodPipe } from '../common/zod.pipe';
+import { CallRequestService } from './call-request.service';
 import { CustomerEmailService } from './customer-email.service';
 import { CustomerNoticeService } from './customer-notice.service';
 import { PhoneVerificationService } from './phone-verification.service';
@@ -105,5 +108,27 @@ export class IntegrationCustomerEmailsController {
     @Body(new ZodPipe(customerEmailSchema)) body: CustomerEmailInput,
   ): Promise<CustomerEmailResult> {
     return this.emails.send(key, body);
+  }
+}
+
+/** "Call me": the app asks for its customer to be rung by the phone agent (ADR 0040). */
+@ApiTags('integration API')
+@ApiBearerAuth('apiKey')
+@ApiKeyAuth()
+@RequirePermission('integration:customer')
+@Controller('integration/customers/:externalId/call-requests')
+export class IntegrationCallRequestsController {
+  constructor(private readonly calls: CallRequestService) {}
+
+  @Post()
+  @HttpCode(202)
+  @ApiOperation({ summary: 'Ask for a customer to be rung on their confirmed number' })
+  @ZodBody(callRequestSchema)
+  request(
+    @ApiKey() key: ApiKeyContext,
+    @Param('externalId') externalId: string,
+    @Body(new ZodPipe(callRequestSchema)) body: CallRequestInput,
+  ): Promise<{ requested: true }> {
+    return this.calls.request(key, externalId.slice(0, 200), body);
   }
 }

@@ -15,11 +15,13 @@ import { AI_CTX } from '../../common/request-context';
 import { CustomersService } from '../../customers/customers.service';
 import { KbSearchService } from '../../kb/kb-search.service';
 import { BrandingService } from '../../settings/branding.service';
+import { CustomerMail } from '../../settings/customer-mail.service';
 import { ChannelConfigService } from '../../settings/channel-config.service';
 import { ToolGatewayService } from '../../tools/tool-gateway.service';
 import { type AgentTool, modelSchema, ToolsService } from '../../tools/tools.service';
 import { type CallRow, VoiceCallsService } from '../voice/voice-calls.service';
 import { WhatsAppLinkSender } from '../whatsapp/whatsapp-link.sender';
+import { PhoneEmailLink } from './phone-email-link.service';
 import { PhoneQueryTranslator } from './phone-query-translator.service';
 
 /** Sarvam waits 30 seconds for a tool at most; we answer before that with something to say. */
@@ -27,7 +29,7 @@ const TOOL_DEADLINE_MS = 25_000;
 const KB_HITS = 3;
 
 const NOT_LINKED =
-  "This caller's number is not linked to a shop account. They can add and confirm it under their account on the shop site, then call again.";
+  'This caller’s number is not linked to an account, so this cannot be done yet. Tell them their email address and this phone number have to be linked first, and offer to do it now: ask for the email address of their account, have it spelled out, and use verify_email with it. A code is emailed to them; they read it to you and you give it to confirm_email_code. If they have no account, offer to start one if you have a tool for it. Until then you can help with products and general questions.';
 const NEEDS_COLLEAGUE =
   'That needs a colleague. Offer the caller a call back and use request_person.';
 const APPROVAL_NEEDED =
@@ -51,11 +53,15 @@ const FROM_SYSTEM = `Answer from the shop's system. If a list in it is empty or 
 const FROM_ARTICLES = `From the shop's help articles. Answer only from this text. ${NEVER_INVENT}\n`;
 const LINK_SENT =
   'The link in this answer was sent just now to the caller’s WhatsApp, on the number they are calling from. Tell them to open WhatsApp for it. Do not read the link out.\n';
+const LINK_EMAILED =
+  'The link in this answer was sent just now to the caller’s email address. Tell them to look in their email for it. Do not read the link out.\n';
 const LINK_NOT_SENT =
   'The link in this answer could NOT be sent to the caller. Never say a link or message was sent. Tell them to open the shop’s website, sign in and go there themselves.\n';
 const LINK_REPEAT_MS = 10 * 60_000;
 const CONFIRMATION_SENT =
   'A written confirmation of this was sent just now to the caller’s WhatsApp. Tell them so.\n';
+const CONFIRMATION_EMAILED =
+  'A written confirmation of this was sent just now to the caller’s email address. Tell them so.\n';
 const CONFIRMATION_NOT_SENT =
   'No written confirmation could be sent to the caller. Do not say that one was sent.\n';
 const CONFIRMATION_MAX = 600;
@@ -70,7 +76,7 @@ const SEND_WHATSAPP_MAX = 1_000;
 export const SEND_WHATSAPP_ENTRY: PhoneToolEntry = {
   name: SEND_WHATSAPP,
   description:
-    'Sends a written message to the caller’s WhatsApp, on the number they are calling from. Use it when the caller asks to get details in writing (an order, a payment, a return, a product). Look the details up with a tool first. Write "message" in the caller’s language, in plain sentences, with only what a tool answered on this call.',
+    'Sends a written message to the caller: to their WhatsApp, on the number they are calling from, or to their email address when WhatsApp cannot reach them. Use it when the caller asks to get details in writing (an order, a payment, a return, a product). Look the details up with a tool first. Write "message" in the caller’s language, in plain sentences, with only what a tool answered on this call.',
   parameters: {
     type: 'object',
     properties: {
@@ -83,10 +89,47 @@ export const SEND_WHATSAPP_ENTRY: PhoneToolEntry = {
     additionalProperties: false,
   },
 };
+export const VERIFY_EMAIL = 'verify_email';
+export const CONFIRM_EMAIL_CODE = 'confirm_email_code';
+/** The desk's own tools a phone agent gets beside the company's, in the order they are listed. */
+export const OWN_PHONE_TOOLS: PhoneToolEntry[] = [
+  SEND_WHATSAPP_ENTRY,
+  {
+    name: VERIFY_EMAIL,
+    description:
+      'Starts linking the caller’s phone number to their email address, so that their orders, cart and payments can be looked up on this and later calls. Use it when a tool answers that the caller’s number is not linked. Ask for the email address of their account and have it spelled out. It emails them a six-digit code; then use confirm_email_code.',
+    parameters: {
+      type: 'object',
+      properties: {
+        email: {
+          type: 'string',
+          description: 'The caller’s email address, in lower case, for example asha@example.com.',
+        },
+      },
+      required: ['email'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: CONFIRM_EMAIL_CODE,
+    description:
+      'Finishes linking the caller’s phone number to their email address: give the six-digit code the caller read out from the email that verify_email sent.',
+    parameters: {
+      type: 'object',
+      properties: {
+        code: { type: 'string', description: 'The six digits, for example 482913.' },
+      },
+      required: ['code'],
+      additionalProperties: false,
+    },
+  },
+];
 const MESSAGE_SENT =
   'The message was sent just now to the caller’s WhatsApp, on the number they are calling from. Tell them to open WhatsApp for it.';
+const MESSAGE_EMAILED =
+  'The message was sent just now to the caller’s email address. Tell them to look in their email for it.';
 const MESSAGE_NOT_SENT =
-  'The message could NOT be sent to the caller’s WhatsApp. Never say it was sent. WhatsApp only lets the shop write to someone who messaged the shop in the last 24 hours: tell the caller to send the shop any message on WhatsApp and ask again, or to look under their account on the shop’s website.';
+  'The message could NOT be sent, on WhatsApp or by email. Never say it was sent. Tell the caller to look under their account on the shop’s website.';
 /**
  * On two calls after the tool existed, the agent still told the caller it could not send
  * anything to WhatsApp: it had not taken the tool in from its list. So every answer from the
@@ -94,9 +137,9 @@ const MESSAGE_NOT_SENT =
  */
 const CAN_SEND: Record<PhoneProviderId, string> = {
   sarvam:
-    'You CAN send this to the caller’s WhatsApp. If they ask for it in writing or on WhatsApp, never say you cannot: call desk_tool with name "send_whatsapp" and arguments {"message":"<the details, in the caller’s language>"}.\n',
+    'You CAN send this to the caller in writing (WhatsApp, or email). If they ask for it in writing or on WhatsApp, never say you cannot: call desk_tool with name "send_whatsapp" and arguments {"message":"<the details, in the caller’s language>"}.\n',
   elevenlabs:
-    'You CAN send this to the caller’s WhatsApp. If they ask for it in writing or on WhatsApp, never say you cannot: use the tool send_whatsapp with the details as "message", in the caller’s language.\n',
+    'You CAN send this to the caller in writing (WhatsApp, or email). If they ask for it in writing or on WhatsApp, never say you cannot: use the tool send_whatsapp with the details as "message", in the caller’s language.\n',
 };
 const LOOK_UP_FIRST =
   'Nothing has been looked up on this call yet. Use a tool to get the details first, then send them.';
@@ -225,14 +268,16 @@ export class PhoneToolsService {
     private readonly channels: ChannelConfigService,
     private readonly translator: PhoneQueryTranslator,
     private readonly links: WhatsAppLinkSender,
+    private readonly mail: CustomerMail,
+    private readonly emailLink: PhoneEmailLink,
   ) {}
 
   /** Links sent on calls in progress, so the same one is not sent twice: key → when. */
-  private readonly linksSent = new Map<string, number>();
+  private readonly linksSent = new Map<string, { at: number; by: 'whatsapp' | 'email' }>();
 
   /**
    * Every enabled tool, read now, so one added in Settings is there on the
-   * next call. The desk's own send_whatsapp comes first.
+   * next call. The desk's own tools come first.
    */
   async catalogue(): Promise<PhoneToolEntry[]> {
     const company = (await this.offered()).map((t) => {
@@ -245,7 +290,7 @@ export class PhoneToolsService {
       };
     });
     // First, so it is read even where a long list is cut short.
-    return [SEND_WHATSAPP_ENTRY, ...company];
+    return [...OWN_PHONE_TOOLS, ...company];
   }
 
   /**
@@ -275,7 +320,66 @@ export class PhoneToolsService {
       about: 'Details the caller asked for in writing',
       callId: call.id,
     });
-    return outcome.sent ? ok(MESSAGE_SENT) : fail(MESSAGE_NOT_SENT);
+    if (outcome.sent) return ok(MESSAGE_SENT);
+    const emailed = await this.email({
+      to: owner.email,
+      subject: `From your call with ${companyName}`,
+      text: message,
+      about: 'Details the caller asked for in writing',
+      callId: call.id,
+    });
+    return emailed ? ok(MESSAGE_EMAILED) : fail(MESSAGE_NOT_SENT);
+  }
+
+  /**
+   * The same thing by email, for a caller WhatsApp cannot reach (no message from them in
+   * the last 24 hours, or no WhatsApp at the desk). Only ever to the address on the file
+   * of the customer this number is proven to belong to.
+   */
+  private async email(i: {
+    to: string | null | undefined;
+    subject: string;
+    text: string;
+    about: string;
+    callId: string | null;
+  }): Promise<boolean> {
+    if (!i.to || !i.callId) return false;
+    return this.mail
+      .queue(AI_CTX, {
+        to: i.to,
+        subject: i.subject,
+        text: i.text,
+        about: i.about,
+        target: { type: 'voice_call', id: i.callId },
+      })
+      .catch((err: Error) => {
+        this.logger.warn(`an email to a caller was not queued: ${err.message}`);
+        return false;
+      });
+  }
+
+  /** The desk's own tools that link a caller's number to an email address. */
+  private async linkTool(
+    name: string,
+    call: CallRow | null,
+    body: PhoneToolInput,
+  ): Promise<PhoneToolReply> {
+    let args: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(body.arguments?.trim() || '{}') as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        args = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Not JSON: answered by the tool like a missing input.
+    }
+    const phone =
+      call?.direction === 'outbound' ? call.callerPhone : (body.phone ?? call?.callerPhone ?? null);
+    const answer =
+      name === VERIFY_EMAIL
+        ? await this.emailLink.start(call, phone, args.email)
+        : await this.emailLink.confirm(call, phone, args.code);
+    return answer.ok ? ok(answer.text) : fail(answer.text);
   }
 
   /** The call begins: who is calling, and what the agent can use. */
@@ -339,6 +443,7 @@ export class PhoneToolsService {
       const body = { ...input, phone: await this.caller(input.phone, provider) };
       const call = await this.open(body.interactionId, body.phone, provider);
       if (key === SEND_WHATSAPP) return this.sendWhatsapp(call, body);
+      if (key === VERIFY_EMAIL || key === CONFIRM_EMAIL_CODE) return this.linkTool(key, call, body);
       const found = (await this.tools.agentTools()).find((t) => t.tool.id === key);
       if (!found) {
         return fail('That tool is not available any more. Tell the caller you cannot do that now.');
@@ -406,18 +511,22 @@ export class PhoneToolsService {
   private async confirm(i: {
     text: string;
     phone: string | null;
+    email: string | null;
     callId: string | null;
     about: string;
   }): Promise<string> {
     if (!i.phone) return CONFIRMATION_NOT_SENT;
     const outcome = await this.links.sendNotice({ ...i, phone: i.phone });
-    return outcome.sent ? CONFIRMATION_SENT : CONFIRMATION_NOT_SENT;
+    if (outcome.sent) return CONFIRMATION_SENT;
+    const emailed = await this.email({ to: i.email, subject: i.about, text: i.text, ...i });
+    return emailed ? CONFIRMATION_EMAILED : CONFIRMATION_NOT_SENT;
   }
 
   /** What the agent is told about a link in a tool's answer: sent to WhatsApp, or not. */
   private async shareLink(i: {
     link: string;
     phone: string | null;
+    email: string | null;
     callId: string | null;
     about: string;
   }): Promise<string> {
@@ -427,12 +536,26 @@ export class PhoneToolsService {
     // Asked for twice on one call (the agent retries, the caller asks again): sent once.
     const key = `${i.callId ?? i.phone}:${i.link}`;
     const now = Date.now();
-    for (const [k, at] of this.linksSent) if (now - at > LINK_REPEAT_MS) this.linksSent.delete(k);
-    if (this.linksSent.has(key)) return LINK_SENT;
+    for (const [k, sent] of this.linksSent) {
+      if (now - sent.at > LINK_REPEAT_MS) this.linksSent.delete(k);
+    }
+    const before = this.linksSent.get(key);
+    if (before) return before.by === 'email' ? LINK_EMAILED : LINK_SENT;
     const outcome = await this.links.send({ ...i, phone: i.phone, templateName });
-    if (!outcome.sent) return LINK_NOT_SENT;
-    this.linksSent.set(key, now);
-    return LINK_SENT;
+    if (outcome.sent) {
+      this.linksSent.set(key, { at: now, by: 'whatsapp' });
+      return LINK_SENT;
+    }
+    const emailed = await this.email({
+      to: i.email,
+      subject: i.about,
+      text: `${i.about}, as you asked on your call with us:\n${i.link}`,
+      about: i.about,
+      callId: i.callId,
+    });
+    if (!emailed) return LINK_NOT_SENT;
+    this.linksSent.set(key, { at: now, by: 'email' });
+    return LINK_EMAILED;
   }
 
   /**
@@ -520,6 +643,7 @@ export class PhoneToolsService {
   private async runDeskTool(call: CallRow | null, body: PhoneToolInput): Promise<PhoneToolReply> {
     const name = body.name ?? '';
     if (name === SEND_WHATSAPP) return this.sendWhatsapp(call, body);
+    if (name === VERIFY_EMAIL || name === CONFIRM_EMAIL_CODE) return this.linkTool(name, call, body);
     const all = await this.tools.agentTools();
     const byBareName = all.filter((t) => t.tool.name === name);
     const found =
@@ -593,6 +717,7 @@ export class PhoneToolsService {
           ? await this.shareLink({
               link,
               phone: owner && phone ? phone : null,
+              email: owner?.email ?? null,
               callId: call?.id ?? null,
               about: found.tool.title ?? found.tool.name,
             })
@@ -602,6 +727,7 @@ export class PhoneToolsService {
           ? await this.confirm({
               text: confirmation,
               phone: owner && phone ? phone : null,
+              email: owner?.email ?? null,
               callId: call?.id ?? null,
               about: found.tool.title ?? found.tool.name,
             })

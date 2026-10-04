@@ -7,9 +7,11 @@ import { TicketsModule } from '../tickets/tickets.module';
 import { WorkflowModule } from '../workflow/workflow.module';
 import { IncidentsService } from './incidents.service';
 import { IntegrationApiController } from './integration-api.controller';
+import { CallRequestService } from './call-request.service';
 import { CustomerEmailService } from './customer-email.service';
 import { CustomerNoticeService } from './customer-notice.service';
 import {
+  IntegrationCallRequestsController,
   IntegrationCustomerEmailsController,
   IntegrationCustomerNoticesController,
   IntegrationCustomersController,
@@ -32,6 +34,7 @@ import { PhoneVerificationService } from './phone-verification.service';
     IntegrationCustomersController,
     IntegrationCustomerNoticesController,
     IntegrationCustomerEmailsController,
+    IntegrationCallRequestsController,
     IntegrationEventsController,
     TicketIncidentsController,
   ],
@@ -41,6 +44,7 @@ import { PhoneVerificationService } from './phone-verification.service';
     PhoneVerificationService,
     CustomerNoticeService,
     CustomerEmailService,
+    CallRequestService,
   ],
   exports: [IntegrationTicketsService, IncidentsService, PhoneVerificationService],
 })

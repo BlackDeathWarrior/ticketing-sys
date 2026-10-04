@@ -12,7 +12,7 @@ import { ChannelConfigService } from '../../../settings/channel-config.service';
 import { SecretsService } from '../../../settings/secrets.service';
 import { ToolsService } from '../../../tools/tools.service';
 import { PHONE_AGENT_INSTRUCTION_VERSION, phoneAgentInstruction } from '../phone-agent-instruction';
-import { SEND_WHATSAPP_ENTRY } from '../phone-tools.service';
+import { OWN_PHONE_TOOLS } from '../phone-tools.service';
 import { ELEVENLABS_SYNC_KEY, syncStateSchema } from './elevenlabs-sync-state';
 import { ElevenLabsClient, ElevenLabsError } from './elevenlabs.client';
 
@@ -65,7 +65,7 @@ const OWN_TOOLS: PhoneToolEntry[] = [
       required: ['reason'],
     },
   },
-  SEND_WHATSAPP_ENTRY,
+  ...OWN_PHONE_TOOLS,
 ];
 
 /** ElevenLabs no longer has what a stored id points at (deleted there, or another workspace's key). */

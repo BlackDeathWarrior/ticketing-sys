@@ -110,7 +110,7 @@ export class ElevenLabsHooksController {
     );
   }
 
-  /** The desk's own phone tools: `search_knowledge`, `request_person`, `send_whatsapp`. */
+  /** The desk's own phone tools: `search_knowledge`, `request_person`, `send_whatsapp`, `verify_email`, `confirm_email_code`. */
   @Post('tools/:name')
   @HttpCode(200)
   @UseGuards(ElevenLabsHookGuard)

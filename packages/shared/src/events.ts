@@ -15,8 +15,10 @@ export const DOMAIN_EVENT_TYPES = [
   'customer.merged',
   /** A verification code was sent to a customer's WhatsApp. The payload never holds the code. */
   'customer.phone_verification_sent',
-  /** An app asked for an email to one of its customers; the worker sends it. */
+  /** An app, or the desk on a phone call, has an email for a customer; the worker sends it. */
   'customer.email_requested',
+  /** A caller asked to link their number to an email address; the worker emails the code. Never the code. */
+  'customer.email_code_requested',
   'user.created',
   'user.updated',
   'conversation.created',

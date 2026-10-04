@@ -8,6 +8,7 @@ import { CustomerExperienceService } from './customer-experience.service';
 import { PriorityRulesService } from './priority-rules.service';
 import { SecretsService } from './secrets.service';
 import { PriorityRulesController, SettingsController } from './settings.controller';
+import { CustomerMail } from './customer-mail.service';
 import { SystemMailer } from './system-mailer.service';
 
 /** Secrets, typed app settings and channel configuration; used by the API and the worker. */
@@ -24,6 +25,7 @@ import { SystemMailer } from './system-mailer.service';
     CustomerExperienceService,
     BrandingService,
     SystemMailer,
+    CustomerMail,
   ],
   exports: [
     PriorityRulesService,
@@ -35,6 +37,7 @@ import { SystemMailer } from './system-mailer.service';
     CustomerExperienceService,
     BrandingService,
     SystemMailer,
+    CustomerMail,
   ],
 })
 export class SettingsModule {}

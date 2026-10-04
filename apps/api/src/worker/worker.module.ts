@@ -19,6 +19,7 @@ import { WhatsAppSender } from '../delivery/whatsapp.sender';
 import { ChannelHealthMonitor } from '../channels/health/channel-health.monitor';
 import { PhoneCallCloser } from '../channels/phone/phone-call-closer.service';
 import { PhoneCallQueue, PhoneCallWorker } from '../channels/phone/phone-call.queue';
+import { PhoneEmailCodeHandler } from '../channels/phone/phone-email-link.service';
 import { PhoneOutboundHandler } from '../channels/phone/phone-outbound.handler';
 import { PhoneOutboundModule } from '../channels/phone/phone-outbound.module';
 import { ElevenLabsAgentSync } from '../channels/phone/elevenlabs/elevenlabs-agent-sync.service';
@@ -39,6 +40,7 @@ import { loggerModule } from '../logging';
 import { emitterProvider } from '../realtime/emitter.provider';
 import { RealtimeFanoutHandler } from '../realtime/realtime-fanout.handler';
 import { SettingsChangedHandler } from '../settings/settings-changed.handler';
+import { CustomerEmailHandler } from '../settings/customer-mail.service';
 import { SettingsModule } from '../settings/settings.module';
 import { StorageModule } from '../storage/storage.module';
 import { SystemModule } from '../system/system.module';
@@ -48,7 +50,6 @@ import { HandoverHandler, RoutingHandler } from '../handover/handover.handler';
 import { HandoverModule } from '../handover/handover.module';
 import { NotificationMailer, NotificationsHandler } from '../notifications/notifications.handler';
 import { NotificationsModule } from '../notifications/notifications.module';
-import { CustomerEmailHandler } from '../integration-api/customer-email.service';
 import { PortalMailHandler, PortalModule } from '../portal/portal.module';
 import { RoutingModule } from '../routing/routing.module';
 import { SlaModule } from '../sla/sla.module';
@@ -147,6 +148,7 @@ const env = loadEnv();
     WebhookDeliveryWorker,
     WebhookDispatchHandler,
     CustomerEmailHandler,
+    PhoneEmailCodeHandler,
     {
       provide: DOMAIN_EVENT_HANDLERS,
       inject: [
@@ -166,6 +168,7 @@ const env = loadEnv();
         CsatHandler,
         PortalMailHandler,
         CustomerEmailHandler,
+        PhoneEmailCodeHandler,
         LearningHandler,
         WebhookDispatchHandler,
         ElevenLabsSyncHandler,
