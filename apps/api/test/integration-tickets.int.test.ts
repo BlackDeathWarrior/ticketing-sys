@@ -121,7 +121,7 @@ beforeAll(async () => {
   category = uniq('Listings ');
   const made = await t.call('POST', '/categories', { token: admin, body: { name: category } });
   expect(made.status).toBe(201);
-  shop = await connect('Ethnic Threads');
+  shop = await connect('Acme Store');
   other = await connect('Another app');
   worker = await startWorker();
 });
@@ -165,7 +165,7 @@ describe('raising a ticket', () => {
       channel: 'api',
       externalRef: listing.id,
       metadata: listing,
-      integration: { id: shop.id, slug: shop.slug, name: 'Ethnic Threads' },
+      integration: { id: shop.id, slug: shop.slug, name: 'Acme Store' },
     });
     const [conversation] = await staffConversations(ticket.id);
     expect(conversation).toMatchObject({ channel: 'api', controller: 'none' });

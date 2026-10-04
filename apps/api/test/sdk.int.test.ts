@@ -52,7 +52,7 @@ beforeAll(async () => {
   // What an admin does once in Settings → Integrations.
   const made = await t.call('POST', '/integrations', {
     token: admin,
-    body: { slug: uniq('sdk-'), name: 'Ethnic Threads' },
+    body: { slug: uniq('sdk-'), name: 'Acme Store' },
   });
   integration = made.body;
   const key = await t.call('POST', `/integrations/${integration.id}/keys`, {
@@ -94,7 +94,7 @@ describe('the SDK against the API', () => {
 
   it('knows who it is', async () => {
     expect(await tms.whoAmI()).toMatchObject({
-      integration: { slug: integration.slug, name: 'Ethnic Threads' },
+      integration: { slug: integration.slug, name: 'Acme Store' },
       key: { name: 'Backend', scopes: ['integration:ticket', 'integration:event'] },
     });
   });

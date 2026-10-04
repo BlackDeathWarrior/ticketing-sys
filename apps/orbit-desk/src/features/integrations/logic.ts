@@ -10,7 +10,7 @@ import {
 } from '@tms/shared';
 import { relativeFromIso } from '../settings/logic';
 
-/** A slug suggested from the name: "Ethnic Threads (web)" → "ethnic-threads-web". */
+/** A slug suggested from the name: "Acme Store (web)" → "acme-store-web". */
 export function slugFromName(name: string): string {
   return name
     .toLowerCase()

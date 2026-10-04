@@ -11,7 +11,7 @@ interface Report {
 test.describe('incidents an app reports', () => {
   test('repeated failures share one ticket, which closes itself on recovery', async ({ page }) => {
     const admin = (await login()).accessToken;
-    const name = `Ethnic Threads ${stamp()}`;
+    const name = `Acme Store ${stamp()}`;
     const integration = await call<{ id: string }>(admin, 'POST', '/integrations', {
       slug: `worker-${stamp()}`,
       name,

@@ -19,7 +19,7 @@ Someone who writes to a company's WhatsApp line is known only by the number Meta
 
 ## Consequences
 
-- The shop's key needs `integration:customer`; the demo loader gives it to the web key. SDK, Python client and the integration guide have the two calls.
+- The app's key needs the scope `integration:customer`. SDK, Python client and the integration guide have the two calls.
 - Orbit Desk's WhatsApp settings say whether codes will go out as a template or only reach numbers that wrote in the last 24 hours.
 - A customer who proves a second number loses the first as proven. Keeping several would need a different rule for which one the AI trusts.
 - A holder that has two WhatsApp numbers keeps its WhatsApp user ids when it loses one of them, so messages from that WhatsApp account keep resolving to the old holder and get no tools. This needs a number change inside one WhatsApp account and is left as it is.

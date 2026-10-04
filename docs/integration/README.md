@@ -19,7 +19,7 @@ Each part works without the others. Most apps start with tickets and add the res
 
 An administrator does this once, in Orbit Desk under **Settings → Integrations**.
 
-1. **Add integration.** Give it a name and an identifier (for example `ethnic-threads`). The identifier cannot be changed later.
+1. **Add integration.** Give it a name and an identifier (for example `acme-store`). The identifier cannot be changed later.
 2. **Create key.** Choose what the key may do:
 
    | Scope                  | Allows                                                     |
@@ -49,7 +49,7 @@ curl https://support.example.com/api/v1/integration \
 
 ```json
 {
-  "integration": { "slug": "ethnic-threads", "name": "Ethnic Threads" },
+  "integration": { "slug": "acme-store", "name": "Acme Store" },
   "key": {
     "name": "Storefront backend",
     "prefix": "tms_sk_Q4Eg4PB9",

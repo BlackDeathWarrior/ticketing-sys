@@ -260,7 +260,7 @@ describe("web chat on an integration's site (ADR 0026)", () => {
     (await t.call('GET', `/tickets/${reference}`, { token: admin })).body;
 
   it('makes the chat one of the integration’s own tickets, with what the page showed', async () => {
-    const shop = await site('Ethnic Threads');
+    const shop = await site('Acme Store');
     const other = await site('Another shop');
     const { chat } = await startChat({
       integration: shop.slug,
@@ -317,7 +317,7 @@ describe("web chat on an integration's site (ADR 0026)", () => {
   });
 
   it('knows a signed-in visitor as the customer the integration names through its API', async () => {
-    const shop = await site('Ethnic Threads');
+    const shop = await site('Acme Store');
     const shopper = uniq('shopper-');
     const raised = await t.call('POST', '/integration/tickets', {
       token: shop.key,
@@ -343,7 +343,7 @@ describe("web chat on an integration's site (ADR 0026)", () => {
   });
 
   it('ignores an identity signed with anything but this integration’s secret', async () => {
-    const shop = await site('Ethnic Threads');
+    const shop = await site('Acme Store');
     const other = await site('Another shop');
     const shopper = uniq('shopper-');
     for (const secret of [other.identitySecret, IDENTITY_SECRET]) {
@@ -366,7 +366,7 @@ describe("web chat on an integration's site (ADR 0026)", () => {
   });
 
   it('refuses a widget that names an unknown or switched-off integration', async () => {
-    const shop = await site('Ethnic Threads');
+    const shop = await site('Acme Store');
     await t.call('PATCH', `/integrations/${shop.id}`, { token: admin, body: { isActive: false } });
     for (const integration of ['no-such-site', shop.slug]) {
       const chat = connect('/chat', { integration });
@@ -377,7 +377,7 @@ describe("web chat on an integration's site (ADR 0026)", () => {
   });
 
   it('shows the identity secret once, to administrators', async () => {
-    const shop = await site('Ethnic Threads');
+    const shop = await site('Acme Store');
     expect(shop.identitySecret).toMatch(/^chid_[A-Za-z0-9_-]{43}$/);
     const listed = await t.call('GET', '/integrations', { token: admin });
     const mine = listed.body.find((i: { id: string }) => i.id === shop.id);

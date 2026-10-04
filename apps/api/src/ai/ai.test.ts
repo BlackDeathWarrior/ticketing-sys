@@ -260,10 +260,10 @@ describe('prompts and parsing', () => {
 
     const branded = agentSystemPrompt({
       ...input,
-      company: { companyName: 'Ethnic\nThreads', supportName: 'Ethnic Threads Care' },
+      company: { companyName: 'Acme\nStore', supportName: 'Acme Store Care' },
     });
-    expect(branded).toContain('support assistant for Ethnic Threads.');
-    expect(branded).toContain('end with "Kind regards, Ethnic Threads Care"');
+    expect(branded).toContain('support assistant for Acme Store.');
+    expect(branded).toContain('end with "Kind regards, Acme Store Care"');
     // Tools are described without assuming a shop.
     expect(branded).toContain('like orders__order_status');
     expect(branded).not.toMatch(/demo_store|payments and account/);

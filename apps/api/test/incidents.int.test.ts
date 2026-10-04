@@ -97,7 +97,7 @@ beforeAll(async () => {
   t = await startApp();
   admin = await t.adminToken();
   agent = await makeUser(t, admin, 'agent');
-  worker = await connect('Ethnic Threads');
+  worker = await connect('Acme Store');
   other = await connect('Another app');
 });
 
@@ -130,8 +130,8 @@ describe('reporting a problem', () => {
       tags: ['incident'],
       externalRef: fp,
       handling: 'none',
-      integration: { name: 'Ethnic Threads' },
-      customer: { displayName: 'Ethnic Threads (automatic reports)' },
+      integration: { name: 'Acme Store' },
+      customer: { displayName: 'Acme Store (automatic reports)' },
       metadata: {
         kind: 'incident',
         severity: 'error',
@@ -249,9 +249,9 @@ describe('recovering', () => {
 
     const ticket = await staffTicket(first.body.incident!.ticket!);
     expect(ticket.status).toBe('resolved');
-    expect(ticket.resolution).toBe('Ethnic Threads reported that this has recovered (2 reports).');
+    expect(ticket.resolution).toBe('Acme Store reported that this has recovered (2 reports).');
     expect((await notes(ticket.id)).at(-1)!.body).toBe(
-      'Ethnic Threads reported that this has recovered (2 reports).\nScrape finished with 412 products.',
+      'Acme Store reported that this has recovered (2 reports).\nScrape finished with 412 products.',
     );
 
     // A recovery for something that is not open changes nothing.
@@ -274,7 +274,7 @@ describe('recovering', () => {
     const after = await staffTicket(ticket.reference);
     expect(after.status).not.toBe('resolved');
     expect((await notes(ticket.id)).at(-1)!.body).toBe(
-      'Ethnic Threads reported that this has recovered (1 report).',
+      'Acme Store reported that this has recovered (1 report).',
     );
   });
 

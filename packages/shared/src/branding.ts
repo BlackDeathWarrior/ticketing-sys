@@ -34,7 +34,7 @@ export const brandingSchema = z.object({
 export type Branding = z.output<typeof brandingSchema>;
 export const DEFAULT_BRANDING: Branding = brandingSchema.parse({});
 
-/** Up to two letters for the mark next to the name: "Ethnic Threads" → "ET". */
+/** Up to two letters for the mark next to the name: "Acme Store" → "AS". */
 export function brandInitials(companyName: string): string {
   const words = companyName.split(/\s+/).filter(Boolean);
   const letters = words.length > 1 ? words.slice(0, 2).map((w) => w[0]) : [companyName.slice(0, 2)];

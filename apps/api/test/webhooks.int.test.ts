@@ -152,7 +152,7 @@ beforeAll(async () => {
   agent = await makeUser(t, admin, 'agent', { name: 'Maya Lindqvist' });
   supervisor = await makeUser(t, admin, 'supervisor');
   await t.call('PUT', '/settings/ai', { token: admin, body: { channels: { api: 'off' } } });
-  shop = await connect('Ethnic Threads');
+  shop = await connect('Acme Store');
   other = await connect('Another app');
   worker = await startWorker();
 });

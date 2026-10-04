@@ -6,5 +6,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["*.ts", "garment/*.ts"]
+  "include": ["*.ts"]
 }

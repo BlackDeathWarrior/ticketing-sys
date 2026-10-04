@@ -18,15 +18,15 @@ import {
 
 describe('integration slugs', () => {
   it('suggests a slug from the name', () => {
-    expect(slugFromName('Ethnic Threads (web)')).toBe('ethnic-threads-web');
+    expect(slugFromName('Acme Store (web)')).toBe('acme-store-web');
     expect(slugFromName('  3rd-party CRM  ')).toBe('rd-party-crm');
     expect(slugFromName('A'.repeat(60))).toHaveLength(40);
     expect(slugFromName('!!!')).toBe('');
   });
 
   it('accepts what the API accepts', () => {
-    expect(isValidSlug('ethnic-threads')).toBe(true);
-    expect(isValidSlug(slugFromName('Ethnic Threads (web)'))).toBe(true);
+    expect(isValidSlug('acme-store')).toBe(true);
+    expect(isValidSlug(slugFromName('Acme Store (web)'))).toBe(true);
     expect(isValidSlug('a')).toBe(false);
     expect(isValidSlug('9lives')).toBe(false);
     expect(isValidSlug('Has Space')).toBe(false);
@@ -164,13 +164,13 @@ describe('webhooks', () => {
 
 describe('the chat widget snippet', () => {
   it('loads the script from the helpdesk and names the integration', () => {
-    const snippet = widgetSnippet('https://help.example.com', 'ethnic-threads');
+    const snippet = widgetSnippet('https://help.example.com', 'acme-store');
     expect(snippet.split('\n').slice(0, 5)).toEqual([
       '<script src="https://help.example.com/widget/tms-chat.js"></script>',
       '<script>',
       '  TMSChat.init({',
       "    server: 'https://help.example.com',",
-      "    integration: 'ethnic-threads',",
+      "    integration: 'acme-store',",
     ]);
     expect(snippet.endsWith('</script>')).toBe(true);
   });

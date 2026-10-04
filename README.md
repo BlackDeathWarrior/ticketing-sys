@@ -203,10 +203,6 @@ TMS plugs into an existing app through four things, each usable alone. The guide
 - **Clients:** `packages/sdk` for Node and `docs/integration/examples/python/tms_support.py` for Python (standard library only). Both are tested against `docs/integration/signature-vectors.json`.
 - **Branding:** Settings → Customers names the company the help center and the AI speak for.
 
-### A working example: Ethnic Threads
-
-`scripts/demo/garment-demo.ps1` runs TMS as the support desk of an outside app, [garment-web-scraper](https://github.com/BlackDeathWarrior/garment-web-scraper), cloned next to this repository on its `feat/shop` branch. The app is a small demonstration shop: accounts, a cart, checkout, orders you can track, cancellations, returns and refunds (it simulates its own business: no money is taken and nothing is shipped). Its support runs on TMS through the public integration API: shoppers ask for help with an order and chat from the shop, the AI looks up and cancels the signed-in shopper's own orders, a refund waits for a supervisor, the shop reports failing payments and carrier delays as incidents, and it hears back by webhook. The stack is its own compose project (`infra/docker-compose.garment.yml`: Orbit Desk on :8091, API on :3200), so it runs beside the default one. The walk-through is [`docs/runbooks/phase-14b-shop-demo.md`](docs/runbooks/phase-14b-shop-demo.md); the reasons are in ADR 0027 and ADR 0028. The earlier version of the demo, where the app was a storefront over a scraped catalogue, is on the branch `feat/phase-14-garment-demo` ([`docs/runbooks/phase-14-garment-demo.md`](docs/runbooks/phase-14-garment-demo.md)).
-
 ## Knowledge base
 
 Orbit Desk → **Knowledge base** (`#/kb`) searches approved documents with citations, the same search the AI agent uses.
