@@ -22,6 +22,7 @@ import { type AgentTool, modelSchema, ToolsService } from '../../tools/tools.ser
 import { type CallRow, VoiceCallsService } from '../voice/voice-calls.service';
 import { WhatsAppLinkSender } from '../whatsapp/whatsapp-link.sender';
 import { PhoneEmailLink } from './phone-email-link.service';
+import { outboundGreeting } from './phone-provider';
 import { PhoneQueryTranslator } from './phone-query-translator.service';
 
 /** Sarvam waits 30 seconds for a tool at most; we answer before that with something to say. */
@@ -397,9 +398,14 @@ export class PhoneToolsService {
     const company = (await this.branding.get()).companyName;
     return {
       customer_name: name,
-      greeting: name
-        ? `Hello ${name}, thanks for calling ${company}.`
-        : `Hello, thanks for calling ${company}.`,
+      // The start hook also runs on a call the desk placed: answering "thanks for calling"
+      // there replaced the greeting the call was placed with.
+      greeting:
+        call?.direction === 'outbound'
+          ? outboundGreeting(name, company)
+          : name
+            ? `Hello ${name}, thanks for calling ${company}.`
+            : `Hello, thanks for calling ${company}.`,
       known: !!owner,
       company,
       desk_tools: JSON.stringify(await this.catalogue()),

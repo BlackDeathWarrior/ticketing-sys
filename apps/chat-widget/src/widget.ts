@@ -176,7 +176,7 @@ header button { background: none; border: 0; color: var(--tms-on-primary); font-
 .msg.agent, .msg.ai, .msg.system { align-self: flex-start; background: #f3f4f6; }
 .msg small { display: block; font-size: 11px; opacity: .75; margin-bottom: 2px; }
 .msg.failed { background: #b91c1c; }
-.cards { align-self: stretch; display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 6px; scroll-snap-type: x proximity; }
+.cards { align-self: stretch; flex: 0 0 auto; display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 6px; scroll-snap-type: x proximity; }
 .card { flex: 0 0 170px; scroll-snap-align: start; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; background: #fff; display: flex; flex-direction: column; }
 .card img { width: 100%; height: 150px; object-fit: cover; background: #f3f4f6; display: block; }
 .card b { display: block; padding: 6px 8px 0; font-size: 13px; line-height: 1.25; }

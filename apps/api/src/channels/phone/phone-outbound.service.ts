@@ -15,6 +15,7 @@ import { ChannelConfigService } from '../../settings/channel-config.service';
 import { TicketsService } from '../../tickets/tickets.service';
 import { type CallRow, VoiceCallsService } from '../voice/voice-calls.service';
 import { withinCallingHours } from './calling-hours';
+import { outboundGreeting } from './phone-provider';
 import { PhoneProviders } from './phone-providers';
 
 const OUTCOME_WORDS: Record<Exclude<PhoneCallOutcome, 'connected'>, string> = {
@@ -99,9 +100,7 @@ export class PhoneOutboundService {
           about: call.about ?? '',
           ticket_reference: reference,
           direction: 'outbound',
-          greeting: name
-            ? `Hello ${name}, this is the assistant of ${companyName} calling.`
-            : `Hello, this is the assistant of ${companyName} calling.`,
+          greeting: outboundGreeting(name, companyName),
         },
       });
       if (!(await this.calls.placedAs(call.id, ids))) {
