@@ -227,7 +227,7 @@ export class PhoneToolsService {
    * gets a real answer and leaves no record.
    */
   private async open(interactionId: string | null, phone: string | null): Promise<CallRow | null> {
-    if (interactionId) return this.calls.beginPhone({ interactionId, phone });
+    if (interactionId) return this.calls.beginPhone({ provider: 'sarvam', interactionId, phone });
     // A tool that cannot name its call (a code tool at Sarvam has the caller's number but
     // not always the call's id) still belongs to the call that number is on.
     return phone ? this.calls.activeForCaller(phone) : null;

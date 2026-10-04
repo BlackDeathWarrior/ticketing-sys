@@ -69,7 +69,7 @@ export class PhoneCallCloser {
     }
     // No hook reached us during the call (the agent used no tool): the record starts here.
     // The trigger's number is never stored on it: only token-protected hooks set that.
-    const call = known ?? (await this.calls.beginPhone({ interactionId, phone: null }));
+    const call = known ?? (await this.calls.beginPhone({ provider: 'sarvam', interactionId, phone: null }));
     const seconds =
       hint.seconds ??
       transcript.seconds ??
