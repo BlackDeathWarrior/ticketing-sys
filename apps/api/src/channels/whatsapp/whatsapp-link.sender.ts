@@ -1,22 +1,29 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Database } from '@tms/db';
 import { AuditService } from '../../audit/audit.service';
+import { waWindow } from '@tms/shared';
 import { AI_CTX } from '../../common/request-context';
+import { ConversationsService } from '../../conversations/conversations.service';
 import { DB } from '../../infra/tokens';
+import { BrandingService } from '../../settings/branding.service';
 import { ChannelConfigService } from '../../settings/channel-config.service';
-import { sendTemplateMessage } from './meta-api';
+import { sendTemplateMessage, sendTextMessage } from './meta-api';
 import { explainMetaError } from './meta-errors';
 import { WhatsAppTemplatesService } from './whatsapp-templates.service';
 
 export type LinkSendOutcome =
-  | { sent: true }
+  /** `as`: a plain message inside the 24-hour window, or a template outside it. */
+  | { sent: true; as: 'text' | 'template' }
   /** `reason` is for the log and the audit entry, in plain words. */
   | { sent: false; reason: string };
 
 /**
- * Sends a link to a number over the desk's WhatsApp connection, with an
- * approved template whose body has one variable, the link. For a caller on a
- * phone call, who cannot be read a web address (ADR 0039). Like the
+ * Sends a link to a number over the desk's WhatsApp connection. For a caller
+ * on a phone call, who cannot be read a web address (ADR 0039). As a plain
+ * message when that number wrote to us on WhatsApp in the last 24 hours (the
+ * only time WhatsApp allows one, and the only way on an account that may not
+ * start conversations); otherwise with an approved template whose body has
+ * one variable, the link, when one is named in the settings. Like the
  * verification code, it is sent inside the request on purpose: the phone
  * agent has to tell the caller, truthfully and at once, whether it went out.
  * It never throws: a link that could not be sent is an outcome, not an error.
@@ -30,12 +37,15 @@ export class WhatsAppLinkSender {
     private readonly audit: AuditService,
     private readonly channelConfig: ChannelConfigService,
     private readonly templates: WhatsAppTemplatesService,
+    private readonly conversations: ConversationsService,
+    private readonly branding: BrandingService,
   ) {}
 
   /** `phone`: digits with the country code. `about`: what the link is, for the audit entry. */
   async send(i: {
     phone: string;
-    templateName: string;
+    /** The template for a number whose 24-hour window is closed; null when none is set. */
+    templateName: string | null;
     link: string;
     about: string;
     callId: string | null;
@@ -51,8 +61,8 @@ export class WhatsAppLinkSender {
           targetId: i.callId,
           data: {
             about: i.about,
-            template: i.templateName,
-            ...(outcome.sent ? {} : { reason: outcome.reason }),
+            ...(outcome.sent ? { as: outcome.as } : { reason: outcome.reason }),
+            ...(i.templateName ? { template: i.templateName } : {}),
           },
         }),
       )
@@ -62,12 +72,43 @@ export class WhatsAppLinkSender {
 
   private async trySend(i: {
     phone: string;
-    templateName: string;
+    templateName: string | null;
     link: string;
+    about: string;
   }): Promise<LinkSendOutcome> {
     const config = await this.channelConfig.whatsapp();
     if (!config?.enabled || !config.accessToken) {
       return { sent: false, reason: 'WhatsApp is not connected' };
+    }
+    const credentials = {
+      graph: config.graph,
+      accessToken: config.accessToken,
+      phoneNumberId: config.phoneNumberId,
+    };
+
+    // They wrote to us within the last 24 hours: a plain message is allowed and needs no template.
+    const lastInboundAt = await this.conversations.lastWhatsappInboundAt(i.phone);
+    if (waWindow(lastInboundAt).open) {
+      const { companyName } = await this.branding.get();
+      try {
+        await sendTextMessage({
+          ...credentials,
+          to: i.phone,
+          text: `From your call with ${companyName} (${i.about}):
+${i.link}`,
+        });
+        return { sent: true, as: 'text' };
+      } catch (err) {
+        return { sent: false, reason: explainMetaError(err).summary };
+      }
+    }
+    if (!i.templateName) {
+      return {
+        sent: false,
+        reason: lastInboundAt
+          ? 'their last WhatsApp message is more than 24 hours old and no link template is set'
+          : 'this number has not written on WhatsApp and no link template is set',
+      };
     }
     const template = await this.templates.approvedByName(i.templateName);
     if (!template) {
@@ -91,15 +132,13 @@ export class WhatsAppLinkSender {
     }
     try {
       await sendTemplateMessage({
-        graph: config.graph,
-        accessToken: config.accessToken,
-        phoneNumberId: config.phoneNumberId,
+        ...credentials,
         to: i.phone,
         templateName: template.name,
         language: template.language,
         components,
       });
-      return { sent: true };
+      return { sent: true, as: 'template' };
     } catch (err) {
       return { sent: false, reason: explainMetaError(err).summary };
     }
