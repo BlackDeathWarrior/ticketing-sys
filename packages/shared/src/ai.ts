@@ -291,6 +291,26 @@ export function guessLanguage(text: string): string | null {
   return /[a-z]/i.test(text) ? 'en' : null;
 }
 
+/** Words that mark Latin-script text as English: the commonest ones, and the ones a shop's customers use. */
+const ENGLISH_WORDS = new Set(
+  'a about after again all also am an and any are as at back be because been before but buy by call can cancel cannot card cart change charge charged check code cost could customer damaged day days deliver delivered delivery details did do does done email exchange for from get give got had has have hello help her hi him his how i if in is it item items its just know late like link list me method methods money more my need new no not now number of on one only or order ordered orders other our out paid pay payment payments phone please price problem product products receive received refund refunds return returned returns say send sent she shipped shipping shop should show size so some status still stock support tell than thank thanks that the their them then there these they this to today track tracking two up us use want wanted was we what when where which who why will with would wrong yes yet you your'.split(
+    ' ',
+  ),
+);
+
+/**
+ * Whether Latin-script text is plainly English: at least half of its words are common
+ * English ones. "payment methods" is; "mera order kahan hai" is not. A language
+ * detector made for Indian languages takes short English for one of them written in
+ * Latin letters, so plain English is settled here and never sent to it.
+ */
+export function readsAsEnglish(text: string): boolean {
+  const words = text.toLowerCase().match(/[a-z']+/g) ?? [];
+  if (!words.length) return false;
+  const known = words.filter((word) => ENGLISH_WORDS.has(word.replace(/'s$|'$/g, ''))).length;
+  return known * 2 >= words.length;
+}
+
 /**
  * How long a ticket on `channel` may stay silent after the AI's last answer
  * before it is resolved, in milliseconds. 0 = never.
