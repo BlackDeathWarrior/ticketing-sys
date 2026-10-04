@@ -21,7 +21,12 @@ const PROVIDER = 'elevenlabs';
 const TOOL_TIMEOUT_SECONDS = 30;
 const MAX_CALL_SECONDS = 600;
 const SILENCE_HANG_UP_SECONDS = 45;
-/** ElevenLabs' English-only speech models cannot speak anything else. */
+/**
+ * ElevenLabs' rule, as its API put it on the first real set-up: "English Agents must use
+ * turbo or flash v2". An agent that starts in another language needs the v2.5 model; for
+ * the further languages of an English agent ElevenLabs switches to v2.5 by itself.
+ */
+const ENGLISH_TTS = 'eleven_flash_v2';
 const MULTILINGUAL_TTS = 'eleven_flash_v2_5';
 
 const EMPTY: ElevenlabsSyncState = syncStateSchema.parse({});
@@ -337,7 +342,7 @@ export class ElevenLabsAgentSync {
     toolIds: string[],
   ) {
     const { companyName } = await this.branding.get();
-    const multilingual = config.language !== 'en' || config.moreLanguages.length > 0;
+    const english = config.language === 'en' || config.language.startsWith('en-');
     return {
       name: `${companyName} phone assistant (Orbit Desk, instruction v${PHONE_AGENT_INSTRUCTION_VERSION})`,
       conversation_config: {
@@ -363,7 +368,7 @@ export class ElevenLabsAgentSync {
             },
           },
         },
-        tts: { voice_id: config.voiceId, ...(multilingual ? { model_id: MULTILINGUAL_TTS } : {}) },
+        tts: { voice_id: config.voiceId, model_id: english ? ENGLISH_TTS : MULTILINGUAL_TTS },
         turn: { silence_end_call_timeout: SILENCE_HANG_UP_SECONDS },
         conversation: { max_duration_seconds: MAX_CALL_SECONDS },
         language_presets: Object.fromEntries(
