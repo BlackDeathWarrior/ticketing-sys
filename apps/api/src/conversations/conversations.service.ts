@@ -720,6 +720,8 @@ const visibleToCustomer = or(
 );
 
 export function toChatView(m: Message, authorName?: string | null): ChatMessageView {
+  // Cards come from an outside app: only valid ones are shown.
+  const cards = messageCardSchema.array().safeParse(m.metadata.cards);
   return {
     id: m.id,
     body: m.body,
@@ -732,5 +734,6 @@ export function toChatView(m: Message, authorName?: string | null): ChatMessageV
           ? 'AI assistant'
           : null,
     createdAt: m.createdAt.toISOString(),
+    ...(cards.success && cards.data.length ? { cards: cards.data } : {}),
   };
 }

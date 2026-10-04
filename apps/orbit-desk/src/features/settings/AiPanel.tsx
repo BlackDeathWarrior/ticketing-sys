@@ -5,6 +5,7 @@ import {
   type AiChannel,
   type AiChannelMode,
   type SimulateAiResult,
+  DEFAULT_QUIET_MINUTES,
 } from '@tms/shared';
 import { type FormEvent, useEffect, useState } from 'react';
 import { api } from '../../api/client';
@@ -182,7 +183,11 @@ export function AiPanel() {
                   min={0}
                   max={43200}
                   label={`Quiet time: ${CHANNEL_LABELS[ch]} (minutes)`}
-                  placeholder={`${form.autoResolveHours * 60} (the general setting)`}
+                  placeholder={
+                    DEFAULT_QUIET_MINUTES[ch] !== undefined
+                      ? `${DEFAULT_QUIET_MINUTES[ch]} (the default for this channel)`
+                      : `${form.autoResolveHours * 60} (the general setting)`
+                  }
                   value={form.closing.quietMinutes[ch] ?? ''}
                   onChange={(e) => {
                     const quietMinutes = { ...form.closing.quietMinutes };
@@ -190,7 +195,7 @@ export function AiPanel() {
                     else quietMinutes[ch] = Number(e.target.value);
                     setForm({ ...form, closing: { ...form.closing, quietMinutes } });
                   }}
-                  hint="Empty: the general setting below. 0: never."
+                  hint="Empty: the default shown. 0: never."
                 />
               ))}
             </div>
@@ -206,7 +211,7 @@ export function AiPanel() {
                   })
                 }
                 options={[
-                  { value: 'yes', label: 'Yes, in web chat and in-app requests' },
+                  { value: 'yes', label: 'Yes, on the channel they wrote on' },
                   { value: 'no', label: 'No' },
                 ]}
               />
@@ -226,6 +231,17 @@ export function AiPanel() {
                 hint="Until then a reply from the customer reopens it. After, a reply opens a new ticket."
               />
             </div>
+            <Input
+              id="ai-closing-message"
+              label="Closing message"
+              maxLength={500}
+              value={form.closing.message}
+              onChange={(e) =>
+                setForm({ ...form, closing: { ...form.closing, message: e.target.value } })
+              }
+              placeholder="I have not heard back from you, so I am closing this request for now. If you still need help, just write here again and it will reopen."
+              hint="Sent in web chat, on WhatsApp, by email and in in-app requests when a request is closed for silence. Empty: the built-in message, in the customer's language."
+            />
             <Input
               id="ai-auto-resolve"
               label="General quiet time: resolve the ticket when the customer has not replied for (hours; 0 = never)"

@@ -108,6 +108,16 @@ interface ChatMessage {
   authorType: 'customer' | 'agent' | 'ai' | 'system';
   authorName?: string | null;
   createdAt: string;
+  cards?: ChatCard[];
+}
+
+/** An item shown under a message: a picture, a title, a line of text and its buttons. */
+interface ChatCard {
+  id: string;
+  title: string;
+  text?: string;
+  imageUrl: string;
+  url?: string;
 }
 
 /** Shown when the visitor's ticket is solved; the token goes back with their answer. */
@@ -166,6 +176,14 @@ header button { background: none; border: 0; color: var(--tms-on-primary); font-
 .msg.agent, .msg.ai, .msg.system { align-self: flex-start; background: #f3f4f6; }
 .msg small { display: block; font-size: 11px; opacity: .75; margin-bottom: 2px; }
 .msg.failed { background: #b91c1c; }
+.cards { align-self: stretch; display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 6px; scroll-snap-type: x proximity; }
+.card { flex: 0 0 170px; scroll-snap-align: start; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; background: #fff; display: flex; flex-direction: column; }
+.card img { width: 100%; height: 150px; object-fit: cover; background: #f3f4f6; display: block; }
+.card b { display: block; padding: 6px 8px 0; font-size: 13px; line-height: 1.25; }
+.card span { display: block; padding: 2px 8px 6px; font-size: 12px; color: #4b5563; flex: 1; }
+.card button, .card a { display: block; width: 100%; box-sizing: border-box; padding: 7px 8px; border: 0; border-top: 1px solid #e5e7eb; background: #fff; color: var(--tms-primary); font: inherit; font-size: 13px; font-weight: 600; text-align: center; text-decoration: none; cursor: pointer; }
+.card button:hover, .card a:hover { background: #f9fafb; }
+.card button:focus-visible, .card a:focus-visible { outline: 2px solid var(--tms-primary); outline-offset: -2px; }
 .msg.typing { display: flex; gap: 4px; align-items: center; padding: 12px 12px; }
 .msg.typing i { width: 6px; height: 6px; border-radius: 50%; background: #6b7280; animation: tms-typing 1.2s infinite ease-in-out; }
 .msg.typing i:nth-child(2) { animation-delay: .15s; }
@@ -487,11 +505,65 @@ export function init(options: ChatOptions = {}): ChatHandle {
     if (pending) el.style.opacity = '0.6';
     // The dots stay the last thing in the conversation.
     log.insertBefore(el, typing);
+    if (m.cards?.length) log.insertBefore(cardRow(m.id, m.cards), typing);
     log.scrollTop = log.scrollHeight;
     return el;
   }
 
-  async function send(body: string) {
+  /**
+   * The items under a message, side by side, each with the two buttons a card has on
+   * WhatsApp. Everything in a card comes from an outside app: it is set as text, never as
+   * HTML, and only an https address becomes a picture or a link.
+   */
+  function cardRow(messageId: string, cards: ChatCard[]): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'cards';
+    row.setAttribute('role', 'list');
+    const secure = (v: string | undefined) => (v && /^https:\/\//i.test(v) ? v : null);
+    for (const card of cards.slice(0, 10)) {
+      const item = document.createElement('div');
+      item.className = 'card';
+      item.setAttribute('role', 'listitem');
+      const picture = secure(card.imageUrl);
+      if (picture) {
+        const img = document.createElement('img');
+        img.src = picture;
+        img.alt = card.title;
+        img.loading = 'lazy';
+        img.referrerPolicy = 'no-referrer';
+        item.appendChild(img);
+      }
+      const title = document.createElement('b');
+      title.textContent = card.title;
+      item.appendChild(title);
+      const line = document.createElement('span');
+      line.textContent = card.text ?? '';
+      item.appendChild(line);
+      const like = document.createElement('button');
+      like.type = 'button';
+      like.textContent = 'I like this';
+      like.addEventListener('click', () => {
+        void send(`I like this: ${card.title}`, { messageId, id: card.id, kind: 'like' });
+      });
+      item.appendChild(like);
+      const link = secure(card.url);
+      if (link) {
+        const view = document.createElement('a');
+        view.href = link;
+        view.target = '_blank';
+        view.rel = 'noopener noreferrer';
+        view.textContent = 'View product';
+        item.appendChild(view);
+      }
+      row.appendChild(item);
+    }
+    return row;
+  }
+
+  async function send(
+    body: string,
+    card?: { messageId: string; id: string; kind: 'like' | 'view' },
+  ) {
     const clientMessageId = crypto.randomUUID();
     const bubble = render(
       {
@@ -505,7 +577,11 @@ export function init(options: ChatOptions = {}): ChatHandle {
     try {
       const res = (await socket!
         .timeout(10_000)
-        .emitWithAck('message', { text: body, clientMessageId })) as Ack<{
+        .emitWithAck('message', {
+          text: body,
+          clientMessageId,
+          ...(card ? { card } : {}),
+        })) as Ack<{
         message: ChatMessage;
         ticket?: { reference: string; created: boolean };
         assistantReplying?: boolean;
