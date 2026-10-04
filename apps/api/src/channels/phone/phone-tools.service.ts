@@ -158,7 +158,10 @@ function inputNames(args: string | undefined): string {
  * them alone was not enough on that call: the agent added an input of its own.
  */
 function inputsOf(tool: AgentTool): string {
-  const schema = modelSchema(tool.tool.inputSchema as Record<string, unknown>, tool.tool.customerArg);
+  const schema = modelSchema(
+    tool.tool.inputSchema as Record<string, unknown>,
+    tool.tool.customerArg,
+  );
   const required = new Set((schema.required as string[] | undefined) ?? []);
   const inputs = Object.entries(schema.properties as Record<string, { type?: unknown }>).map(
     ([name, p]) =>
@@ -192,9 +195,7 @@ function fitted(tool: AgentTool, args: string): { args: string; dropped: string[
   const dropped = Object.keys(parsed).filter((k) => !(k in known));
   if (!dropped.length) return { args, dropped };
   return {
-    args: JSON.stringify(
-      Object.fromEntries(Object.entries(parsed).filter(([k]) => k in known)),
-    ),
+    args: JSON.stringify(Object.fromEntries(Object.entries(parsed).filter(([k]) => k in known))),
     dropped,
   };
 }
