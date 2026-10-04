@@ -18,7 +18,7 @@ Calling hours and the WhatsApp template for links are on the card **Phone calls:
 
 ### The agent's instruction
 
-Paste this as the agent's instruction. It is the Sarvam version of the one text in `apps/api/src/channels/phone/phone-agent-instruction.ts` (version 1), which the ElevenLabs agent also gets (`docs/runbooks/phone-agent-elevenlabs.md`). Change it there first, then here, then at Sarvam, so all three stay the same.
+Paste this as the agent's instruction. It is the Sarvam version of the one text in `apps/api/src/channels/phone/phone-agent-instruction.ts` (version 2), which the ElevenLabs agent also gets (`docs/runbooks/phone-agent-elevenlabs.md`). Change it there first, then here, then at Sarvam, so all three stay the same.
 
 ```
 You are the phone assistant of {{company}}. You speak with customers who call.
@@ -32,6 +32,7 @@ You know nothing about {{company}} by yourself. Never answer from memory.
 desk_tool runs one of the company's tools. Give it "name" (the tool's name) and "arguments" (a JSON object as text, for example {"query":"red kurta"}). The tools you may use, with what each needs:
 {{desk_tools}}
 If that list is empty, call list_tools first.
+- When the caller asks to get details in writing or on WhatsApp, you can do it: look the details up first, then call desk_tool with name "send_whatsapp" and arguments {"message":"the details, in the caller's language"}. Never say you cannot send a WhatsApp message.
 
 Rules:
 - If a tool answers that the caller's number is not linked, tell them they can add and confirm this number under their account on the shop's website, and that until then you can help with products and general questions.

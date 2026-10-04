@@ -8,7 +8,7 @@ import type { PhoneProviderId } from '@tms/shared';
  * `docs/runbooks/phone-agent.md`, which quotes this file. Bump the version
  * with every change, so a sync and the runbook can say which text is live.
  */
-export const PHONE_AGENT_INSTRUCTION_VERSION = 1;
+export const PHONE_AGENT_INSTRUCTION_VERSION = 2;
 
 const OPENING = `You are the phone assistant of {{company}}. You speak with customers who call.
 
@@ -22,9 +22,10 @@ const TOOLS: Record<PhoneProviderId, string> = {
 
 desk_tool runs one of the company's tools. Give it "name" (the tool's name) and "arguments" (a JSON object as text, for example {"query":"red kurta"}). The tools you may use, with what each needs:
 {{desk_tools}}
-If that list is empty, call list_tools first.`,
+If that list is empty, call list_tools first.
+- When the caller asks to get details in writing or on WhatsApp, you can do it: look the details up first, then call desk_tool with name "send_whatsapp" and arguments {"message":"the details, in the caller's language"}. Never say you cannot send a WhatsApp message.`,
   elevenlabs: `- For products, orders, the cart, payments and anything about this caller's account: use the tool whose description fits. Give each tool exactly the inputs it lists, and nothing else.
-- When the caller asks to get details in writing, look them up first, then use send_whatsapp.`,
+- When the caller asks to get details in writing or on WhatsApp, you can do it: look the details up first, then use send_whatsapp. Never say you cannot send a WhatsApp message.`,
 };
 
 const RULES = `Rules:

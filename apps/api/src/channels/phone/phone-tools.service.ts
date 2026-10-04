@@ -85,6 +85,17 @@ const MESSAGE_SENT =
   'The message was sent just now to the caller’s WhatsApp, on the number they are calling from. Tell them to open WhatsApp for it.';
 const MESSAGE_NOT_SENT =
   'The message could NOT be sent to the caller’s WhatsApp. Never say it was sent. WhatsApp only lets the shop write to someone who messaged the shop in the last 24 hours: tell the caller to send the shop any message on WhatsApp and ask again, or to look under their account on the shop’s website.';
+/**
+ * On two calls after the tool existed, the agent still told the caller it could not send
+ * anything to WhatsApp: it had not taken the tool in from its list. So every answer from the
+ * shop's system now says, where the agent is reading it, that it can be sent and how.
+ */
+const CAN_SEND: Record<PhoneProviderId, string> = {
+  sarvam:
+    'You CAN send this to the caller’s WhatsApp. If they ask for it in writing or on WhatsApp, never say you cannot: call desk_tool with name "send_whatsapp" and arguments {"message":"<the details, in the caller’s language>"}.\n',
+  elevenlabs:
+    'You CAN send this to the caller’s WhatsApp. If they ask for it in writing or on WhatsApp, never say you cannot: use the tool send_whatsapp with the details as "message", in the caller’s language.\n',
+};
 const LOOK_UP_FIRST =
   'Nothing has been looked up on this call yet. Use a tool to get the details first, then send them.';
 
@@ -151,7 +162,8 @@ export class PhoneToolsService {
         parameters: (fn.parameters ?? {}) as Record<string, unknown>,
       };
     });
-    return [...company, SEND_WHATSAPP_ENTRY];
+    // First, so it is read even where a long list is cut short.
+    return [SEND_WHATSAPP_ENTRY, ...company];
   }
 
   /**
@@ -436,8 +448,12 @@ export class PhoneToolsService {
               about: found.tool.title ?? found.tool.name,
             })
           : '';
+        // Only a caller with a proven number can be written to.
+        const canSend =
+          owner && phone ? CAN_SEND[(call?.provider as PhoneProviderId | null) ?? 'sarvam'] : '';
         return ok(
           FROM_SYSTEM +
+            canSend +
             note +
             confirmed +
             (typeof r.result === 'string' ? r.result : JSON.stringify(r.result ?? {})),
