@@ -19,6 +19,7 @@ import {
   StatusLight,
   Textarea,
 } from '../../components/ui';
+import { cx } from '../../lib/format';
 import { useSession } from '../../lib/session';
 import { useGet } from '../../lib/useGet';
 import { WhatsAppConnect } from '../whatsapp/WhatsAppConnect';
@@ -234,7 +235,7 @@ function PhoneAddresses() {
       </p>
       {rows.map(([label, url]) => (
         <p key={label} className={styles.note}>
-          {label}: <span className={styles.mono}>{url}</span>
+          {label}: <span className={cx(styles.mono, styles.address)}>{url}</span>
         </p>
       ))}
     </div>

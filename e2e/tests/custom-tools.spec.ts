@@ -113,17 +113,17 @@ test.describe('custom tools', () => {
 
     await openTools(page);
     const creators = page.getByRole('region', { name: 'Who can create custom tools' });
-    await expect(creators.getByLabel('Administrator')).toBeChecked();
-    await expect(creators.getByLabel('Administrator')).toBeDisabled();
+    await expect(creators.getByLabel('Super admin')).toBeChecked();
+    await expect(creators.getByLabel('Super admin')).toBeDisabled();
     await expect(creators.getByLabel('Team lead')).not.toBeChecked();
     await creators.getByLabel('Team lead').check();
     await expect(creators.getByLabel('Team lead')).toBeChecked();
     await shot(page, 'orbit-tool-creators');
 
-    // The team lead now sees Settings, with the custom tools and nothing else.
+    // The team lead's Settings now has the custom tools, beside what everyone has.
     const lead = await browser.newPage();
     const card = await openTools(lead, AGENTS.maya.email, SAMPLE_PASSWORD);
-    await expect(lead.getByRole('tab')).toHaveCount(1);
+    await expect(lead.getByRole('tab')).toHaveText(['My settings', 'Teams', 'Tools & MCP']);
     await expect(lead.getByRole('region', { name: 'Add an MCP server' })).toHaveCount(0);
     await expect(lead.getByRole('region', { name: 'Who can create custom tools' })).toHaveCount(0);
 
