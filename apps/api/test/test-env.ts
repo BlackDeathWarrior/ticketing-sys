@@ -36,6 +36,8 @@ export function applyTestEnv() {
     RETENTION_SWEEP_HOURS: '0',
     // Tests change a cap or switch a model off and expect the very next call to see it.
     LLM_SNAPSHOT_MS: '0',
+    // No test sends a burst of messages; each waits for one turn and should not wait for the pause before it.
+    AI_SETTLE_MS: '0',
     // Tests call public routes far faster than a person would; security.int.test.ts turns limits on.
     RATE_LIMITS: 'off',
     TOOL_PRIVATE_HOSTS: new URL(FAKE_MCP_URL).hostname,
