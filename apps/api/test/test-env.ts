@@ -34,6 +34,8 @@ export function applyTestEnv() {
     CHANNEL_CHECK_SECONDS: '0',
     AI_AUTO_RESOLVE_SWEEP_SECONDS: '0',
     RETENTION_SWEEP_HOURS: '0',
+    // Tests change a cap or switch a model off and expect the very next call to see it.
+    LLM_SNAPSHOT_MS: '0',
     // Tests call public routes far faster than a person would; security.int.test.ts turns limits on.
     RATE_LIMITS: 'off',
     TOOL_PRIVATE_HOSTS: new URL(FAKE_MCP_URL).hostname,

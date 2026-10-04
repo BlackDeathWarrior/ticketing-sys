@@ -584,7 +584,7 @@ describe('WhatsApp channel', () => {
     const ticket = await waitFor(async () => (await ticketsFor(marker))[0], 'user-id ticket');
     const [conv] = await conversations(ticket.id);
     expect(conv!.metadata).toMatchObject({ waUserId: BSUID, waUsername: 'realsheena' });
-    expect(conv!.metadata.waPhone).toBeUndefined();
+    expect(conv!.metadata.waPhone ?? null).toBeNull();
 
     const reply = await t.call('POST', `/conversations/${conv!.id}/messages`, {
       token: agent.token,

@@ -26,7 +26,8 @@ import { asc, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../audit/outbox.service';
 import type { RequestCtx } from '../common/request-context';
-import { DB } from '../infra/tokens';
+import type { Env } from '../config/env';
+import { DB, ENV } from '../infra/tokens';
 import { LiteLlmAdminClient, type LiteLlmModelInfo } from './litellm-admin.client';
 import {
   costPerMTok,
@@ -46,8 +47,6 @@ export const modelIdFromAlias = (alias: string | null | undefined) =>
   alias?.startsWith('tms-') ? alias.slice(4) : null;
 
 const DEFAULT_ROLE: RoleConfig = { mode: 'cheapest', modelIds: [] };
-/** How old the routing snapshot a model call uses may be. */
-const SNAPSHOT_TTL_MS = 3_000;
 
 /**
  * Providers, models and roles (ADR 0008). Keys go to LiteLLM and are never
@@ -60,6 +59,7 @@ export class LlmSettingsService {
 
   constructor(
     @Inject(DB) private readonly db: Database,
+    @Inject(ENV) private readonly env: Env,
     private readonly litellm: LiteLlmAdminClient,
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
@@ -407,14 +407,14 @@ export class LlmSettingsService {
   // ---- Routing inputs and usage ----
 
   /**
-   * The routing snapshot, at most a few seconds old. Every model call needs
+   * The routing snapshot, at most a few seconds old (`LLM_SNAPSHOT_MS`). Every model call needs
    * it twice (to choose a model, then to price the call) and each read is
    * four queries; a turn makes several calls. Settings pages read the fresh
    * one, so a change shows at once; a call picks it up within seconds.
    */
   async recentSnapshot(): Promise<Awaited<ReturnType<LlmSettingsService['routingSnapshot']>>> {
     const now = Date.now();
-    if (!this.recent || now - this.recent.at > SNAPSHOT_TTL_MS) {
+    if (!this.recent || now - this.recent.at >= this.env.LLM_SNAPSHOT_MS) {
       this.recent = { at: now, value: this.routingSnapshot() };
       // A failed read is not kept.
       this.recent.value.catch(() => (this.recent = undefined));

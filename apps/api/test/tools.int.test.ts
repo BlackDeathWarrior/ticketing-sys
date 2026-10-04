@@ -333,12 +333,16 @@ describe('approvals', () => {
     // Agents can't approve; supervisors can.
     const denied = await t.call('POST', `/approvals/${r.approvalId}/decide`, {
       token: agent,
-      body: { decision: 'approve' },
+      body: { decision: 'approve', reason: 'The second charge is confirmed.' },
     });
     expect(denied.status).toBe(403);
     const ok = await t.call('POST', `/approvals/${r.approvalId}/decide`, {
       token: supervisor,
-      body: { decision: 'approve', note: 'Duplicate charge confirmed' },
+      body: {
+        decision: 'approve',
+        reason: 'The second charge is confirmed.',
+        note: 'Duplicate charge confirmed',
+      },
     });
     expect(ok.status).toBe(200);
     expect(ok.body).toMatchObject({ status: 'approved', decidedBy: { name: 'Tools supervisor' } });
@@ -355,7 +359,7 @@ describe('approvals', () => {
     // A second decision is refused.
     const again = await t.call('POST', `/approvals/${r.approvalId}/decide`, {
       token: supervisor,
-      body: { decision: 'reject' },
+      body: { decision: 'reject', reason: 'Decided twice.' },
     });
     expect(again.status).toBe(409);
     const audit = await t.call('GET', '/audit', { token: admin, query: { targetId: r.ticketId } });
@@ -369,7 +373,11 @@ describe('approvals', () => {
     const r = await refundRequest('diego.paredes@example.net', 'DS-77421');
     const res = await t.call('POST', `/approvals/${r.approvalId}/decide`, {
       token: supervisor,
-      body: { decision: 'reject', note: 'Return not received yet' },
+      body: {
+        decision: 'reject',
+        reason: 'The parcel has not reached our warehouse.',
+        note: 'Return not received yet',
+      },
     });
     expect(res.body).toMatchObject({ status: 'rejected', note: 'Return not received yet' });
     const told = await aiSaid(r.ticketId, 'could not approve');
@@ -397,7 +405,7 @@ describe('approvals', () => {
     expect((await messages(r.ticketId)).controller).toBe('none');
     const late = await t.call('POST', `/approvals/${r.approvalId}/decide`, {
       token: supervisor,
-      body: { decision: 'approve' },
+      body: { decision: 'approve', reason: 'The second charge is confirmed.' },
     });
     expect(late.status).toBe(409);
   });
@@ -412,7 +420,7 @@ describe('approvals', () => {
     });
     await t.call('POST', `/approvals/${r.approvalId}/decide`, {
       token: supervisor,
-      body: { decision: 'approve' },
+      body: { decision: 'approve', reason: 'The second charge is confirmed.' },
     });
     const note = await waitFor(
       async () =>

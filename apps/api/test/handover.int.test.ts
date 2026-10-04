@@ -69,6 +69,12 @@ const conv = async (ticketId: string) =>
 const handovers = async (ticketId: string) =>
   (await t.call('GET', `/tickets/${ticketId}/handovers`, { token: admin })).body as Handover[];
 
+/**
+ * By default a customer who asks for a person gets one offer of help first (ADR 0029).
+ * These tests are about what follows a handover, so here the first request is enough.
+ */
+const AT_ONCE = { handover: { personRequestsBeforeHandover: 1 } };
+
 beforeAll(async () => {
   t = await startApp();
   admin = await t.adminToken();
@@ -114,6 +120,7 @@ beforeAll(async () => {
     },
   });
   worker = await startWorker();
+  await t.call('PUT', '/settings/ai', { token: admin, body: AT_ONCE });
 
   // A public FAQ the AI can answer the refund question from (keyword search, no embeddings).
   const faq = await t.call('POST', '/kb/documents', {
@@ -142,6 +149,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
+  await t?.call('PUT', '/settings/ai', { token: admin, body: {} });
   for (const id of ruleIds) await t.call('DELETE', `/routing/rules/${id}`, { token: admin });
   await worker?.close();
   if (providerId) await t.call('DELETE', `/settings/llm/providers/${providerId}`, { token: admin });
@@ -338,10 +346,13 @@ describe('AI handover', () => {
 describe('AI handover on a ticket an app raised', () => {
   // The AI speaks to an app's customers by itself only where the workspace lets it.
   beforeAll(async () => {
-    await t.call('PUT', '/settings/ai', { token: admin, body: { channels: { api: 'auto' } } });
+    await t.call('PUT', '/settings/ai', {
+      token: admin,
+      body: { ...AT_ONCE, channels: { api: 'auto' } },
+    });
   });
   afterAll(async () => {
-    await t.call('PUT', '/settings/ai', { token: admin, body: {} });
+    await t.call('PUT', '/settings/ai', { token: admin, body: AT_ONCE });
   });
 
   it('tells the customer in the app that a person answers now, once', async () => {
@@ -387,7 +398,10 @@ describe('AI handover on a ticket an app raised', () => {
   });
 
   it('says nothing by itself where the AI only drafts', async () => {
-    await t.call('PUT', '/settings/ai', { token: admin, body: { channels: { api: 'draft' } } });
+    await t.call('PUT', '/settings/ai', {
+      token: admin,
+      body: { ...AT_ONCE, channels: { api: 'draft' } },
+    });
     const app = await t.call('POST', '/integrations', {
       token: admin,
       body: { slug: uniq('shop-'), name: 'Draft app' },

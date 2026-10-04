@@ -85,6 +85,11 @@ const envSchema = z
 
     /** Concurrent AI jobs (turns and classifications) per worker. */
     AI_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(4),
+    /**
+     * How old the model routing settings a call uses may be, in milliseconds. A changed
+     * cap or a model switched off reaches calls within this time; 0 reads them every time.
+     */
+    LLM_SNAPSHOT_MS: z.coerce.number().int().min(0).max(60_000).default(3000),
 
     /**
      * Host names MCP servers may use even though they resolve to private
