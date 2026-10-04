@@ -8,6 +8,8 @@ import {
   emailChannelConfigSchema,
   type KnownSecretKey,
   type CallsChannelConfig,
+  type ElevenlabsChannelConfig,
+  elevenlabsChannelConfigSchema,
   callsChannelConfigSchema,
   type PhoneChannelConfig,
   phoneChannelConfigSchema,
@@ -149,6 +151,35 @@ export class ChannelConfigService {
   }
 
   /**
+   * Phone calls answered by an ElevenLabs agent (ADR 0040). Read fresh, like
+   * `phone()`. `baseUrl` is the API of the workspace's region.
+   */
+  async elevenlabs(): Promise<
+    | (ElevenlabsChannelConfig & {
+        apiKey: string | null;
+        hookToken: string | null;
+        webhookSecret: string | null;
+        baseUrl: string;
+      })
+    | null
+  > {
+    const saved = await this.settings.get(configKey('elevenlabs'), elevenlabsChannelConfigSchema, {
+      fresh: true,
+    });
+    if (!saved) return null;
+    return {
+      ...saved,
+      apiKey: await this.secrets.get('elevenlabs.api_key'),
+      hookToken: await this.secrets.get('elevenlabs.hook_token'),
+      webhookSecret: await this.secrets.get('elevenlabs.webhook_secret'),
+      baseUrl:
+        saved.region === 'default'
+          ? this.env.ELEVENLABS_API_URL
+          : `https://api.${saved.region}.residency.elevenlabs.io`,
+    };
+  }
+
+  /**
    * What holds for phone calls whichever provider takes them (ADR 0040). Until
    * that card is saved, calling hours and the link template are the ones saved
    * on the Sarvam card, where they used to live.
@@ -267,6 +298,22 @@ export class ChannelConfigService {
   private async runTest(kind: ChannelKind): Promise<{ detail: string; facts: Facts }> {
     if (kind === 'email') return this.testEmail();
     if (kind === 'calls') throw new Error('These settings have nothing to test');
+    if (kind === 'elevenlabs') {
+      const c = await this.elevenlabs();
+      if (!c) throw new Error('The ElevenLabs settings are not saved');
+      if (!c.apiKey) throw new Error('The ElevenLabs API key is not set');
+      // Listing the workspace's agents costs nothing and proves the key and the region.
+      const res = await fetch(new URL('/v1/convai/agents?page_size=100', c.baseUrl), {
+        headers: { 'xi-api-key': c.apiKey },
+      });
+      if (!res.ok) throw new Error(`ElevenLabs answered HTTP ${res.status}`);
+      const body = (await res.json()) as { agents?: unknown[]; has_more?: boolean };
+      const n = body.agents?.length ?? 0;
+      return {
+        detail: `ElevenLabs lists ${n}${body.has_more ? '+' : ''} agent${n === 1 ? '' : 's'}`,
+        facts: {},
+      };
+    }
     if (kind === 'sarvam') {
       const c = await this.sarvam();
       if (!c?.apiKey) throw new Error('The Sarvam API key is not set');

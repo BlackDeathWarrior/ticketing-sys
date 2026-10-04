@@ -18,6 +18,8 @@ import { WhatsAppSender } from '../delivery/whatsapp.sender';
 import { ChannelHealthMonitor } from '../channels/health/channel-health.monitor';
 import { PhoneCallCloser } from '../channels/phone/phone-call-closer.service';
 import { PhoneCallWorker } from '../channels/phone/phone-call.queue';
+import { ElevenLabsClient } from '../channels/phone/elevenlabs/elevenlabs.client';
+import { ElevenLabsProvider } from '../channels/phone/elevenlabs/elevenlabs.provider';
 import { PhoneProviders } from '../channels/phone/phone-providers';
 import { SarvamProvider } from '../channels/phone/sarvam.provider';
 import { SarvamAgentsClient } from '../channels/phone/sarvam-agents.client';
@@ -102,6 +104,8 @@ const env = loadEnv();
     WhatsAppWebhookWorker,
     SarvamAgentsClient,
     SarvamProvider,
+    ElevenLabsClient,
+    ElevenLabsProvider,
     PhoneProviders,
     PhoneCallCloser,
     PhoneCallWorker,

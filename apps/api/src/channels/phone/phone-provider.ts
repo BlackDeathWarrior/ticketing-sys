@@ -1,4 +1,4 @@
-import type { PhoneProviderId } from '@tms/shared';
+import { baseLanguage, type PhoneProviderId, VOICE_LANGUAGES } from '@tms/shared';
 import type { CallRecording } from '../voice/voice-calls.service';
 
 export interface PhoneTranscript {
@@ -22,4 +22,15 @@ export interface PhoneAgentProvider {
   transcript(providerCallId: string): Promise<PhoneTranscript | null>;
   /** The call's recording, or null when there is none or it is not ready. */
   recording(providerCallId: string): Promise<PhoneRecording | null>;
+}
+
+/** `Hindi` or `hi-IN` → `hi`; a language we have no name for is left out. */
+export function languageCode(value: string | undefined): string | null {
+  if (!value) return null;
+  const byName = Object.entries(VOICE_LANGUAGES).find(
+    ([, l]) => l.name.toLowerCase() === value.trim().toLowerCase(),
+  );
+  if (byName) return byName[0];
+  const base = baseLanguage(value);
+  return base && base in VOICE_LANGUAGES ? base : null;
 }

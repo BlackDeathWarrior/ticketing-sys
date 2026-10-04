@@ -10,6 +10,7 @@ export * from './tools';
 export * from './operations';
 export * from './whatsapp';
 export * from './voice';
+export * from './phone-agent';
 export * from './customer-experience';
 export * from './learning';
 export * from './integrations';
