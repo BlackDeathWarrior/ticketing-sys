@@ -172,7 +172,7 @@ describe('routing settings and presence', () => {
     await t.call('PUT', '/me/presence', { token: offline.token, body: { status: 'offline' } });
   });
 
-  it('orders rules; the first enabled match wins', async () => {
+  it('lists rules in the order they were added, with skills in lower case', async () => {
     for (const body of [
       {
         name: 'Hindi chats',
@@ -516,6 +516,8 @@ describe('copilot, escalation and AI-vs-human filters', () => {
   it('suggests a reply from the knowledge base without storing anything', async () => {
     const c = await chat('Can I talk to a real person please?');
     await waitFor(async () => ((await handovers(c.ticketId))[0] ? true : undefined), 'handover');
+    await eventsHandled(t);
+    const before = (await conv(c.ticketId)).messages.length;
     const res = await t.call('POST', `/tickets/${c.ticketId}/copilot`, {
       token: ana.token,
       body: { instruction: 'Keep it short' },
@@ -523,10 +525,19 @@ describe('copilot, escalation and AI-vs-human filters', () => {
     expect(res.status).toBe(200);
     expect(res.body.suggestion).toMatch(/^Hi Handover,/);
     expect(res.body.model).toBe('openai/scripted-cheap');
+    // A suggestion is the agent's to use or not: the conversation gains nothing.
+    expect((await conv(c.ticketId)).messages).toHaveLength(before);
   });
 
   it('lets team leads escalate (priority up, leads told) and not agents', async () => {
+    const otherLead = await makeUser(t, admin, 'team_lead', {
+      name: 'Olga Otherlead',
+      teamIds: [teamId],
+    });
     const c = await chat('Can I talk to a real person please?');
+    // The chat has its team by the time routing has run.
+    await waitFor(async () => ((await handovers(c.ticketId))[0] ? true : undefined), 'handover');
+    await eventsHandled(t);
     expect(
       (
         await t.call('POST', `/tickets/${c.ticketId}/escalate`, {
@@ -542,6 +553,22 @@ describe('copilot, escalation and AI-vs-human filters', () => {
     });
     expect(res.status).toBe(200);
     expect(res.body.priority).not.toBe(before);
+    // The other lead of the team hears about it; the one who escalated does not tell themselves.
+    const told = await waitFor(async () => {
+      const n = (await t.call('GET', '/notifications', { token: otherLead.token })).body;
+      return n.items.find(
+        (x: { kind: string; ticket: { id: string } }) =>
+          x.kind === 'ticket.escalated' && x.ticket.id === c.ticketId,
+      );
+    }, 'the escalation notice');
+    expect(told.body).toBe('VIP customer, third contact');
+    const mine = (await t.call('GET', '/notifications', { token: lead.token })).body;
+    expect(
+      mine.items.some(
+        (x: { kind: string; ticket: { id: string } }) =>
+          x.kind === 'ticket.escalated' && x.ticket.id === c.ticketId,
+      ),
+    ).toBe(false);
   });
 
   it('filters tickets by who is handling them, and the audit log by actor type', async () => {

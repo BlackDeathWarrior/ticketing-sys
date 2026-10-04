@@ -38,17 +38,16 @@ describe('chunker', () => {
   });
 
   it('splits long sections under the token limit with overlap between chunks', () => {
-    const para = (n: number) => `Paragraph ${n}. ${'word '.repeat(150)}`.trim();
+    // Each paragraph has its own word, so a chunk shows which paragraphs it holds.
+    const para = (n: number) => `Paragraph ${n}. ${`word${n} `.repeat(150)}`.trim();
     const text = ['# Long', ...Array.from({ length: 6 }, (_, i) => `${para(i)}\n`)].join('\n');
     const chunks = chunkText(text, { maxTokens: 400, overlapTokens: 40 });
     expect(chunks.length).toBeGreaterThan(1);
     for (const c of chunks) expect(c.tokens).toBeLessThanOrEqual(400 + 20);
-    // The second chunk starts with the tail of the first.
-    const tailOfFirst = chunks[0]!.content.slice(-60).trim();
-    expect(
-      chunks[1]!.content.startsWith(tailOfFirst.split(' ').slice(-3).join(' ')) ||
-        chunks[1]!.content.includes('word'),
-    ).toBe(true);
+    // The second chunk carries the tail of the first: it opens with the first chunk's last word.
+    const lastOfFirst = chunks[0]!.content.trim().split(/\s+/).at(-1)!;
+    expect(lastOfFirst).toMatch(/^word\d$/);
+    expect(chunks[1]!.content.split(/\s+/)).toContain(lastOfFirst);
   });
 
   it('breaks a single huge paragraph by sentences', () => {

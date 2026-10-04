@@ -398,7 +398,8 @@ describe('knowledge base documents', () => {
       body: { source: 'faq', title: 'x', content: 'y' },
     });
     expect(agent.status).toBe(403);
-    expect((await search('anything', {}, agents.inTeam!.token)).hits).toBeDefined();
+    // An agent may still search: the helper fails on anything but 200.
+    expect(Array.isArray((await search('anything', {}, agents.inTeam!.token)).hits)).toBe(true);
   });
 
   it('audits changes and deletes chunks with the document', async () => {

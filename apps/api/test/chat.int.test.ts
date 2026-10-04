@@ -2,7 +2,7 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { io, type Socket } from 'socket.io-client';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { startApp, startWorker, type TestClient, uniq, waitFor } from './helpers';
+import { makeUser, startApp, startWorker, type TestClient, uniq, waitFor } from './helpers';
 
 const IDENTITY_SECRET = 'host-site-identity-secret-at-least-32-chars';
 process.env.CHAT_IDENTITY_SECRET = IDENTITY_SECRET;
@@ -383,9 +383,14 @@ describe("web chat on an integration's site (ADR 0026)", () => {
     const mine = listed.body.find((i: { id: string }) => i.id === shop.id);
     expect(mine.chatIdentityLast4).toBe(shop.identitySecret.slice(-4));
     expect(JSON.stringify(listed.body)).not.toContain(shop.identitySecret);
+    // A new secret is an administrator's to make: a supervisor is refused.
+    const supervisor = await makeUser(t, admin, 'supervisor');
     expect(
-      (await t.call('POST', `/integrations/${shop.id}/chat-identity-secret`, { token: shop.key }))
-        .status,
+      (
+        await t.call('POST', `/integrations/${shop.id}/chat-identity-secret`, {
+          token: supervisor.token,
+        })
+      ).status,
     ).toBe(403);
   });
 });

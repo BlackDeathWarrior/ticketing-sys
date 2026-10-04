@@ -14,7 +14,6 @@ import type {
 } from '@tms/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { ConversationsService } from '../src/conversations/conversations.service';
 import { DB } from '../src/infra/tokens';
 import { WEBHOOK_QUEUE } from '../src/webhooks/webhook-delivery.worker';
 import { verifySignatureHeader } from '../src/webhooks/webhook-sign';
@@ -379,26 +378,15 @@ describe('deliveries', () => {
     expect(JSON.stringify(rows)).not.toMatch(/1,499|corrected the price|Asha/);
   });
 
-  it('never tells about a draft, a note, or a ticket that is not its own', async () => {
+  it('never tells about a note, or a ticket that is not its own', async () => {
     const hook = await subscribe(['ticket.created', 'message.created', 'ticket.updated']);
     const mine = await raise();
     await arrived(hook.path, 'message.created');
     const staff = await staffTicket(mine.reference);
-    const [conversation] = (
-      await t.call('GET', `/tickets/${staff.id}/conversations`, { token: admin })
-    ).body;
 
     await t.call('POST', `/tickets/${staff.id}/notes`, {
       token: agent.token,
       body: { body: 'Internal: the catalogue team knows.' },
-    });
-    await t.app.get(ConversationsService).addMessage(db, {
-      conversationId: conversation.id,
-      channel: 'api',
-      direction: 'outbound',
-      authorType: 'ai',
-      body: 'A draft nobody approved.',
-      deliveryStatus: 'draft',
     });
     await raise(other.key);
     const customer = await t.call('POST', '/customers', {

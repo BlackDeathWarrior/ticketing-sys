@@ -745,7 +745,7 @@ describe('WhatsApp channel', () => {
       expect(again.status).toBe(201);
     });
 
-    it('refuses a template Meta has not approved, and templates on other channels', async () => {
+    it('refuses a template Meta has not approved', async () => {
       const { conv } = await opened(newPhone(), `Template checks ${uniq()}`);
       const all = await t.call('GET', '/whatsapp/templates', {
         token: admin,

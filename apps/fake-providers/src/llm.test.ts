@@ -11,10 +11,10 @@ describe('scripted LLM', () => {
     expect(r.usage.prompt_tokens).toBeGreaterThan(0);
   });
 
-  it('echoes other prompts deterministically', () => {
+  it('echoes other prompts, naming the model', () => {
     const req = { model: 'm', messages: [{ role: 'user', content: 'Where is my order?' }] };
     expect(chatCompletion(req).choices[0]!.message.content).toBe(
-      chatCompletion(req).choices[0]!.message.content,
+      'Scripted reply from m: "Where is my order?"',
     );
   });
 });

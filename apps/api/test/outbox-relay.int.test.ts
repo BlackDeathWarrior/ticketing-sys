@@ -53,9 +53,10 @@ describe('relayOutboxBatch', () => {
     const n = await relayOutboxBatch(h.db, queue, 100);
     expect(n).toBe(3);
 
-    const jobs = await queue.getJobs(['waiting']);
+    // Oldest first, as they were written.
+    const jobs = await queue.getJobs(['waiting'], 0, -1, true);
     const ours = jobs.filter((j) => rows.some((r) => r.eventId === j.id));
-    expect(ours).toHaveLength(3);
+    expect(ours.map((j) => j.id)).toEqual(rows.map((r) => r.eventId));
     expect(ours[0]!.data).toMatchObject({ type: 'ticket.created', aggregateType: 'ticket' });
 
     const after = await h.db
