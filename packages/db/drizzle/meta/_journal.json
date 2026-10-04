@@ -211,6 +211,13 @@
       "when": 1791085815020,
       "tag": "0029_confused_dracula",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791087968348,
+      "tag": "0030_glossy_big_bertha",
+      "breakpoints": true
     }
   ]
 }
