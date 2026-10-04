@@ -6,19 +6,19 @@ Do part 1 in Orbit Desk, part 2 in Sarvam's dashboard, then try it (part 3).
 
 ## Part 1: Orbit Desk
 
-1. **Settings → Channels → Phone calls.** Fill in the rented number (with `+` and the country code) and the ids from Sarvam: org, workspace, agent (app) id and version, connection id. They are in the dashboard's address bar and under its Settings. Switch **Phone calls on** to Yes and **Save settings**.
+1. **Settings → Channels → Phone calls: Sarvam.** Fill in the rented number (with `+` and the country code) and the ids from Sarvam: org, workspace, agent (app) id and version, connection id. They are in the dashboard's address bar and under its Settings. Switch **Phone calls on** to Yes and **Save settings**.
 2. Under **Voice Agents API key**, save the key from Sarvam's **Settings → API Key**.
 3. Next to **Hook token** click **Generate**, copy the value, then **Save**. It is shown only now; if you lose it, generate a new one and change it at Sarvam too.
 4. **Test connection.** Expected: "Sarvam lists N deployment(s)".
 5. Keep the three addresses shown under the keys at hand for part 2.
 
-Leave **Outbound calls only 09:00–21:00 IST** on No for the demo. It applies to outbound calls, which arrive with the next stage; switch it on after the demo.
+Calling hours and the WhatsApp template for links are on the card **Phone calls: general**. Leave **Outbound calls only 09:00–21:00 IST** on No for the demo. It applies to outbound calls, which arrive with a later stage; switch it on after the demo.
 
 ## Part 2: Sarvam's dashboard
 
 ### The agent's instruction
 
-Paste this as the agent's instruction. Change it here first, then at Sarvam, so the two stay the same.
+Paste this as the agent's instruction. It is the Sarvam version of the one text in `apps/api/src/channels/phone/phone-agent-instruction.ts` (version 1), which the ElevenLabs agent also gets (`docs/runbooks/phone-agent-elevenlabs.md`). Change it there first, then here, then at Sarvam, so all three stay the same.
 
 ```
 You are the phone assistant of {{company}}. You speak with customers who call.
@@ -64,7 +64,7 @@ Each is an **API tool**: method `POST`, Bearer token (the hook token), timeout 3
 | `search_knowledge` | `query` (text)                    | Looks up the company's policies and help articles.                                                |
 | `request_person`   | `reason` (text)                   | Asks for a colleague to get back to the caller.                                                   |
 
-A tool added later in Orbit Desk (**Settings → Tools and MCP**) needs nothing here: it appears in `{{desk_tools}}` on the next call.
+A tool added later in Orbit Desk (**Settings → Tools and MCP**) needs nothing here: it appears in `{{desk_tools}}` on the next call. So does the desk's own `send_whatsapp`, which sends what the agent found to the caller's WhatsApp when they ask for it in writing.
 
 ### Number and webhook
 
