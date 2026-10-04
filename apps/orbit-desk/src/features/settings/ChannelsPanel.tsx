@@ -3,6 +3,7 @@ import {
   type ChannelKind,
   type ChannelSettingsView,
   type ConnectionTestResult,
+  type ElevenlabsSyncState,
   DESK_ONLY_SECRET_KEYS,
   PHONE_PROVIDER_NAMES,
   VOICE_DEFAULT_GREETING,
@@ -218,6 +219,98 @@ function PhoneAddresses() {
           {label}: <span className={styles.mono}>{url}</span>
         </p>
       ))}
+    </div>
+  );
+}
+
+interface ElevenLabsNumberRow {
+  id: string;
+  number: string;
+  label: string;
+  provider: string;
+  agentId: string | null;
+}
+
+/**
+ * The desk sets the ElevenLabs agent up by itself (ADR 0040): this asks for it, and says how
+ * the last run went. "Load numbers" lists what is connected at ElevenLabs, to copy an id from.
+ */
+function ElevenLabsSync({ canSync }: { canSync: boolean }) {
+  const state = useGet<ElevenlabsSyncState>('/settings/channels/elevenlabs/sync');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [numbers, setNumbers] = useState<ElevenLabsNumberRow[] | null>(null);
+
+  const sync = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api('POST', '/settings/channels/elevenlabs/sync');
+      setMessage('Asked for. It takes a few seconds: press Refresh to see how it went.');
+    } catch (err) {
+      setMessage((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadNumbers = async () => {
+    setMessage(null);
+    try {
+      setNumbers(await api<ElevenLabsNumberRow[]>('GET', '/settings/channels/elevenlabs/numbers'));
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
+  };
+
+  const s = state.data;
+  const outcome = !s?.at
+    ? 'The agent is not set up yet. Save the settings and the API key first.'
+    : s.ok
+      ? `In step with this desk: ${s.tools} tool${s.tools === 1 ? '' : 's'}. Last run ${new Date(s.at).toLocaleString()}.`
+      : `The last run failed (${new Date(s.at).toLocaleString()}): ${s.error ?? 'no reason given'}`;
+
+  return (
+    <div>
+      <p className={styles.note}>
+        The desk creates the agent, its instruction, its tools and its webhooks at ElevenLabs, and
+        updates them when a tool changes here.
+      </p>
+      <p className={styles.note} role="status">
+        {outcome}
+      </p>
+      {s?.skipped.map((k) => (
+        <p key={k.tool} className={styles.note}>
+          Not offered to the agent: <span className={styles.mono}>{k.tool}</span>. {k.reason}
+        </p>
+      ))}
+      <div className={styles.formActions}>
+        {canSync && (
+          <Button onClick={sync} disabled={busy}>
+            {s?.agentId ? 'Sync now' : 'Set up'}
+          </Button>
+        )}
+        <Button onClick={() => void state.reload()}>Refresh</Button>
+        <Button onClick={loadNumbers}>Load numbers</Button>
+      </div>
+      {message && (
+        <p className={styles.note} role="status">
+          {message}
+        </p>
+      )}
+      {numbers &&
+        (numbers.length ? (
+          numbers.map((n) => (
+            <p key={n.id} className={styles.note}>
+              {n.number} ({n.label || n.provider}): <span className={styles.mono}>{n.id}</span>
+            </p>
+          ))
+        ) : (
+          <p className={styles.note}>
+            No number is connected at ElevenLabs yet. Until one is, try the agent with a test call
+            from ElevenLabs’ dashboard.
+          </p>
+        ))}
     </div>
   );
 }
@@ -478,6 +571,7 @@ function ChannelForm({ view, onChanged }: { view: ChannelSettingsView; onChanged
               />
             ))}
           {view.kind === 'phone' && <PhoneAddresses />}
+        {view.kind === 'elevenlabs' && <ElevenLabsSync canSync={can('settings:secrets')} />}
         </div>
       )}
     </div>
