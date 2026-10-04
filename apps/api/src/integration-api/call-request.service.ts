@@ -19,7 +19,10 @@ const TEXT: Record<CallRequestRefusal, string> = {
 
 const refused = (reason: CallRequestRefusal | OutboundRefusal) =>
   new ConflictException({
-    message: reason in TEXT ? TEXT[reason as CallRequestRefusal] : OUTBOUND_REFUSAL_TEXT[reason as OutboundRefusal],
+    message:
+      reason in TEXT
+        ? TEXT[reason as CallRequestRefusal]
+        : OUTBOUND_REFUSAL_TEXT[reason as OutboundRefusal],
     reason,
   });
 

@@ -643,7 +643,8 @@ export class PhoneToolsService {
   private async runDeskTool(call: CallRow | null, body: PhoneToolInput): Promise<PhoneToolReply> {
     const name = body.name ?? '';
     if (name === SEND_WHATSAPP) return this.sendWhatsapp(call, body);
-    if (name === VERIFY_EMAIL || name === CONFIRM_EMAIL_CODE) return this.linkTool(name, call, body);
+    if (name === VERIFY_EMAIL || name === CONFIRM_EMAIL_CODE)
+      return this.linkTool(name, call, body);
     const all = await this.tools.agentTools();
     const byBareName = all.filter((t) => t.tool.name === name);
     const found =
