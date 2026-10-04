@@ -10,6 +10,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { users } from './auth';
 import { conversations } from './conversations';
+import { customers } from './customers';
 import { tickets } from './tickets';
 
 /**
@@ -26,7 +27,7 @@ export const voiceCalls = pgTable(
     conversationId: uuid('conversation_id').references(() => conversations.id, {
       onDelete: 'set null',
     }),
-    /** active | ended */
+    /** requested | active | ended. `requested`: a call the desk is about to place. */
     status: text('status').notNull().default('active'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     endedAt: timestamp('ended_at', { withTimezone: true }),
@@ -52,7 +53,22 @@ export const voiceCalls = pgTable(
     direction: text('direction').notNull().default('inbound'),
     /** Phone calls: the telephony side's id for the call (Sarvam's interaction id). */
     providerCallId: text('provider_call_id'),
-    /** Phone calls: the caller's number as digits, set only by the token-protected hooks. */
+    /** Calls the desk placed: Sarvam's id for the attempt, until the call's own id is known. */
+    providerAttemptId: text('provider_attempt_id'),
+    /** Calls the desk placed: a staff user's id, `customer` (asked on the shop) or `system`. */
+    requestedBy: text('requested_by'),
+    /** Calls the desk placed: connected | no_answer | busy | failed. */
+    outcome: text('outcome'),
+    /** Calls the desk placed: ticket | call_me | approval. */
+    purpose: text('purpose'),
+    /** Calls the desk placed: what the agent is to say the call is about. */
+    about: text('about'),
+    /** Calls the desk placed: who is being rung. Tools on that call act for this customer. */
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'set null' }),
+    /**
+     * Phone calls: the other party's number as digits. On a call that came in, set only by
+     * the token-protected hooks; on a call the desk placed, the number it rang.
+     */
     callerPhone: text('caller_phone'),
     /** Phone calls: why the phone agent asked for a person; applied when the call ends. */
     handoverReason: text('handover_reason'),
@@ -65,5 +81,6 @@ export const voiceCalls = pgTable(
     index('voice_calls_ticket_idx').on(t.ticketId),
     index('voice_calls_status_idx').on(t.status, t.startedAt),
     uniqueIndex('voice_calls_provider_call_idx').on(t.providerCallId),
+    index('voice_calls_attempt_idx').on(t.providerAttemptId),
   ],
 );

@@ -86,6 +86,7 @@ export const DOMAIN_EVENT_TYPES = [
   /** A team lead escalated a ticket. */
   'ticket.escalated',
   /** A voice call started, changed hands or ended; the payload has the ticket once there is one. */
+  'voice.call_requested',
   'voice.call_started',
   'voice.call_updated',
   'voice.call_ended',

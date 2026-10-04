@@ -686,7 +686,21 @@ export class CustomersService {
         ),
       );
     if (!row) return null;
-    const customer = await this.findActive(db, row.customerId);
+    return this.contactOf(row.customerId, db);
+  }
+
+  /** Who a customer is, for a tool that acts for them: their name and an email address. */
+  async contactOf(
+    customerId: string,
+    db: DbOrTx = this.db,
+  ): Promise<{
+    id: string;
+    name: string;
+    email: string | null;
+    attributes: Record<string, unknown>;
+  } | null> {
+    const customer = await this.findActive(db, customerId).catch(() => null);
+    if (!customer) return null;
     let email = customer.primaryEmail;
     if (!email) {
       const [identity] = await db
@@ -699,6 +713,18 @@ export class CustomersService {
       email = identity?.value ?? null;
     }
     return { id: customer.id, name: customer.displayName, email, attributes: customer.attributes };
+  }
+
+  /** A number to ring this customer on: one they have proven first, else any on file. */
+  async phoneOf(customerId: string, db: DbOrTx = this.db): Promise<string | null> {
+    const rows = await db
+      .select({ value: customerIdentities.value, verified: customerIdentities.verified })
+      .from(customerIdentities)
+      .where(
+        and(eq(customerIdentities.customerId, customerId), eq(customerIdentities.type, 'phone')),
+      );
+    const usable = rows.filter((r) => /^\d{8,15}$/.test(r.value));
+    return (usable.find((r) => r.verified) ?? usable[0])?.value ?? null;
   }
 
   /** The number this customer has proven is theirs (digits, country code included), if any. */

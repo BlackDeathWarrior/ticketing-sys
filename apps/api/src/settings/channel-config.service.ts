@@ -207,6 +207,11 @@ export class ChannelConfigService {
     });
   }
 
+  /** Where an outside service reaches this desk's API: behind the help center's public address. */
+  publicApiUrl(path: string): string {
+    return new URL(`/api/v1/${path}`, this.env.HELP_CENTER_URL).toString();
+  }
+
   /** Where Sarvam's Voice Agents API lives. */
   get sarvamAgentsUrl(): string {
     return this.env.SARVAM_AGENTS_URL;

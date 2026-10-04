@@ -39,6 +39,27 @@ export function callLine(call: VoiceCallView, locale = 'en-GB'): string {
   return [`${what} on ${when}`, length, language].filter(Boolean).join(' · ');
 }
 
+const OUTCOMES: Record<NonNullable<VoiceCallView['outcome']>, string> = {
+  connected: 'We called the customer',
+  no_answer: 'We called: no answer',
+  busy: 'We called: the line was busy',
+  failed: 'We called: the call could not be placed',
+};
+
+/** For a call the desk placed: how it went. Null for a call that came in. */
+export function placedCallText(call: VoiceCallView): string | null {
+  if (call.direction !== 'outbound') return null;
+  return call.outcome ? OUTCOMES[call.outcome] : 'We called the customer';
+}
+
+/** A phone call that is asked for or under way. */
+export function phoneCallProgress(call: VoiceCallView): string {
+  if (call.direction !== 'outbound') return 'A phone call is in progress';
+  return call.status === 'requested'
+    ? 'Calling the customer: asked for'
+    : 'Calling the customer: ringing or in progress';
+}
+
 export function answeredByText(call: VoiceCallView): string | null {
   switch (call.answeredBy) {
     case 'ai':

@@ -241,11 +241,16 @@ export class InboundService {
       const pinned = await this.tickets.lockRow(tx, env.ticket.id);
       if (pinned.customerId === customerId) {
         return {
-          conversation: await this.conversations.findLatestForTicket(
-            tx,
-            pinned.id,
-            env.channel === 'api' ? API_THREADS : CHANNELS_ANSWERED_BY_EMAIL,
-          ),
+          // A phone call placed from the ticket keeps its own conversation: its turns must
+          // never join one that is answered by email.
+          conversation:
+            env.channel === 'voice'
+              ? await this.conversations.findByThread(tx, 'voice', env.threadKey)
+              : await this.conversations.findLatestForTicket(
+                  tx,
+                  pinned.id,
+                  env.channel === 'api' ? API_THREADS : CHANNELS_ANSWERED_BY_EMAIL,
+                ),
           ticket: pinned,
         };
       }

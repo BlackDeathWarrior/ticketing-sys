@@ -3,7 +3,6 @@ import {
   Controller,
   Headers,
   HttpCode,
-  Logger,
   Param,
   Post,
   Req,
@@ -28,6 +27,7 @@ import { ZodPipe } from '../../../common/zod.pipe';
 import { ChannelConfigService } from '../../../settings/channel-config.service';
 import { VoiceCallsService } from '../../voice/voice-calls.service';
 import { PhoneCallQueue } from '../phone-call.queue';
+import { PhoneOutboundService } from '../phone-outbound.service';
 import { PhoneToolsService } from '../phone-tools.service';
 import { ElevenLabsHookGuard } from './elevenlabs-hook.guard';
 import { verifyElevenLabsSignature } from './elevenlabs-signature';
@@ -60,13 +60,12 @@ function callerOf(value: string | undefined): string | null {
 @Public()
 @Controller('phone/elevenlabs')
 export class ElevenLabsHooksController {
-  private readonly logger = new Logger(ElevenLabsHooksController.name);
-
   constructor(
     private readonly tools: PhoneToolsService,
     private readonly queue: PhoneCallQueue,
     private readonly channels: ChannelConfigService,
     private readonly calls: VoiceCallsService,
+    private readonly outbound: PhoneOutboundService,
   ) {}
 
   /** The call begins: ElevenLabs asks who is calling. The answer fills the agent's variables. */
@@ -167,9 +166,10 @@ export class ElevenLabsHooksController {
         { phone: null, seconds: null },
         !!(await this.calls.byProvider(id)),
       );
-    } else {
-      // A call that never connected matters once the desk places calls itself.
-      this.logger.log(`ElevenLabs event ${body.type.slice(0, 40)} for a conversation: not used`);
+    } else if (body.type === 'call_initiation_failure') {
+      // A call we placed that never connected: nobody answered, the line was busy, or it failed.
+      const reason = (body.data as Record<string, unknown>).failure_reason;
+      await this.outbound.elevenlabsFailed(id, typeof reason === 'string' ? reason : undefined);
     }
     return { received: true };
   }

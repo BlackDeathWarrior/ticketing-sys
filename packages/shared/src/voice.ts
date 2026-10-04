@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { PhoneProviderId } from './phone';
+import type { PhoneCallOutcome, PhoneCallPurpose, PhoneProviderId } from './phone';
 
 /**
  * Voice calls in the browser (ADR 0018). The caller's page streams microphone
@@ -121,12 +121,17 @@ export interface VoiceCallView {
   id: string;
   ticketId: string | null;
   conversationId: string | null;
-  status: 'active' | 'ended';
+  /** `requested`: a call this desk is about to place. */
+  status: 'requested' | 'active' | 'ended';
   /** `phone`: a call on the rented number, answered by the phone agent (ADR 0039). */
   transport: 'browser' | 'phone';
   /** Phone calls: whose voice agent took the call. Null for a call in the browser. */
   provider: PhoneProviderId | null;
   direction: 'inbound' | 'outbound';
+  /** Calls this desk placed: why, how they went, and who asked (a staff user's id, `customer` or `system`). */
+  purpose: PhoneCallPurpose | null;
+  outcome: PhoneCallOutcome | null;
+  requestedBy: string | null;
   /** Only for calls in progress on this server. */
   state: VoiceState | null;
   startedAt: string;

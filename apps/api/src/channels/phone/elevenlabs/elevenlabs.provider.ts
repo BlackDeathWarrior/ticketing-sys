@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { ChannelConfigService } from '../../../settings/channel-config.service';
 import {
   languageCode,
+  type OutboundCall,
   type PhoneAgentProvider,
   type PhoneRecording,
   type PhoneTranscript,
@@ -12,7 +14,10 @@ import { ElevenLabsClient } from './elevenlabs.client';
 export class ElevenLabsProvider implements PhoneAgentProvider {
   readonly id = 'elevenlabs' as const;
 
-  constructor(private readonly client: ElevenLabsClient) {}
+  constructor(
+    private readonly client: ElevenLabsClient,
+    private readonly channels: ChannelConfigService,
+  ) {}
 
   async transcript(conversationId: string): Promise<PhoneTranscript | null> {
     const body = await this.client.conversation(conversationId);
@@ -21,6 +26,21 @@ export class ElevenLabsProvider implements PhoneAgentProvider {
 
   recording(conversationId: string): Promise<PhoneRecording | null> {
     return this.client.conversationAudio(conversationId);
+  }
+
+  async placeCall(call: OutboundCall) {
+    const config = await this.channels.elevenlabs();
+    const sync = await this.channels.elevenlabsSync();
+    if (!config?.phoneNumberId || !sync?.agentId) {
+      throw new Error('The ElevenLabs agent has no number to call from');
+    }
+    const conversationId = await this.client.outboundCall(sync.agentNumberKind ?? '', {
+      agent_id: sync.agentId,
+      agent_phone_number_id: config.phoneNumberId,
+      to_number: call.to,
+      conversation_initiation_client_data: { dynamic_variables: call.variables },
+    });
+    return { providerCallId: conversationId, attemptId: null };
   }
 }
 

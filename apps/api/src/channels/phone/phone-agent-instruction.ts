@@ -13,8 +13,9 @@ import type { PhoneProviderId } from '@tms/shared';
  * on a real call), with the line on sending details to WhatsApp kept.
  * Version 4 adds the plain-sentences rule: on the first long ElevenLabs call the
  * agent spoke bullet lists and a markdown link.
+ * Version 5 adds how to open a call the desk placed ({{direction}}, {{about}}).
  */
-export const PHONE_AGENT_INSTRUCTION_VERSION = 4;
+export const PHONE_AGENT_INSTRUCTION_VERSION = 5;
 
 interface Wording {
   /** How the company's tools are reached. */
@@ -70,6 +71,7 @@ ${w.tools}
 Conversation guidelines
 Opening:
 * Start: greet the caller, by name if {{customer_name}} is not empty, and say once that the call is transcribed so the team can help.
+* If {{direction}} is outbound, you are the one calling. After the greeting, say you are calling from {{company}} about this: {{about}}. If that is empty, say you are calling to follow up on their request and ask how you can help. Do not ask why they called.
 * If the caller says they are not {{customer_name}}, or does not confirm they are that customer, stop using the name and treat the account as unverified until the caller confirms it is theirs. Until then, help only with products and general questions.
 
 Where to look:

@@ -2,13 +2,15 @@ import type { Readable } from 'node:stream';
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { type Database, users, voiceCalls } from '@tms/db';
 import {
+  type PhoneCallOutcome,
+  type PhoneCallPurpose,
   type PhoneProviderId,
   VOICE_RECORDING_DAYS,
   type VoiceCallView,
   type VoiceEndReason,
   type VoiceState,
 } from '@tms/shared';
-import { and, desc, eq, gt, isNotNull, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { AuditService } from '../../audit/audit.service';
 import { OutboxService } from '../../audit/outbox.service';
 import { type RequestCtx, SYSTEM_CTX } from '../../common/request-context';
@@ -101,6 +103,8 @@ export class VoiceCallsService {
           endedReason: result.reason,
           language: result.language,
           answeredBy: result.answeredBy,
+          // A call the desk placed, and somebody spoke on it.
+          outcome: sql`case when ${voiceCalls.direction} = 'outbound' then 'connected' else ${voiceCalls.outcome} end`,
           recordingKey,
           recordingBytes: recordingKey ? recording!.audio.length : null,
         })
@@ -276,6 +280,180 @@ export class VoiceCallsService {
       .limit(100);
   }
 
+  // ---- Calls the desk places (ADR 0040) ----
+
+  /** A call is asked for. The worker places it; nothing has rung yet. */
+  async requestOutbound(
+    ctx: RequestCtx,
+    i: {
+      provider: PhoneProviderId;
+      phone: string;
+      customerId: string;
+      ticketId: string | null;
+      purpose: PhoneCallPurpose;
+      requestedBy: string;
+      about: string | null;
+    },
+  ): Promise<CallRow> {
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(voiceCalls)
+        .values({
+          transport: 'phone',
+          direction: 'outbound',
+          status: 'requested',
+          provider: i.provider,
+          callerPhone: i.phone,
+          customerId: i.customerId,
+          ticketId: i.ticketId,
+          purpose: i.purpose,
+          requestedBy: i.requestedBy,
+          about: i.about,
+          // The phone agent says the call is transcribed when it opens.
+          consentAt: new Date(),
+        })
+        .returning();
+      await this.changed(tx, ctx, 'voice.call_requested', row!, {
+        purpose: i.purpose,
+        provider: i.provider,
+      });
+      return row!;
+    });
+  }
+
+  /** A call to this number that is asked for or under way, placed in the last two hours. */
+  async outboundInProgress(phone: string, now = new Date()): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: voiceCalls.id })
+      .from(voiceCalls)
+      .where(
+        and(
+          eq(voiceCalls.direction, 'outbound'),
+          inArray(voiceCalls.status, ['requested', 'active']),
+          eq(voiceCalls.callerPhone, phone),
+          gt(voiceCalls.startedAt, new Date(now.getTime() - 2 * 60 * 60_000)),
+        ),
+      )
+      .limit(1);
+    return !!row;
+  }
+
+  /** The provider took the call: it is ringing. Its ids are how its reports find this record. */
+  async placed(
+    id: string,
+    ids: { providerCallId: string | null; attemptId: string | null },
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(voiceCalls)
+        .set({
+          status: 'active',
+          startedAt: new Date(),
+          providerCallId: ids.providerCallId,
+          providerAttemptId: ids.attemptId,
+        })
+        .where(and(eq(voiceCalls.id, id), eq(voiceCalls.status, 'requested')))
+        .returning();
+      if (row) await this.changed(tx, SYSTEM_CTX, 'voice.call_updated', row, { placed: true });
+    });
+  }
+
+  async byAttempt(attemptId: string): Promise<CallRow | null> {
+    const [row] = await this.db
+      .select()
+      .from(voiceCalls)
+      .where(eq(voiceCalls.providerAttemptId, attemptId));
+    return row ?? null;
+  }
+
+  /**
+   * Gives a call we placed the provider's own id for it, once that is known. False when
+   * another record already holds the id. Bookkeeping, so not audited.
+   */
+  async linkProviderCall(id: string, providerCallId: string): Promise<boolean> {
+    if (await this.byProvider(providerCallId)) return false;
+    const rows = await this.db
+      .update(voiceCalls)
+      .set({ providerCallId })
+      .where(and(eq(voiceCalls.id, id), isNull(voiceCalls.providerCallId)))
+      .returning({ id: voiceCalls.id })
+      .catch(() => []);
+    return rows.length > 0;
+  }
+
+  /**
+   * A tool request on a call we placed, before the provider told us the call's id: the
+   * call under way to this number takes the id. Null when the id is already known or no
+   * such call is under way.
+   */
+  async adoptOutbound(
+    provider: PhoneProviderId,
+    phone: string,
+    providerCallId: string,
+  ): Promise<CallRow | null> {
+    if (await this.byProvider(providerCallId)) return null;
+    const [waiting] = await this.db
+      .select({ id: voiceCalls.id })
+      .from(voiceCalls)
+      .where(
+        and(
+          eq(voiceCalls.direction, 'outbound'),
+          eq(voiceCalls.status, 'active'),
+          eq(voiceCalls.provider, provider),
+          eq(voiceCalls.callerPhone, phone),
+          isNull(voiceCalls.providerCallId),
+        ),
+      )
+      .orderBy(desc(voiceCalls.startedAt))
+      .limit(1);
+    if (!waiting || !(await this.linkProviderCall(waiting.id, providerCallId))) return null;
+    return this.get(waiting.id);
+  }
+
+  /**
+   * A call we placed is over without a transcript to write: nobody answered, the line was
+   * busy, it failed, or another record carries it. False when it was already over.
+   */
+  async endOutbound(id: string, outcome: PhoneCallOutcome): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(voiceCalls)
+        .set({ status: 'ended', endedAt: new Date(), outcome, endedReason: 'provider_ended' })
+        .where(and(eq(voiceCalls.id, id), inArray(voiceCalls.status, ['requested', 'active'])))
+        .returning();
+      if (!row) return false;
+      await this.changed(tx, SYSTEM_CTX, 'voice.call_ended', row, { outcome });
+      return true;
+    });
+  }
+
+  /**
+   * Calls we placed that nobody reported on: asked for more than ten minutes ago and never
+   * placed, or placed over an hour ago with no word from the provider.
+   */
+  async staleOutbound(now = new Date()): Promise<CallRow[]> {
+    return this.db
+      .select()
+      .from(voiceCalls)
+      .where(
+        and(
+          eq(voiceCalls.direction, 'outbound'),
+          or(
+            and(
+              eq(voiceCalls.status, 'requested'),
+              lt(voiceCalls.startedAt, new Date(now.getTime() - 10 * 60_000)),
+            ),
+            and(
+              eq(voiceCalls.status, 'active'),
+              isNull(voiceCalls.providerCallId),
+              lt(voiceCalls.startedAt, new Date(now.getTime() - 60 * 60_000)),
+            ),
+          ),
+        ),
+      )
+      .limit(100);
+  }
+
   /**
    * Calls left "active" by a server that stopped without ending them. Phone
    * calls are not ours to end: they live at Sarvam and are closed by their own job.
@@ -318,10 +496,13 @@ export class VoiceCallsService {
       id: call.id,
       ticketId: call.ticketId,
       conversationId: call.conversationId,
-      status: call.status as 'active' | 'ended',
+      status: call.status as VoiceCallView['status'],
       transport: call.transport as VoiceCallView['transport'],
       provider: call.provider as VoiceCallView['provider'],
       direction: call.direction as VoiceCallView['direction'],
+      purpose: call.purpose as VoiceCallView['purpose'],
+      outcome: call.outcome as VoiceCallView['outcome'],
+      requestedBy: call.requestedBy,
       state: call.status === 'active' ? live(call.id) : null,
       startedAt: call.startedAt.toISOString(),
       endedAt: call.endedAt?.toISOString() ?? null,
@@ -410,7 +591,7 @@ export class VoiceCallsService {
   private async changed(
     tx: Parameters<Parameters<Database['transaction']>[0]>[0],
     ctx: RequestCtx,
-    type: 'voice.call_started' | 'voice.call_updated' | 'voice.call_ended',
+    type: 'voice.call_requested' | 'voice.call_started' | 'voice.call_updated' | 'voice.call_ended',
     call: CallRow,
     data: Record<string, unknown>,
     action: string = type,
