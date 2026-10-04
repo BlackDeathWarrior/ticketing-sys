@@ -52,11 +52,9 @@ const LINK_NOT_SENT =
   'The link in this answer could NOT be sent to the caller. Never say a link or message was sent. Tell them to open the shop’s website, sign in and go there themselves.\n';
 const LINK_REPEAT_MS = 10 * 60_000;
 const CONFIRMATION_SENT =
-  'A written confirmation of this was sent just now to the caller’s WhatsApp. Tell them so.
-';
+  'A written confirmation of this was sent just now to the caller’s WhatsApp. Tell them so.\n';
 const CONFIRMATION_NOT_SENT =
-  'No written confirmation could be sent to the caller. Do not say that one was sent.
-';
+  'No written confirmation could be sent to the caller. Do not say that one was sent.\n';
 const CONFIRMATION_MAX = 600;
 
 /**
