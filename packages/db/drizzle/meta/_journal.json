@@ -218,6 +218,13 @@
       "when": 1791087968348,
       "tag": "0030_glossy_big_bertha",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791096592732,
+      "tag": "0031_zippy_silhouette",
+      "breakpoints": true
     }
   ]
 }
